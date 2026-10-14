@@ -2,7 +2,7 @@
 
 import { useActionState } from "react";
 import { useFormStatus } from "react-dom";
-import { Button, Field, Input, Select } from "@/components/ui";
+import { Button, Field, Input, Select, Textarea } from "@/components/ui";
 import { createRole, type CreateRoleState } from "./actions";
 
 function Submit() {
@@ -29,13 +29,23 @@ export function NewRoleForm() {
         <Field label="Duration (minutes)" hint="Leave blank to decide later">
           <Input name="durationMin" type="number" min={1} placeholder="60" />
         </Field>
-        <Field label="Visibility">
-          <Select name="visibility" defaultValue="open_pool">
-            <option value="invite_only">Invite only</option>
-            <option value="open_pool">Open pool</option>
+        <Field label="Kind of task">
+          <Select name="taskVariant" defaultValue="bug_fix">
+            <option value="bug_fix">Find and fix a bug</option>
+            <option value="debug">Debug a failure</option>
+            <option value="feature">Build a feature</option>
+            <option value="refactor">Refactor</option>
           </Select>
         </Field>
       </div>
+      <Field label="What the assessment tests" hint="Each candidate you invite gets their own task, generated from this">
+        <Textarea
+          name="assessmentBrief"
+          rows={4}
+          maxLength={4000}
+          placeholder="Mid-level backend engineer for our payments team. Python services, REST APIs, careful handling of money and retries. Look for debugging discipline and clear tests."
+        />
+      </Field>
 
       {state.error && (
         <p role="alert" className="rounded-xl bg-[#fdecef] px-3 py-2.5 text-[13px] leading-relaxed text-[#a6203c]">

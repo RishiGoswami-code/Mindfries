@@ -4,7 +4,7 @@ import { inviteSecret, signInviteToken } from "./auth/invite-token";
 import { normalizeAssistantConfig } from "./assistant";
 import { citedIds, describeEvent, type Moment } from "./moments";
 import { normalizeInterviewConfig } from "./interview";
-import type { CameraRecord } from "./types";
+import type { CameraRecord, TaskVariant } from "./types";
 import type {
   ApplicationStage,
   AssessmentReport,
@@ -120,8 +120,13 @@ function toJobRole(r: any): JobRole {
     interviewConfig: normalizeInterviewConfig(r.interview_config),
     // Absent before migration 0015 has run; same.
     assistantConfig: normalizeAssistantConfig(r.assistant_config),
+    // Absent before migration 0022 has run.
+    assessmentBrief: r.assessment_brief ?? "",
+    taskVariant: TASK_VARIANTS.includes(r.task_variant) ? r.task_variant : "bug_fix",
   };
 }
+
+export const TASK_VARIANTS: TaskVariant[] = ["bug_fix", "feature", "refactor", "debug"];
 
 export async function listJobRoles(companyId: string): Promise<JobRole[]> {
   const c = db();
@@ -146,6 +151,8 @@ export async function createJobRole(input: {
   techStack: string[];
   durationMin: number | null;
   visibility: RoleVisibility;
+  assessmentBrief?: string;
+  taskVariant?: TaskVariant;
 }): Promise<JobRole> {
   const c = db();
   if (!c) throw new Error("Supabase not configured");
@@ -157,6 +164,8 @@ export async function createJobRole(input: {
       tech_stack: input.techStack,
       duration_min: input.durationMin,
       visibility: input.visibility,
+      ...(input.assessmentBrief ? { assessment_brief: input.assessmentBrief } : {}),
+      ...(input.taskVariant ? { task_variant: input.taskVariant } : {}),
     })
     .select("*")
     .single();
@@ -174,6 +183,18 @@ export async function getJobRole(companyId: string, roleId: string): Promise<Job
     .eq("id", roleId)
     .maybeSingle();
   return data ? toJobRole(data) : null;
+}
+
+/** What a role's assessment tests: the brief each candidate's own task is generated from, and the kind of task. */
+export async function setJobRoleBrief(companyId: string, roleId: string, brief: string, taskVariant: TaskVariant): Promise<void> {
+  const c = db();
+  if (!c) throw new Error("Supabase not configured");
+  const { error } = await c
+    .from("job_roles")
+    .update({ assessment_brief: brief || null, task_variant: taskVariant })
+    .eq("company_id", companyId)
+    .eq("id", roleId);
+  if (error) throw error;
 }
 
 /** IMPLEMENTATION.md §3.3/§3.7's deferred picker — attach (or detach, templateId=null) a published template after the role already exists. */
@@ -287,7 +308,21 @@ function toApplication(r: any): CandidateApplication {
     timeTakenMin: r.time_taken_min ?? null,
     completedAt: r.completed_at ?? null,
     createdAt: r.created_at,
+    invite: null,
   };
+}
+
+/** Fills in each application's invitation — its link and whether its task exists yet. */
+async function withInvites(applications: CandidateApplication[]): Promise<CandidateApplication[]> {
+  const c = db();
+  const ids = applications.map((a) => a.assessmentId).filter((id): id is string => !!id);
+  if (!c || ids.length === 0) return applications;
+  const { data } = await c.from("assessments").select("id, invite_token, task_status, task_error").in("id", ids);
+  const byId = new Map((data ?? []).map((r: any) => [r.id as string, r]));
+  return applications.map((a) => {
+    const r = a.assessmentId ? byId.get(a.assessmentId) : undefined;
+    return r ? { ...a, invite: { token: r.invite_token ?? null, taskStatus: r.task_status ?? "ready", taskError: r.task_error ?? null } } : a;
+  });
 }
 
 export async function listApplicationsForRole(roleId: string): Promise<CandidateApplication[]> {
@@ -298,7 +333,7 @@ export async function listApplicationsForRole(roleId: string): Promise<Candidate
     .select("*")
     .eq("job_role_id", roleId)
     .order("created_at", { ascending: false });
-  return (data ?? []).map(toApplication);
+  return withInvites((data ?? []).map(toApplication));
 }
 
 /**
@@ -335,13 +370,18 @@ export async function inviteCandidateToRole(input: {
     .from("assessments")
     .insert({
       company_id: input.companyId,
-      template_id: role.templateId,
+      // No task yet: candidate/backend writes one for this candidate from
+      // the role's brief (migration 0022) and links it here.
+      template_id: null,
+      job_role_id: input.jobRoleId,
+      task_status: "pending",
+      invited_by: "company",
       candidate_email: input.candidateEmail,
       candidate_name: input.candidateName || null,
       role: role.title,
       due_date: input.dueDate || null,
     })
-    .select("id")
+    .select("id, invite_token")
     .single();
   if (assessmentError || !assessment) throw assessmentError ?? new Error("Insert returned no row");
 
@@ -357,7 +397,24 @@ export async function inviteCandidateToRole(input: {
     .select("*")
     .single();
   if (error || !data) throw error ?? new Error("Insert returned no row");
-  return toApplication(data);
+  return { ...toApplication(data), invite: { token: assessment.invite_token ?? null, taskStatus: "pending", taskError: null } };
+}
+
+/**
+ * Asks for an invitation's task to be made again, after it failed. Scoped
+ * by company, and only for an invitation that hasn't been started.
+ */
+export async function retryInvitationTask(companyId: string, assessmentId: string): Promise<void> {
+  const c = db();
+  if (!c) throw new Error("Supabase not configured");
+  const { error } = await c
+    .from("assessments")
+    .update({ task_status: "pending", task_attempts: 0, task_error: null })
+    .eq("id", assessmentId)
+    .eq("company_id", companyId)
+    .eq("status", "invited")
+    .eq("task_status", "failed");
+  if (error) throw error;
 }
 
 /**
