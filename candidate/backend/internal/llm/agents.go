@@ -30,7 +30,7 @@ const (
 	reportTokens    = 1500 // a recommendation and a short summary, as JSON
 	assistantTokens = 800  // a concise answer in the workspace chat
 	interviewTokens = 600  // one question
-	taskGenTokens   = 6000 // a brief plus a small codebase
+	taskGenTokens   = 12000 // a brief, a small codebase, and the solution's changed files
 	rubricTokens    = 2500 // a score and a short reason per criterion, as JSON
 )
 

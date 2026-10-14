@@ -133,11 +133,15 @@ type geminiResponse struct {
 	} `json:"error,omitempty"`
 }
 
-// geminiThinkingFloor is room for the model's thinking on top of the reply.
-// Gemini counts thinking against maxOutputTokens; the callers' ceilings were
-// written for the reply alone, and without this a model that thinks first
-// can spend the whole allowance before writing a word.
-const geminiThinkingFloor = 4096
+// Room for the model's thinking on top of the reply. Gemini counts thinking
+// against maxOutputTokens; the callers' ceilings were written for the reply
+// alone, and without this a model that thinks first can spend the whole
+// allowance before writing a word. Measured 2026-10-14: generating a task
+// with full thinking ran past 4096 tokens of headroom and was cut off.
+const (
+	geminiQuickThinking = 4096
+	geminiFullThinking  = 24576
+)
 
 func buildGeminiRequest(messages []ChatMessage, maxTokens int, quick bool) geminiRequest {
 	var req geminiRequest
@@ -161,7 +165,11 @@ func buildGeminiRequest(messages []ChatMessage, maxTokens int, quick bool) gemin
 	}
 	req.GenerationConfig.Temperature = 0.2
 	if maxTokens > 0 {
-		req.GenerationConfig.MaxOutputTokens = maxTokens + geminiThinkingFloor
+		room := geminiFullThinking
+		if quick {
+			room = geminiQuickThinking
+		}
+		req.GenerationConfig.MaxOutputTokens = maxTokens + room
 	}
 	if quick {
 		req.GenerationConfig.ThinkingConfig = &geminiThinking{ThinkingLevel: "low"}
