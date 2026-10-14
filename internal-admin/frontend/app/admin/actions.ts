@@ -2,10 +2,10 @@
 
 import { revalidatePath } from "next/cache";
 import {
-  addOnboarded, addWaitlist, waitlistActivity, createCompany, createInvitation, createTemplate, recordEmailEvent, setCompanyStatus,
+  addOnboarded, addWaitlist, waitlistActivity, createCompany, listCompanyRoles, markInvitationEmailedByToken, type CompanyRole, createInvitation, createTemplate, recordEmailEvent, setCompanyStatus,
   setLeadStage, setSessionState, setTemplateStatus,
 } from "@/lib/db";
-import { sendMail, NOTIFY_EMAIL } from "@/lib/mailer";
+import { mailerReady, sendMail, NOTIFY_EMAIL } from "@/lib/mailer";
 import { targetsStore } from "@/lib/targets-store";
 import { requireAdminRole } from "@/lib/auth/admins";
 import { backendReady, generateTaskViaBackend, resetSessionViaBackend, retriggerEvaluationViaBackend, type GeneratedTask } from "@/lib/backend/client";
@@ -209,26 +209,80 @@ export async function setCompanyStatusAction(id: string, status: CompanyStatus):
   }
 }
 
-// Invite a candidate: the admin-side half of a real per-candidate
-// invitation (candidate/backend's CreateInvitation is the other half, still
-// unused — see lib/db.ts's createInvitation for why this goes direct to
-// Supabase instead of calling it). Until this action existed, nothing could
-// create one except a direct database write.
+// Invite a candidate on a company's behalf. The invitation is for one of
+// the company's roles (or a new one described here); the candidate gets
+// their own task, written for them from the role's brief by
+// candidate/backend, and their own link (lib/db.ts's createInvitation). The
+// link is returned so it can be sent another way when mail isn't set up.
 export async function inviteCandidate(input: {
-  companyId: string; templateId: string; candidateEmail: string; candidateName?: string; role?: string; dueDate?: string;
-}): Promise<Result> {
+  companyId: string;
+  roleId?: string;
+  newRole?: { title: string; assessmentBrief: string; taskVariant: string };
+  candidateEmail: string;
+  candidateName?: string;
+  dueDate?: string;
+}): Promise<{ ok: true; link: string | null; emailed: boolean; note: string } | { ok: false; error: string }> {
   try {
     await requireAdminRole();
     if (!input.companyId) throw new Error("Pick a company");
-    if (!input.templateId) throw new Error("Pick an assessment");
-    const email = input.candidateEmail.trim().toLowerCase();
+    const email = input.candidateEmail.trim().toLowerCase().slice(0, 254);
     if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) throw new Error("That doesn't look like an email address");
-    await createInvitation({ ...input, candidateEmail: email });
+    const variants = ["bug_fix", "feature", "refactor", "debug"] as const;
+    const newRole = input.newRole
+      ? {
+          title: input.newRole.title.trim().slice(0, 200),
+          assessmentBrief: input.newRole.assessmentBrief.trim().slice(0, 4000),
+          taskVariant: (variants as readonly string[]).includes(input.newRole.taskVariant) ? (input.newRole.taskVariant as TaskVariant) : "bug_fix",
+        }
+      : undefined;
+    if (!input.roleId && !newRole?.title) throw new Error("Pick a role, or give the new one a title");
+
+    const { inviteToken, roleTitle } = await createInvitation({
+      companyId: input.companyId,
+      roleId: input.roleId || undefined,
+      newRole: input.roleId ? undefined : newRole,
+      candidateEmail: email,
+      candidateName: input.candidateName?.trim().slice(0, 200) || undefined,
+      dueDate: input.dueDate || undefined,
+    });
+
+    const portal = process.env.CANDIDATE_PORTAL_URL?.replace(/\/+$/, "");
+    const link = portal && inviteToken ? `${portal}/invite/${inviteToken}` : null;
+    let emailed = false;
+    let note = "Their own task is being prepared — usually a minute or two.";
+    if (link && mailerReady()) {
+      try {
+        await sendMail({
+          to: email,
+          subject: `You're invited to a technical assessment for ${roleTitle}`,
+          text:
+            `Hi${input.candidateName?.trim() ? ` ${input.candidateName.trim().split(/\s+/)[0]}` : ""},\n\n` +
+            `You've been invited to take a technical assessment for ${roleTitle} on Mindfries.\n\n` +
+            `Your invitation, and the assessment itself, are here:\n\n${link}\n\n` +
+            `Sign in — or create an account — with this email address; the invitation is tied to it, and the link works for no one else.\n` +
+            (input.dueDate ? `\nPlease complete it by ${input.dueDate}.\n` : "") +
+            `\nNothing starts, and no clock runs, until you choose to begin.\n`,
+          replyTo: NOTIFY_EMAIL,
+        });
+        emailed = true;
+        await markInvitationEmailedByToken(inviteToken);
+      } catch (e) {
+        note = `The email couldn't be sent (${e instanceof Error ? e.message : "unknown error"}) — send them the link yourself. ${note}`;
+      }
+    } else {
+      note = `No email was sent (${!link ? "CANDIDATE_PORTAL_URL isn't set, so there is no link" : "email isn't set up"})${link ? " — send them the link" : ""}. ${note}`;
+    }
     revalidatePath("/admin/companies");
-    return { ok: true };
+    return { ok: true, link, emailed, note };
   } catch (e) {
-    return fail(e);
+    return { ok: false, error: e instanceof Error ? e.message : String(e) };
   }
+}
+
+/** The company's open roles, for the invite form. */
+export async function companyRoles(companyId: string): Promise<CompanyRole[]> {
+  await requireAdminRole();
+  return listCompanyRoles(companyId);
 }
 
 // Session Monitor support overrides — go through the real Go Admin API
