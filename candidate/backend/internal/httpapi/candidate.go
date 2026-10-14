@@ -331,6 +331,9 @@ var serverOnlyEventTypes = map[string]bool{
 	"auto_submitted":     true,
 	"variant_assigned":   true,
 	"sandbox_ready":      true,
+	// Written when the command record was found altered (workspace/
+	// integrity.go). A page that could post it could also not post it.
+	"command_record_altered": true,
 }
 
 // handlePostEvents is the Event & Telemetry Engine's ingestion point (PRD

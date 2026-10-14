@@ -150,6 +150,13 @@ func (o *Orchestrator) Evaluate(ctx context.Context, sessionID string) error {
 	// directly and doesn't — see llm.DetectSteering.
 	integrity = append(integrity, detectSteering(events)...)
 
+	// The command record is the candidate's own shell reporting on itself;
+	// when it was changed, the report says so before anyone relies on it.
+	if text := commandRecordNote(events); text != "" {
+		evidence = append(evidence, db.EvidenceItem{Category: "integrity", Observation: text})
+		forReport = append(forReport, "Integrity of the command record:\n"+text)
+	}
+
 	if len(integrity) > 0 {
 		text := "The candidate's material contained text that tried to instruct or influence the AI evaluating it. The agents were told to disregard it; a reviewer should look at it directly.\n\n- " + strings.Join(dedupe(integrity), "\n- ")
 		evidence = append(evidence, db.EvidenceItem{Category: "integrity", Observation: text})
@@ -458,4 +465,28 @@ func retryOnce(ctx context.Context, call func() (string, error)) (string, error)
 	}
 	sleep(ctx, retryDelay)
 	return call()
+}
+
+// commandRecordNote says, as a fact rather than a judgement, that the record
+// of terminal commands was altered during the session and how — or nothing
+// when it wasn't.
+func commandRecordNote(events []db.ActivityEvent) string {
+	var problems []string
+	for _, e := range events {
+		if e.EventType != eventCommandRecordAltered {
+			continue
+		}
+		var p struct {
+			Problem string `json:"problem"`
+		}
+		if json.Unmarshal(e.Payload, &p) == nil && p.Problem != "" {
+			problems = append(problems, p.Problem)
+		}
+	}
+	if len(problems) == 0 {
+		return ""
+	}
+	return "The record of terminal commands for this session may be incomplete, or contain entries for commands that never ran: the shell setup that reports them was changed during the session. " +
+		"The files and test results come from the machine itself and are not affected. Read the command record with that in mind, and look at what was changed.\n\n- " +
+		strings.Join(dedupe(problems), "\n- ")
 }
