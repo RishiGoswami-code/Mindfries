@@ -2,8 +2,8 @@
 
 import { useEffect, useRef, useState } from "react";
 import clsx from "clsx";
-import { Clock, Send, AlertTriangle } from "lucide-react";
-import { idePalette, STATUS_BAR_BG } from "@/lib/ide/palette";
+import { Clock, Send, AlertTriangle, Video, VideoOff } from "lucide-react";
+import { idePalette, PRIMARY_BUTTON, STATUS_BAR_BG } from "@/lib/ide/palette";
 import type { IdeTheme } from "@/lib/ide/theme";
 
 interface HeaderPanelProps {
@@ -14,6 +14,8 @@ interface HeaderPanelProps {
   onSubmit: () => void;
   /** Called once, when a timed session reaches zero. */
   onExpire?: () => void;
+  /** Whether the proctoring camera is live — shown, not switchable (see CameraPanel). Undefined: no camera in this workspace. */
+  cameraLive?: boolean;
 }
 
 /**
@@ -23,7 +25,7 @@ interface HeaderPanelProps {
  * center, and a Submit button on the right. The timer starts from what the
  * backend says is left on the session and ticks locally from there.
  */
-export function HeaderPanel({ theme, assessmentName, durationSeconds, onSubmit, onExpire }: HeaderPanelProps) {
+export function HeaderPanel({ theme, assessmentName, durationSeconds, onSubmit, onExpire, cameraLive }: HeaderPanelProps) {
   const palette = idePalette(theme);
   const [remaining, setRemaining] = useState(durationSeconds ?? 0);
 
@@ -60,47 +62,65 @@ export function HeaderPanel({ theme, assessmentName, durationSeconds, onSubmit, 
   const isLow = remaining <= 300; // 5 minutes or less
   const isCritical = remaining <= 60; // 1 minute or less
 
+  const dark = theme === "dark";
+
   return (
     <div
       className={clsx(
-        "flex h-10 shrink-0 items-center justify-between rounded-xl border px-4",
+        "flex h-14 shrink-0 items-center justify-between gap-4 rounded-2xl border px-4 shadow-[0_8px_30px_-12px_rgba(0,0,0,0.6)]",
         palette.border,
-        palette.panelBg,
+        dark ? "bg-[#0E1431]/90 backdrop-blur" : palette.panelBg,
         palette.text
       )}
     >
-      {/* Left: Assessment name */}
-      <div className="flex items-center gap-2 min-w-0">
+      {/* Left: the logo, then the assessment's name */}
+      <div className="flex min-w-0 items-center gap-3">
         {/* eslint-disable-next-line @next/next/no-img-element -- tiny static local SVG */}
-        <img src="/mindfries-logo.svg" alt="" width={20} height={20} />
-        <span className="truncate text-sm font-semibold">{assessmentName}</span>
+        <img src="/mindfries-logo.svg" alt="" width={26} height={26} />
+        <span className="text-[15px] font-semibold tracking-tight">Mindfries</span>
+        <span className={clsx("h-5 w-px", dark ? "bg-[#232C5E]" : "bg-[#B3CFE5]")} />
+        <span className="truncate text-sm font-medium">{assessmentName}</span>
       </div>
 
-      {/* Center: Timer */}
-      {durationSeconds !== undefined && (
-      <div
-        className={clsx("flex items-center gap-1.5 rounded-lg px-3 py-1 font-mono text-sm", {
-          "bg-[#4A7FA7]/20 text-[#B3CFE5]": !isLow && theme === "dark",
-          "bg-[#4A7FA7]/10 text-[#4A7FA7]": !isLow && theme === "light",
-          "bg-[#E06C75]/15 text-[#E06C75]": isLow && !isCritical,
-          "bg-[#AD2934]/20 text-[#E06C75] animate-pulse": isCritical,
-        })}
-      >
-        {isLow ? <AlertTriangle size={14} /> : <Clock size={14} />}
-        <span>{formatted}</span>
-      </div>
-      )}
+      {/* Right: timer, camera, Submit */}
+      <div className="flex shrink-0 items-center gap-2">
+        {durationSeconds !== undefined && (
+          <div
+            className={clsx("flex h-9 items-center gap-2 rounded-xl border px-3 font-mono text-sm tabular-nums", palette.border, {
+              "bg-[#7C5CFF]/10 text-[#E7EAF6]": !isLow && dark,
+              "bg-[#4A7FA7]/10 text-[#0A1931]": !isLow && !dark,
+              "border-[#E06C75]/40 bg-[#E06C75]/15 text-[#E06C75]": isLow && !isCritical,
+              "border-[#E06C75]/60 bg-[#AD2934]/20 text-[#E06C75] animate-pulse": isCritical,
+            })}
+          >
+            {isLow ? <AlertTriangle size={15} /> : <Clock size={15} className={dark ? "text-[#A78BFA]" : "text-[#4A7FA7]"} />}
+            <span>{formatted}</span>
+          </div>
+        )}
 
-      {/* Right: Submit button */}
-      <button
-        type="button"
-        onClick={onSubmit}
-        className="flex items-center gap-1.5 rounded-lg px-4 py-1.5 text-sm font-semibold text-white transition-opacity hover:opacity-90"
-        style={{ backgroundColor: STATUS_BAR_BG }}
-      >
-        <Send size={14} />
-        Submit
-      </button>
+        {cameraLive !== undefined && (
+          <span
+            role="status"
+            title={cameraLive ? "Camera on — recording for this session" : "Camera off"}
+            className={clsx("flex h-9 w-9 items-center justify-center rounded-xl border", palette.border, cameraLive ? palette.textMuted : "text-[#E06C75]")}
+          >
+            {cameraLive ? <Video size={16} /> : <VideoOff size={16} />}
+          </span>
+        )}
+
+        <button
+          type="button"
+          onClick={onSubmit}
+          className={clsx(
+            "flex h-9 items-center gap-2 rounded-xl px-5 text-sm font-semibold transition",
+            dark ? PRIMARY_BUTTON : "text-white hover:opacity-90"
+          )}
+          style={dark ? undefined : { backgroundColor: STATUS_BAR_BG }}
+        >
+          <Send size={15} />
+          Submit
+        </button>
+      </div>
     </div>
   );
 }

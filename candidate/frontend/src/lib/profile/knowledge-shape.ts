@@ -45,6 +45,7 @@ export interface Knowledge {
     bio?: string;
     publicRepos?: number;
     followers?: number;
+    following?: number;
     /** ISO time the account was created. */
     memberSince?: string;
   };
@@ -54,6 +55,8 @@ export interface Knowledge {
   projects: KnowledgeProject[];
   /** How many projects there are in all; `projects` holds at most MAX_PROJECTS of them. */
   projectCount: number;
+  /** Stars across all their own public projects, not only those listed. */
+  totalStars?: number;
   /** Null when the platform wouldn't say (GitLab hides events for some accounts). */
   activity: KnowledgeActivity | null;
   /**
@@ -117,6 +120,7 @@ export function shapeGithub(user: any, repos: any[], events: any[] | null): Know
       bio: str(user?.bio, 500) || undefined,
       publicRepos: num(user?.public_repos),
       followers: num(user?.followers),
+      following: num(user?.following),
       memberSince: str(user?.created_at, 40) || undefined,
     },
     languages: tally(own.map((r) => (typeof r.language === "string" ? r.language : null))),
@@ -129,6 +133,7 @@ export function shapeGithub(user: any, repos: any[], events: any[] | null): Know
       updatedAt: str(r.pushed_at, 40) || null,
     })),
     projectCount: own.length,
+    totalStars: own.reduce((sum, r) => sum + num(r.stargazers_count), 0),
     activity: events
       ? activity(
           events.map((e) => str(e?.created_at, 40)),
@@ -184,6 +189,7 @@ export function shapeGitlab(user: any, projects: any[], languagesByProject: Reco
       updatedAt: str(p.last_activity_at, 40) || null,
     })),
     projectCount: own.length,
+    totalStars: own.reduce((sum, p) => sum + num(p.star_count), 0),
     activity: events
       ? activity(
           events.map((e) => str(e?.created_at, 40)),

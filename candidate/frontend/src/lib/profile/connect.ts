@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import { revalidatePath } from "next/cache";
 import { db } from "../supabase";
 import { endConnection, type ConnectedIdentity, type ConnectPlatform } from "../composio";
-import { dropKnowledge, storeKnowledge } from "./knowledge";
+import { dropKnowledge, storeKnowledge, storeLinkedIn } from "./knowledge";
 import { readLinkedIn, readThroughConnection } from "./knowledge-connection";
 import { statsOf } from "./knowledge-shape";
 
@@ -46,6 +46,7 @@ export async function recordVerifiedAccount(candidateId: string, platform: Conne
   let link: Record<string, unknown>;
   if (platform === "linkedin") {
     const profile = await readLinkedIn(candidateId, connectionId);
+    if (profile) await storeLinkedIn(candidateId, profile);
     link = {
       value: links.linkedin?.value ?? "",
       savedAt: links.linkedin?.savedAt ?? now,

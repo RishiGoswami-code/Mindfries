@@ -7,7 +7,7 @@ import type { IdeTheme } from "@/lib/ide/theme";
 import type { VfsBridge } from "@/lib/ide/vfs-bridge";
 import type { PreviewController } from "@/lib/ide/shell/types";
 import { TerminalGroup } from "./TerminalGroup";
-import { CameraPanel } from "./CameraPanel";
+import { ChevronUp } from "lucide-react";
 import { ProblemsPanel } from "./ProblemsPanel";
 import { OutputPanel } from "./OutputPanel";
 import { DebugConsolePanel } from "./DebugConsolePanel";
@@ -17,7 +17,6 @@ import { ChangesPanel } from "./ChangesPanel";
 import type { FileChange } from "@/lib/ide/changes";
 import { testResults } from "@/lib/ide/test-results";
 import type { Diagnostic } from "@/lib/ide/diagnostics";
-import { useResizable } from "@/lib/ide/use-resizable";
 
 type PanelTab = "problems" | "output" | "debug" | "terminal" | "tests" | "changes" | "ports";
 
@@ -31,11 +30,22 @@ const TABS: { id: PanelTab; label: string }[] = [
   { id: "ports", label: "Ports" },
 ];
 
+/**
+ * The task drawer under the editor: Problems, Output, Debug Console,
+ * Terminal, Tests, Changes and Ports.
+ *
+ * It starts collapsed to its tab bar, so the editor has the room. Choosing a
+ * tab opens it upward; choosing the open tab again, or the chevron, closes
+ * it; the strip along its top edge drags it to any height (IdeShell owns the
+ * height and the open state). Every panel stays mounted while it is closed —
+ * terminals and the debug console keep their sessions and scrollback.
+ */
 export function BottomPanel({
   theme,
   vfs,
   preview,
-  cameraStream,
+  open,
+  onOpenChange,
   diagnostics,
   onOpenLocation,
   changes,
@@ -47,7 +57,9 @@ export function BottomPanel({
   theme: IdeTheme;
   vfs: VfsBridge;
   preview: PreviewController;
-  cameraStream: MediaStream | null;
+  /** Whether the drawer is open (showing a panel) or collapsed to its tab bar. */
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
   diagnostics: Diagnostic[];
   onOpenLocation: (path: string, line: number) => void;
   /** Files that differ from the task as given, and how to open one as a diff. */
@@ -60,47 +72,74 @@ export function BottomPanel({
   const palette = idePalette(theme);
   const [active, setActive] = useState<PanelTab>("terminal");
   const lastTestRun = useSyncExternalStore(testResults.subscribe, testResults.getSnapshot, testResults.getSnapshot);
-  const cameraPane = useResizable({ initial: 260, min: 160, max: 520, axis: "horizontal", invert: true });
+  const dark = theme === "dark";
+
+  const choose = (tab: PanelTab) => {
+    if (open && tab === active) {
+      onOpenChange(false);
+      return;
+    }
+    setActive(tab);
+    onOpenChange(true);
+  };
 
   return (
     <div className={clsx("flex h-full flex-col", palette.panelBg)}>
-      <div className={clsx("flex h-7 shrink-0 items-stretch gap-0.5 border-b px-1.5 py-1", palette.border)}>
-        {TABS.map((tab) => (
-          <button
-            key={tab.id}
-            type="button"
-            onClick={() => setActive(tab.id)}
-            className={clsx(
-              "rounded-[4px] px-2 text-[11px] font-medium tracking-wide uppercase",
-              active === tab.id
-                ? clsx(palette.active, palette.text)
-                : clsx(palette.hover, palette.textMuted)
-            )}
-          >
-            {tab.label}
-            {tab.id === "tests" && lastTestRun?.parsed && (
+      <div className={clsx("flex h-11 shrink-0 items-stretch gap-1 overflow-x-auto px-2 [scrollbar-width:none]", open && "border-b", palette.border)}>
+        {TABS.map((tab) => {
+          const selected = open && active === tab.id;
+          return (
+            <button
+              key={tab.id}
+              type="button"
+              onClick={() => choose(tab.id)}
+              aria-expanded={selected}
+              className={clsx(
+                "relative flex shrink-0 items-center gap-1.5 px-3 text-[13px] font-medium transition-colors",
+                selected ? palette.text : clsx(palette.textMuted, dark ? "hover:text-[#E7EAF6]" : "hover:text-[#0A1931]")
+              )}
+            >
+              {tab.label}
+              {tab.id === "tests" && lastTestRun?.parsed && (
+                <span
+                  className={clsx(
+                    "rounded-full px-1.5 text-[10.5px] font-semibold",
+                    lastTestRun.failed > 0 ? "bg-red-500/25 text-red-400" : "bg-emerald-500/20 text-emerald-400",
+                  )}
+                >
+                  {lastTestRun.failed > 0 ? lastTestRun.failed : "✓"}
+                </span>
+              )}
+              {tab.id === "changes" && changes.length > 0 && (
+                <span className={clsx("rounded-full px-1.5 text-[10.5px]", dark ? "bg-[#7C5CFF]/25 text-[#C4B5FD]" : "bg-[#4A7FA7]/30")}>{changes.length}</span>
+              )}
+              {tab.id === "problems" && diagnostics.length > 0 && (
+                <span className={clsx("rounded-full px-1.5 text-[10.5px]", dark ? "bg-[#7C5CFF]/25 text-[#C4B5FD]" : "bg-[#4A7FA7]/30")}>{diagnostics.length}</span>
+              )}
+              {/* The open tab's violet underline. */}
               <span
                 className={clsx(
-                  "ml-1.5 rounded-full px-1.5 text-[10px]",
-                  lastTestRun.failed > 0 ? "bg-red-500/25 text-red-400" : "bg-emerald-500/20 text-emerald-500",
+                  "absolute inset-x-2 bottom-0 h-[2px] rounded-full transition-opacity",
+                  dark ? "bg-[#8B6CFF]" : "bg-[#4A7FA7]",
+                  selected ? "opacity-100" : "opacity-0"
                 )}
-              >
-                {lastTestRun.failed > 0 ? lastTestRun.failed : "✓"}
-              </span>
-            )}
-            {tab.id === "changes" && changes.length > 0 && (
-              <span className="ml-1.5 rounded-full bg-[#4A7FA7]/30 px-1.5 text-[10px]">{changes.length}</span>
-            )}
-            {tab.id === "problems" && diagnostics.length > 0 && (
-              <span className="ml-1.5 rounded-full bg-[#4A7FA7]/30 px-1.5 text-[10px]">
-                {diagnostics.length}
-              </span>
-            )}
-          </button>
-        ))}
+              />
+            </button>
+          );
+        })}
+        <button
+          type="button"
+          onClick={() => onOpenChange(!open)}
+          title={open ? "Close the panel" : "Open the panel"}
+          aria-label={open ? "Close the panel" : "Open the panel"}
+          className={clsx("ml-auto flex w-8 shrink-0 items-center justify-center rounded-lg", palette.textMuted, palette.hover)}
+        >
+          <ChevronUp size={15} className={clsx("transition-transform duration-200", open && "rotate-180")} />
+        </button>
       </div>
 
-      <div className="flex min-h-0 flex-1">
+      {/* Hidden, not unmounted, while the drawer is closed. */}
+      <div className="flex min-h-0 flex-1" style={{ display: open ? "flex" : "none" }}>
         <div className="min-h-0 min-w-0 flex-1">
           {/* Kept mounted (just hidden) rather than unmounted while another tab is
               active, so terminal sessions and their scrollback survive tab switches. */}
@@ -136,20 +175,6 @@ export function BottomPanel({
           )}
         </div>
 
-        {/* Outside the tab switch on purpose: the camera has to be visible on
-            every tab, and mounting it here means the <video> element is never
-            torn down, so switching tabs can't interrupt the feed. */}
-        <div
-          onMouseDown={cameraPane.startDrag}
-          className={clsx(
-            "flex w-1 shrink-0 cursor-col-resize items-center justify-center border-l",
-            palette.border,
-            palette.hover
-          )}
-        />
-        <div style={{ width: cameraPane.size }} className="min-h-0 shrink-0">
-          <CameraPanel theme={theme} stream={cameraStream} />
-        </div>
       </div>
     </div>
   );

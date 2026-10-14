@@ -258,9 +258,9 @@ function TreeLevel({
               ) : (
                 <div
                   className={clsx(
-                    "mx-1 flex cursor-pointer items-center justify-between rounded-[4px] py-[3px] pr-2",
+                    "mx-1.5 flex cursor-pointer items-center justify-between rounded-lg py-[5px] pr-2",
                     palette.hover,
-                    isActive && palette.active
+                    isActive && clsx(palette.active, theme === "dark" && "text-white")
                   )}
                   style={{ paddingLeft }}
                   onClick={() => onOpenFile(node.path)}

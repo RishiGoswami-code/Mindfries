@@ -4,10 +4,11 @@ import { can } from "@/lib/auth/permissions";
 import { getApplicationForCompany, getCandidateReport, getInvitationResponse } from "@/lib/db";
 import { getCandidateProfile } from "@/lib/candidate-profile";
 import { EmptyState, PageHeader, Pill } from "@/components/ui";
-import { fmtDate, recommendationLabel, sessionStatusTone, stageLabel, stageTone, titleCase } from "@/lib/format";
+import { fmtDate, recommendationLabel, sessionStatusTone, stageLabel, stageTone } from "@/lib/format";
 import { CameraTimeline } from "./CameraTimeline";
 import { FlaggedMoments } from "./FlaggedMoments";
 import { CandidateProfileCard } from "./CandidateProfileCard";
+import { CandidateSnapshot } from "./CandidateSnapshot";
 import { EvidenceList } from "./EvidenceList";
 import { InterviewTranscript } from "./InterviewTranscript";
 import { ReviewerDecisionForm } from "./ReviewerDecisionForm";
@@ -60,16 +61,21 @@ export default async function CandidateDetailPage({ params }: { params: Promise<
         </div>
       )}
 
-      {Object.keys(application.sectionScores).length > 0 && (
-        <div className="hair-card divide-y divide-hair">
-          {Object.entries(application.sectionScores).map(([section, score]) => (
-            <div key={section} className="flex items-center justify-between px-6 py-3">
-              <span className="text-sm font-semibold">{titleCase(section)}</span>
-              <span className="mono text-sm text-dim">{score}%</span>
-            </div>
-          ))}
-        </div>
-      )}
+      <CandidateSnapshot
+        name={application.candidateName ?? profile?.name ?? ""}
+        email={application.candidateEmail}
+        profile={profile}
+        score={application.score}
+        sectionScores={application.sectionScores}
+        recommendation={
+          report?.review?.recommendation
+            ? { value: report.review.recommendation, by: "reviewer" }
+            : report?.status === "ready" && report.recommendation
+              ? { value: report.recommendation, by: "ai" }
+              : null
+        }
+        sessionStatus={session?.status ?? null}
+      />
 
       <CandidateProfileCard profile={profile} />
 

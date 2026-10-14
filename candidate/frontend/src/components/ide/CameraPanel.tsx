@@ -18,9 +18,10 @@ import type { IdeTheme } from "@/lib/ide/theme";
  * displays it, so the feed survives layout changes and can't be detached by
  * re-rendering.
  */
-export function CameraPanel({ theme, stream }: { theme: IdeTheme; stream: MediaStream | null }) {
+export function CameraPanel({ theme, stream, compact = false }: { theme: IdeTheme; stream: MediaStream | null; compact?: boolean }) {
   const palette = idePalette(theme);
   const videoRef = useRef<HTMLVideoElement>(null);
+  const dark = theme === "dark";
 
   useEffect(() => {
     const video = videoRef.current;
@@ -29,26 +30,28 @@ export function CameraPanel({ theme, stream }: { theme: IdeTheme; stream: MediaS
     if (stream) void video.play().catch(() => undefined);
   }, [stream]);
 
+  // `compact` (the task drawer is closed) lays the same elements out in a
+  // row — label, indicator, a small live preview — instead of a stack. The
+  // <video> is the same element either way, so the feed never restarts.
   return (
-    <div className="flex h-full min-h-0 flex-col">
-      <div
-        className={clsx(
-          "flex h-7 shrink-0 items-center gap-1 border-b px-2 text-[11px]",
-          palette.border,
-          palette.panelBg
-        )}
-      >
-        <Video size={11} className={palette.accent} />
-        <span className={palette.text}>Camera</span>
+    <div className={clsx("flex h-full min-h-0", compact ? "flex-row items-center gap-3 px-3" : "flex-col")}>
+      <div className={clsx("flex shrink-0 items-center gap-2 text-[13px]", compact ? "flex-1" : "h-11 px-3")}>
+        <Video size={15} className={dark ? "text-[#A78BFA]" : palette.accent} />
+        <span className={clsx("font-medium", palette.text)}>Camera</span>
         {/* A steady, always-present indicator: no ambiguity about whether
             the session is being watched. */}
-        <span className="ml-auto flex items-center gap-1 text-[#ff8a8a]">
-          <span className="h-1.5 w-1.5 rounded-full bg-[#ff8a8a]" />
-          recording
+        <span className={clsx("ml-auto flex items-center gap-1.5", dark ? "text-[#E7EAF6]" : "text-[#c0304c]")}>
+          <span className="h-2 w-2 rounded-full bg-[#F0566A] shadow-[0_0_8px_rgba(240,86,106,0.8)]" />
+          Recording
         </span>
       </div>
 
-      <div className="min-h-0 flex-1 bg-black">
+      <div
+        className={clsx(
+          "overflow-hidden bg-black",
+          compact ? "h-8 w-14 shrink-0 rounded-md" : "mx-2 mb-2 min-h-0 flex-1 rounded-xl"
+        )}
+      >
         {/* Landscape, letterboxed rather than cropped. */}
         <video ref={videoRef} muted playsInline className="h-full w-full object-contain" />
       </div>

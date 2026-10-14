@@ -2,7 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import clsx from "clsx";
-import { GripVertical, GripHorizontal } from "lucide-react";
+import { GripVertical } from "lucide-react";
+import { CameraPanel } from "./CameraPanel";
 import { FileExplorer } from "./FileExplorer";
 import { Breadcrumbs } from "./Breadcrumbs";
 import { EditorPanel } from "./EditorPanel";
@@ -116,6 +117,8 @@ export function IdeShell({ sessionId, candidateName, taskBrief, starterFiles, as
   const storageId = sessionId ?? (practice ? "practice" : undefined);
   const { theme, toggleTheme } = useIdeTheme();
   const palette = idePalette(theme);
+  // The cards' soft shadow, in the dark theme only — on the light canvas it reads as dirt.
+  const cardShadow = theme === "dark" ? "shadow-[0_10px_30px_-14px_rgba(0,0,0,0.75)]" : "";
 
   // A real starting codebase when one was authored for this assessment;
   // the same empty workspace as always otherwise. Computed once, from
@@ -330,8 +333,12 @@ export function IdeShell({ sessionId, candidateName, taskBrief, starterFiles, as
   }, [dirtyPaths, files]);
 
   const sidebar = useResizable({ initial: 240, min: 160, max: 480, axis: "horizontal" });
-  const terminal = useResizable({ initial: 220, min: 100, max: 520, axis: "vertical", invert: true });
+  const terminal = useResizable({ initial: 300, min: 140, max: 600, axis: "vertical", invert: true });
+  // The task drawer (BottomPanel) starts collapsed to its tab bar, leaving
+  // the editor the room; it opens upward when a tab is chosen or dragged.
+  const [drawerOpen, setDrawerOpen] = useState(false);
   const chatPane = useResizable({ initial: 320, min: 240, max: 560, axis: "horizontal", invert: true });
+  const cameraPane = useResizable({ initial: 300, min: 200, max: 520, axis: "horizontal", invert: true });
   const [chatOpen, setChatOpen] = useState(false);
   // Lives here rather than in the Task panel: the Explorer under it is sized
   // differently depending on whether the brief is open.
@@ -889,18 +896,19 @@ export function IdeShell({ sessionId, candidateName, taskBrief, starterFiles, as
   // its own (sharp-cornered) internal content is clipped to the card's
   // rounded shape instead of poking out past the corners.
   return (
-    <div className={clsx("flex h-dvh w-full flex-col gap-1 p-1", palette.canvas, palette.text)}>
+    <div className={clsx("flex h-dvh w-full flex-col gap-2 p-2", palette.canvas, palette.text)}>
       <HeaderPanel
         theme={theme}
         assessmentName={assessmentName ?? (sessionId ? "Assessment" : "Scratch workspace")}
         durationSeconds={remainingSeconds}
         onSubmit={() => setSubmitting(true)}
         onExpire={expire}
+        cameraLive={camera.status === "live"}
       />
-      <div className="flex min-h-0 flex-1 gap-1">
+      <div className="flex min-h-0 flex-1 gap-2">
         <div
           style={{ width: sidebar.size }}
-          className={clsx("flex shrink-0 flex-col overflow-hidden rounded-xl border", palette.border)}
+          className={clsx("flex shrink-0 flex-col overflow-hidden rounded-2xl border", palette.border, palette.panelBg, cardShadow)}
         >
           <TaskDescriptionPanel
             theme={theme}
@@ -938,21 +946,21 @@ export function IdeShell({ sessionId, candidateName, taskBrief, starterFiles, as
         <div
           onMouseDown={sidebar.startDrag}
           className={clsx(
-            "flex w-1 shrink-0 cursor-col-resize items-center justify-center rounded-full",
+            "-mx-1.5 flex w-1 shrink-0 cursor-col-resize items-center justify-center rounded-full",
             palette.hover
           )}
         >
           <GripVertical size={10} className={palette.textMuted} />
         </div>
 
-        <div className="flex min-w-0 flex-1 flex-col gap-1">
+        <div className="flex min-w-0 flex-1 flex-col">
           <div
             className={clsx(
-              "flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border",
-              palette.border
+              "flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border",
+              palette.border,
+              cardShadow
             )}
           >
-            <Breadcrumbs path={activeFile} theme={theme} />
             <div className="min-h-0 flex-1">
               <EditorPanel
                 theme={theme}
@@ -965,47 +973,67 @@ export function IdeShell({ sessionId, candidateName, taskBrief, starterFiles, as
                 onCloseTab={closeTab}
                 onChange={changeFile}
                 onSave={saveFile}
+                breadcrumbs={<Breadcrumbs path={activeFile} theme={theme} />}
               />
             </div>
           </div>
 
+          {/* The drawer's top edge: drag it up to open the drawer and size
+              it. Collapsed, this is just the gap above the tab bar. */}
           <div
-            onMouseDown={terminal.startDrag}
-            className={clsx(
-              "flex h-1 shrink-0 cursor-row-resize items-center justify-center rounded-full",
-              palette.hover
-            )}
+            onMouseDown={(e) => {
+              setDrawerOpen(true);
+              terminal.startDrag(e);
+            }}
+            title="Drag to resize the panel"
+            className={clsx("group flex h-2 shrink-0 cursor-row-resize items-center justify-center")}
           >
-            <GripHorizontal size={10} className={palette.textMuted} />
+            <span className={clsx("h-[3px] w-10 rounded-full opacity-0 transition-opacity group-hover:opacity-100", theme === "dark" ? "bg-[#7C5CFF]/60" : "bg-[#4A7FA7]/60")} />
           </div>
 
+          {/* The task drawer, with the camera beside it. Collapsed, both are
+              a slim bar; open, they share the drawer's height. The camera is
+              outside the drawer's tabs so it shows on every one, and is the
+              same mounted element open or closed, so the feed never stops. */}
           <div
-            style={{ height: terminal.size }}
-            className={clsx("shrink-0 overflow-hidden rounded-xl border", palette.border)}
+            style={{ height: drawerOpen ? terminal.size : 44 }}
+            className={clsx("flex shrink-0 gap-2", !terminal.dragging && "transition-[height] duration-200 ease-out")}
           >
-            {/* The terminal and the Tests panel in here are the two that act
-                differently on a sandbox; the context is how they know. */}
-            <SandboxContext.Provider value={sandboxContext}>
-            <BottomPanel
-              theme={theme}
-              vfs={vfs}
-              preview={previewController}
-              cameraStream={camera.stream}
-              diagnostics={diagnostics}
-              onOpenLocation={(path) => openFile(path)}
-              changes={changes}
-              onOpenDiff={(path) => openFile(`${DIFF_PREFIX}${path}`)}
-              previewState={preview}
-              onClosePreview={() => {
-                releaseBuild(previewBuildRef.current);
-                previewBuildRef.current = null;
-                setPreview(null);
-              }}
-              // Same path Ctrl+C takes: stop watching, keep the last build on
-              // screen. Closing the panel is a separate, more destructive act.
-              onStopPreview={() => previewController.stop()}
-            />
-            </SandboxContext.Provider>
+            <div className={clsx("min-w-0 flex-1 overflow-hidden rounded-2xl border", palette.border, cardShadow)}>
+                {/* The terminal and the Tests panel in here are the two that act
+                    differently on a sandbox; the context is how they know. */}
+                <SandboxContext.Provider value={sandboxContext}>
+                <BottomPanel
+                  theme={theme}
+                  vfs={vfs}
+                  preview={previewController}
+                  open={drawerOpen}
+                  onOpenChange={setDrawerOpen}
+                  diagnostics={diagnostics}
+                  onOpenLocation={(path) => openFile(path)}
+                  changes={changes}
+                  onOpenDiff={(path) => openFile(`${DIFF_PREFIX}${path}`)}
+                  previewState={preview}
+                  onClosePreview={() => {
+                    releaseBuild(previewBuildRef.current);
+                    previewBuildRef.current = null;
+                    setPreview(null);
+                  }}
+                  // Same path Ctrl+C takes: stop watching, keep the last build on
+                  // screen. Closing the panel is a separate, more destructive act.
+                  onStopPreview={() => previewController.stop()}
+                />
+                </SandboxContext.Provider>
+            </div>
+            <div
+              style={{ width: drawerOpen ? cameraPane.size : 220 }}
+              className={clsx("relative shrink-0 overflow-hidden rounded-2xl border", palette.border, palette.panelBg, cardShadow)}
+            >
+              {drawerOpen && (
+                <div onMouseDown={cameraPane.startDrag} title="Drag to resize the camera" className="absolute inset-y-0 left-0 z-10 w-1.5 cursor-col-resize" />
+              )}
+              <CameraPanel theme={theme} stream={camera.stream} compact={!drawerOpen} />
+            </div>
           </div>
         </div>
 
@@ -1022,7 +1050,7 @@ export function IdeShell({ sessionId, candidateName, taskBrief, starterFiles, as
             </div>
             <div
               style={{ width: chatPane.size }}
-              className={clsx("shrink-0 overflow-hidden rounded-xl border", palette.border)}
+              className={clsx("shrink-0 overflow-hidden rounded-2xl border", palette.border, cardShadow)}
             >
               <ChatPanel
                 theme={theme}
