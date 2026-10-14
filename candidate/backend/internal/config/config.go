@@ -79,6 +79,9 @@ type Config struct {
 	SandboxNetwork string
 	// SandboxMaxLive is how many sessions may hold a sandbox at once. One
 	// more than that starts in the browser instead. 0 means no ceiling.
+	// Measured 2026-10-14 (issue #121): the Daytona account allows 10 vCPU
+	// running at once, one per sandbox, and refuses the 11th. Checking a
+	// generated task needs a sandbox too, so the default leaves one free.
 	SandboxMaxLive int
 
 	// RequireVerifiedEmail makes a confirmed email address a condition of
@@ -129,7 +132,7 @@ func Load() (Config, error) {
 		DaytonaAPIKey:          os.Getenv("DAYTONA_API_KEY"),
 		DaytonaBaseURL:         getenv("DAYTONA_BASE_URL", "https://app.daytona.io/api"),
 		SandboxNetwork:         strings.ToLower(getenv("SANDBOX_NETWORK", "open")),
-		SandboxMaxLive:         25,
+		SandboxMaxLive:         9,
 		RequireVerifiedEmail:   strings.EqualFold(os.Getenv("REQUIRE_VERIFIED_EMAIL"), "true"),
 	}
 	if v := os.Getenv("SANDBOX_MAX_LIVE"); v != "" {
