@@ -27,7 +27,7 @@ export const RECORDED_SIGNALS = [
 
 export const WHAT_IS_RECORDED = {
   title: "What is recorded during a session",
-  body: "Your camera, code activity, and workspace behaviour are captured throughout a session. The camera is kept as a still image every half minute, not as continuous video; your screen is not recorded. Nothing is recorded until you click Enter Workspace on the final onboarding step.",
+  body: "Your camera, your screen, your microphone, code activity, and workspace behaviour are part of a session. None of it is continuous video or audio: the camera is kept as a still every half minute; your entire screen is shared and kept as a still when it changes, every few minutes, and at flagged moments; the microphone is listened to in your browser, and only when voices or a loud noise last a few seconds is a short clip kept. Moments such as leaving the workspace, leaving fullscreen, a large paste from elsewhere, a second display or window, nobody or more than one person on camera, or a developer-tools shortcut are flagged as they happen, with the camera, screen and sound from that moment, for the hiring team to look at — a flag is not a decision. Nothing is recorded until you click Enter Workspace on the final onboarding step.",
 };
 
 export const HOW_EVIDENCE_IS_USED = {

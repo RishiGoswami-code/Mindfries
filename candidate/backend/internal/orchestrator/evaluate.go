@@ -87,6 +87,12 @@ func (o *Orchestrator) Evaluate(ctx context.Context, sessionID string) error {
 	// that writes them failed twice. They are named in the report itself.
 	var missing []string
 	known := eventIDs(events)
+	// Set when an agent was stopped by the AI service itself — its quota
+	// used up, or too busy to answer — rather than by anything about this
+	// session. A report written then would be missing parts for no reason
+	// to do with the candidate, so none is written: the session waits and
+	// is evaluated again later (RunReportRetrySweep).
+	var serviceStop error
 
 	// run calls one agent — again, once, if it fails — and files what it
 	// wrote as evidence. Anything the agent flagged as the candidate trying
@@ -95,6 +101,9 @@ func (o *Orchestrator) Evaluate(ctx context.Context, sessionID string) error {
 	// the session's real events.
 	run := func(category, heading string, call func() (string, error)) {
 		out, err := retryOnce(ctx, call)
+		if serviceStopped(err) {
+			serviceStop = err
+		}
 		if err != nil {
 			slog.Warn("orchestrator: "+category+" skipped", "session", sessionID, "error", err)
 			if !errors.Is(err, llm.ErrNothingToAnalyze) {
@@ -117,6 +126,10 @@ func (o *Orchestrator) Evaluate(ctx context.Context, sessionID string) error {
 	run("workflow", "Workflow", func() (string, error) { return o.Agents.AnalyzeWorkflow(ctx, trail) })
 	run("interview", "Interview", func() (string, error) { return o.Agents.AnalyzeInterview(ctx, work, interviewTranscript(events)) })
 
+	if serviceStop != nil {
+		slog.Warn("orchestrator: the AI service stopped the evaluation; it will be run again", "session", sessionID, "error", serviceStop)
+		return fail(waitingForAIService)
+	}
 	if len(forReport) == 0 {
 		// This sentence is the report's summary, which the candidate and the
 		// hiring team both read. Why each agent failed is in this server's
@@ -149,6 +162,20 @@ func (o *Orchestrator) Evaluate(ctx context.Context, sessionID string) error {
 	// depends on the model. This check reads the candidate's own words
 	// directly and doesn't — see llm.DetectSteering.
 	integrity = append(integrity, detectSteering(events)...)
+
+	// Moments the candidate's browser flagged live (issue #120), as facts
+	// with their times — for a person to look at, beside their evidence.
+	if text := activityFlagsNote(events, sess.StartedAt); text != "" {
+		evidence = append(evidence, db.EvidenceItem{Category: "activity_flags", Observation: text})
+		forReport = append(forReport, "Flagged moments (prompts to look, not findings):\n"+text)
+	}
+
+	// The command record is the candidate's own shell reporting on itself;
+	// when it was changed, the report says so before anyone relies on it.
+	if text := commandRecordNote(events); text != "" {
+		evidence = append(evidence, db.EvidenceItem{Category: "integrity", Observation: text})
+		forReport = append(forReport, "Integrity of the command record:\n"+text)
+	}
 
 	if len(integrity) > 0 {
 		text := "The candidate's material contained text that tried to instruct or influence the AI evaluating it. The agents were told to disregard it; a reviewer should look at it directly.\n\n- " + strings.Join(dedupe(integrity), "\n- ")
@@ -189,6 +216,9 @@ func (o *Orchestrator) Evaluate(ctx context.Context, sessionID string) error {
 	if err != nil && retryable(ctx, err) {
 		sleep(ctx, retryDelay)
 		result, err = o.Agents.GenerateReport(ctx, forReport)
+	}
+	if serviceStopped(err) {
+		return fail(waitingForAIService)
 	}
 	if err != nil {
 		return fail(err.Error())
@@ -458,4 +488,42 @@ func retryOnce(ctx context.Context, call func() (string, error)) (string, error)
 	}
 	sleep(ctx, retryDelay)
 	return call()
+}
+
+// commandRecordNote says, as a fact rather than a judgement, that the record
+// of terminal commands was altered during the session and how — or nothing
+// when it wasn't.
+func commandRecordNote(events []db.ActivityEvent) string {
+	var problems []string
+	for _, e := range events {
+		if e.EventType != eventCommandRecordAltered {
+			continue
+		}
+		var p struct {
+			Problem string `json:"problem"`
+		}
+		if json.Unmarshal(e.Payload, &p) == nil && p.Problem != "" {
+			problems = append(problems, p.Problem)
+		}
+	}
+	if len(problems) == 0 {
+		return ""
+	}
+	return "The record of terminal commands for this session may be incomplete, or contain entries for commands that never ran: the shell setup that reports them was changed during the session. " +
+		"The files and test results come from the machine itself and are not affected. Read the command record with that in mind, and look at what was changed.\n\n- " +
+		strings.Join(dedupe(problems), "\n- ")
+}
+
+// waitingForAIService is the report's failure text when the AI service, not
+// the session, stopped the evaluation. It is read by the candidate and the
+// hiring team, and it starts with "Waiting:" so RunReportRetrySweep can find
+// the reports to try again.
+const waitingForAIService = "Waiting: the AI service's usage limit was reached, or it was too busy, before this report could be written. It will be written automatically as soon as the service allows — nothing from the session was lost."
+
+// serviceStopped reports whether an error is the AI service declining to
+// answer for now — its quota used up, or too busy — after its own retries.
+func serviceStopped(err error) bool {
+	var quota *llm.QuotaError
+	var busy *llm.BusyError
+	return errors.As(err, &quota) || errors.As(err, &busy)
 }

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/mindfries/candidate-backend/internal/db"
@@ -31,6 +32,11 @@ const (
 	// ended. The in-browser workspace reports the same event from the page;
 	// in a sandbox the shell itself reports it and this backend records it.
 	eventTerminalCommand = "terminal_command"
+	// eventCommandRecordAltered is something that makes the command record
+	// incomplete or untrustworthy: the hooks that report commands were
+	// changed, or their marker was printed by hand (workspace/integrity.go).
+	// The report says so.
+	eventCommandRecordAltered = "command_record_altered"
 
 	// A sandbox is stopped by Daytona after this long with nothing
 	// happening in it, and started again on the next use.
@@ -174,6 +180,7 @@ func (o *Orchestrator) CaptureWorkspace(ctx context.Context, sess db.Session, fr
 	if w, err := o.SandboxWorkspace(ctx, sess); err == nil {
 		if snap, _, serr := w.Snapshot(ctx); serr == nil {
 			files = snap
+			o.checkCommandRecord(ctx, sess.ID, w, snap)
 		} else {
 			slog.Error("orchestrator: reading the sandbox for a snapshot failed; using the page's copy", "session", sess.ID, "error", serr)
 		}
@@ -183,8 +190,53 @@ func (o *Orchestrator) CaptureWorkspace(ctx context.Context, sess db.Session, fr
 	return o.recordSnapshot(ctx, sess.ID, files, checkpoint)
 }
 
+// checkCommandRecord looks for changes that make the command record
+// untrustworthy and records what it finds, once per distinct finding. A
+// check that can't be run is logged, not reported: it says nothing about
+// the candidate.
+func (o *Orchestrator) checkCommandRecord(ctx context.Context, sessionID string, w workspace.Workspace, files map[string]string) {
+	problems, err := w.CheckCommandHooks(ctx)
+	if err != nil {
+		slog.Error("orchestrator: checking the shell's command hooks", "session", sessionID, "error", err)
+	}
+	if paths := workspace.FilesMentionTheMarker(files); len(paths) > 0 {
+		problems = append(problems, "project files contain the marker the hooks print, or name the hooks: "+strings.Join(paths, ", "))
+	}
+	for _, problem := range problems {
+		o.recordAlteration(ctx, sessionID, problem)
+	}
+}
+
+func (o *Orchestrator) recordAlteration(ctx context.Context, sessionID, problem string) {
+	seen, err := o.DB.EventPayloadsOfType(ctx, sessionID, eventCommandRecordAltered)
+	if err == nil {
+		for _, raw := range seen {
+			var p struct {
+				Problem string `json:"problem"`
+			}
+			if json.Unmarshal(raw, &p) == nil && p.Problem == problem {
+				return
+			}
+		}
+	}
+	payload, _ := json.Marshal(map[string]string{"problem": problem})
+	if err := o.RecordEvents(ctx, sessionID, []db.NewActivityEvent{{EventType: eventCommandRecordAltered, Payload: payload}}); err != nil {
+		slog.Error("orchestrator: recording a change to the command record", "session", sessionID, "error", err)
+	}
+}
+
 // RecordTerminalCommand stores a command the sandbox's shell reported.
 func (o *Orchestrator) RecordTerminalCommand(ctx context.Context, sessionID, command string, exitCode int, took time.Duration) {
+	// A command that works on the hooks is reported by them before it runs
+	// — removing the hooks from inside the shell shows up in the very record
+	// it removes them from.
+	if workspace.SuspiciousCommand(command) {
+		shown := command
+		if len(shown) > 200 {
+			shown = shown[:200] + "…"
+		}
+		o.recordAlteration(ctx, sessionID, "a command touched the hooks that report commands, or printed their marker: "+shown)
+	}
 	if len(command) > 300 {
 		command = command[:300]
 	}

@@ -23,9 +23,10 @@ export function SideRail() {
         </span>
         <h2 className="mt-3 text-sm font-semibold">What gets recorded</h2>
         <p className="mt-1.5 text-[13px] leading-relaxed text-[#B3CFE5]">
-          During a session: your camera, the commands you run, the changes you make, and what
-          you ask the AI assistant. Your screen is not recorded. Never outside a session, and
-          never on a practice run.
+          During a session: your camera, your screen (as stills, not video), sounds that last a
+          few seconds, the commands you run, the changes you make, and what you ask the AI
+          assistant. Moments like leaving the workspace are flagged for the hiring team to look
+          at. Never outside a session, and never on a practice run.
         </p>
         <button
           type="button"

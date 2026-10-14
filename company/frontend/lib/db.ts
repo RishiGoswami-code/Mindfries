@@ -4,7 +4,7 @@ import { inviteSecret, signInviteToken } from "./auth/invite-token";
 import { normalizeAssistantConfig } from "./assistant";
 import { citedIds, describeEvent, type Moment } from "./moments";
 import { normalizeInterviewConfig } from "./interview";
-import type { CameraRecord, TaskVariant } from "./types";
+import type { CameraRecord, FlaggedMoment, TaskVariant } from "./types";
 import type {
   ApplicationStage,
   AssessmentReport,
@@ -528,7 +528,8 @@ export async function getApplicationForCompany(companyId: string, applicationId:
  * an honest empty state, not an error.
  */
 export async function getCandidateReport(assessmentId: string | null): Promise<CandidateReport> {
-  const empty: CandidateReport = { session: null, report: null, interview: [], camera: { total: 0, expired: 0, stills: [] } };
+  const none = { total: 0, expired: 0, stills: [] };
+  const empty: CandidateReport = { session: null, report: null, interview: [], camera: none, screen: none, flags: [] };
   if (!assessmentId) return empty;
   const c = db();
   if (!c) return empty;
@@ -542,10 +543,20 @@ export async function getCandidateReport(assessmentId: string | null): Promise<C
     .maybeSingle();
   if (!sessionRow) return empty;
 
+  // A sandbox session is marked by its sandbox_ready event (candidate/backend
+  // writes it when the machine holds the task); the sandbox id itself is
+  // cleared once the session is submitted.
+  const { count: sandboxReady } = await c
+    .from("activity_events")
+    .select("id", { count: "exact", head: true })
+    .eq("session_id", sessionRow.id)
+    .eq("event_type", "sandbox_ready");
+
   const session: SessionSummary = {
     id: sessionRow.id,
     status: sessionRow.status,
     sandboxHealth: sessionRow.sandbox_health,
+    workspace: (sandboxReady ?? 0) > 0 ? "sandbox" : "browser",
     progressPct: sessionRow.progress_pct ?? 0,
     durationMin: sessionRow.duration_min ?? 60,
     elapsedMin: sessionRow.elapsed_min ?? 0,
@@ -553,8 +564,13 @@ export async function getCandidateReport(assessmentId: string | null): Promise<C
   };
 
   const { data: reportRow } = await c.from("assessment_reports").select("*").eq("session_id", session.id).maybeSingle();
-  const [interview, camera] = await Promise.all([getInterviewExchanges(session.id), getCameraRecord(session.id, session.startedAt)]);
-  if (!reportRow) return { session, report: null, interview, camera };
+  const [interview, camera, screen, flags] = await Promise.all([
+    getInterviewExchanges(session.id),
+    getCameraRecord(session.id, session.startedAt),
+    getCameraRecord(session.id, session.startedAt, "screen_snapshot"),
+    getFlaggedMoments(session.id, session.startedAt),
+  ]);
+  if (!reportRow) return { session, report: null, interview, camera, screen, flags };
 
   const { data: evidenceRows } = await c
     .from("evidence_items")
@@ -598,7 +614,7 @@ export async function getCandidateReport(assessmentId: string | null): Promise<C
     createdAt: n.created_at,
   }));
 
-  return { session, report, interview, camera };
+  return { session, report, interview, camera, screen, flags };
 }
 
 const SNAPSHOTS_BUCKET = "proctor-snapshots";
@@ -611,7 +627,7 @@ const CAMERA_SAMPLE = 24;
  * link valid for an hour. Only paths inside the session's own folder are
  * used — the events come from the candidate's browser.
  */
-async function getCameraRecord(sessionId: string, startedAt: string): Promise<CameraRecord> {
+async function getCameraRecord(sessionId: string, startedAt: string, event: "camera_snapshot" | "screen_snapshot" = "camera_snapshot"): Promise<CameraRecord> {
   const c = db();
   const none: CameraRecord = { total: 0, expired: 0, stills: [] };
   if (!c) return none;
@@ -619,13 +635,13 @@ async function getCameraRecord(sessionId: string, startedAt: string): Promise<Ca
     .from("activity_events")
     .select("event_type, payload, occurred_at")
     .eq("session_id", sessionId)
-    .in("event_type", ["camera_snapshot", "camera_snapshot_expired"])
+    .in("event_type", [event, `${event}_expired`])
     .order("occurred_at", { ascending: true });
   if (!data || data.length === 0) return none;
 
-  const expired = data.filter((r: any) => r.event_type === "camera_snapshot_expired").length;
+  const expired = data.filter((r: any) => r.event_type === `${event}_expired`).length;
   const live = data
-    .filter((r: any) => r.event_type === "camera_snapshot")
+    .filter((r: any) => r.event_type === event)
     .map((r: any) => ({ path: (r.payload ?? {}).path as unknown, at: r.occurred_at as string }))
     .filter((s): s is { path: string; at: string } => typeof s.path === "string" && s.path.startsWith(`${sessionId}/`) && !s.path.includes(".."));
 
@@ -641,6 +657,75 @@ async function getCameraRecord(sessionId: string, startedAt: string): Promise<Ca
     )
   ).filter((s): s is { url: string; offsetSeconds: number } => s !== null);
   return { total: live.length + expired, expired, stills };
+}
+
+const FLAG_LABEL: Record<string, string> = {
+  left_workspace: "Left the workspace",
+  fullscreen_exit: "Left fullscreen",
+  screen_share_stopped: "Stopped sharing the screen",
+  extra_display: "More than one display connected",
+  external_paste: "Large paste from outside the workspace",
+  face_missing: "Nobody in front of the camera",
+  multiple_faces: "More than one face on camera",
+  voices_detected: "Voices on the microphone",
+  loud_noise: "Loud noise on the microphone",
+  devtools_attempt: "Tried to open developer tools",
+  screenshot_attempt: "Pressed PrintScreen",
+  second_window: "Assessment open in a second window",
+};
+
+/**
+ * The moments flagged live during a session (issue #120), each with signed
+ * links to its camera still, screen still and audio clip. The paths come
+ * from the candidate's browser, so only ones inside the session's own
+ * folder are used. A file deleted at the end of its 90 days simply has no
+ * link.
+ */
+async function getFlaggedMoments(sessionId: string, startedAt: string): Promise<FlaggedMoment[]> {
+  const c = db();
+  if (!c) return [];
+  const { data } = await c
+    .from("activity_events")
+    .select("payload, occurred_at")
+    .eq("session_id", sessionId)
+    .eq("event_type", "activity_flag")
+    .order("occurred_at", { ascending: true })
+    .limit(200);
+  if (!data || data.length === 0) return [];
+  const start = new Date(startedAt).getTime();
+  const ownPath = (p: unknown): p is string => typeof p === "string" && p.startsWith(`${sessionId}/`) && !p.includes("..");
+  const link = async (p: unknown) => {
+    if (!ownPath(p)) return null;
+    const { data: signed } = await c.storage.from(SNAPSHOTS_BUCKET).createSignedUrl(p, RECORDING_LINK_SECONDS);
+    return signed?.signedUrl ?? null;
+  };
+  return Promise.all(
+    data
+      .filter((r: any) => FLAG_LABEL[(r.payload ?? {}).kind])
+      .map(async (r: any) => {
+        const p = r.payload ?? {};
+        const at = typeof p.at === "string" && !Number.isNaN(Date.parse(p.at)) ? Date.parse(p.at) : new Date(r.occurred_at).getTime();
+        const detail =
+          p.kind === "external_paste" && typeof p.detail?.chars === "number"
+            ? `${p.detail.chars} characters`
+            : p.kind === "multiple_faces" && typeof p.detail?.faces === "number"
+              ? `${p.detail.faces} faces`
+              : p.kind === "devtools_attempt" && typeof p.detail?.keys === "string"
+                ? p.detail.keys
+                : null;
+        const [cameraUrl, screenUrl, audioUrl] = await Promise.all([link(p.cameraPath), link(p.screenPath), link(p.audioPath)]);
+        return {
+          kind: p.kind,
+          label: FLAG_LABEL[p.kind],
+          offsetSeconds: Math.max(0, (at - start) / 1000),
+          detail,
+          cameraUrl,
+          screenUrl,
+          audioUrl,
+          lowConfidence: p.kind === "face_missing" || p.kind === "multiple_faces",
+        };
+      }),
+  );
 }
 
 /**

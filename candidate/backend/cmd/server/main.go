@@ -75,6 +75,8 @@ func main() {
 	// orchestrator/invitation_tasks.go.
 	orc.Verifier = verify.FromEnv(sandboxClient)
 	go orc.RunInvitationTaskWorker(ctx)
+	// Reports the AI service held up are written once it allows.
+	go orc.RunReportRetrySweep(ctx)
 
 	server := httpapi.New(cfg, database, orc, hub)
 

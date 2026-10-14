@@ -25,6 +25,10 @@ export const RECORDING_RETENTION_DAYS = 90;
 const KINDS = [
   { event: "interview_recording", expired: "interview_recording_expired", bucket: "interview-recordings" },
   { event: "camera_snapshot", expired: "camera_snapshot_expired", bucket: "proctor-snapshots" },
+  // The shared screen's stills and the microphone's clips (issue #120) live
+  // beside the camera's and go after the same 90 days.
+  { event: "screen_snapshot", expired: "screen_snapshot_expired", bucket: "proctor-snapshots" },
+  { event: "audio_clip", expired: "audio_clip_expired", bucket: "proctor-snapshots" },
 ] as const;
 
 // One run handles this many of each kind; the rest wait for tomorrow's.

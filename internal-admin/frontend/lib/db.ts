@@ -442,22 +442,6 @@ export async function listSessions(): Promise<Session[]> {
   return (data ?? []).map(toSession);
 }
 
-// Support overrides (PRD §1.11): reset a stuck sandbox, re-trigger evaluation.
-export async function setSessionState(
-  id: string,
-  patch: { status?: SessionStatus; sandboxHealth?: SandboxHealth; progressPct?: number; elapsedMin?: number },
-): Promise<void> {
-  const c = db();
-  if (!c) return;
-  const row: Record<string, unknown> = {};
-  if (patch.status !== undefined) row.status = patch.status;
-  if (patch.sandboxHealth !== undefined) row.sandbox_health = patch.sandboxHealth;
-  if (patch.progressPct !== undefined) row.progress_pct = patch.progressPct;
-  if (patch.elapsedMin !== undefined) row.elapsed_min = patch.elapsedMin;
-  const { error } = await c.from("sessions").update(row).eq("id", id);
-  if (error) throw error;
-}
-
 /**
  * The company_users row a Company Portal login actually needs (0011
  * migration) — companies.team's jsonb blob has no credentials and never

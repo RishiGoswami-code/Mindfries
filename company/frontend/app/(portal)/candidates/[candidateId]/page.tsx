@@ -6,6 +6,7 @@ import { getCandidateProfile } from "@/lib/candidate-profile";
 import { EmptyState, PageHeader, Pill } from "@/components/ui";
 import { fmtDate, recommendationLabel, sessionStatusTone, stageLabel, stageTone, titleCase } from "@/lib/format";
 import { CameraTimeline } from "./CameraTimeline";
+import { FlaggedMoments } from "./FlaggedMoments";
 import { CandidateProfileCard } from "./CandidateProfileCard";
 import { EvidenceList } from "./EvidenceList";
 import { InterviewTranscript } from "./InterviewTranscript";
@@ -22,7 +23,7 @@ export default async function CandidateDetailPage({ params }: { params: Promise<
   const application = await getApplicationForCompany(user.companyId, candidateId);
   if (!application) notFound();
 
-  const [{ session, report, interview, camera }, profile, invitation] = await Promise.all([
+  const [{ session, report, interview, camera, screen, flags }, profile, invitation] = await Promise.all([
     getCandidateReport(application.assessmentId),
     getCandidateProfile(application.candidateEmail),
     getInvitationResponse(user.companyId, application.assessmentId),
@@ -83,7 +84,9 @@ export default async function CandidateDetailPage({ params }: { params: Promise<
               <span className="mono text-dim">
                 {session.elapsedMin}/{session.durationMin}m
               </span>
-              <span className="text-dim">sandbox {session.sandboxHealth}</span>
+              <span className="text-dim" title="Where the candidate worked. The browser workspace runs Python and JavaScript for real but can't install every package or run servers.">
+                {session.workspace === "sandbox" ? "Worked on a sandbox machine" : "Worked in the browser workspace"}
+              </span>
             </div>
           </div>
 
@@ -134,6 +137,8 @@ export default async function CandidateDetailPage({ params }: { params: Promise<
           )}
 
           <InterviewTranscript exchanges={interview} />
+
+          <FlaggedMoments flags={flags} screen={screen} />
 
           <CameraTimeline camera={camera} />
 

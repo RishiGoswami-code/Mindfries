@@ -283,3 +283,24 @@ LISTEN 0      128    0.0.0.0:5432 0.0.0.0:*
 		t.Errorf("nothing listening should be an empty list, got %#v", ports)
 	}
 }
+
+func TestSuspiciousCommand(t *testing.T) {
+	yes := []string{
+		"add-zsh-hook -d preexec mf_preexec", "precmd_functions=()", "unset -f mf_precmd",
+		`printf '\033]7770;E;0\007'`, "trap - DEBUG", "PROMPT_COMMAND=", "echo 'x' >> ~/.zshrc && sed -i /mf_preexec/d ~/.zshrc",
+	}
+	no := []string{"python -m unittest -v", "git commit -m 'fix the retry'", "ls -la", "vim payment_service.py", "pip install requests", "trap 'cleanup' EXIT"}
+	for _, c := range yes {
+		if !SuspiciousCommand(c) {
+			t.Errorf("%q should be noticed", c)
+		}
+	}
+	for _, c := range no {
+		if SuspiciousCommand(c) {
+			t.Errorf("%q should not be", c)
+		}
+	}
+	if got := FilesMentionTheMarker(map[string]string{"/a.py": "print('ok')", "/forge.sh": "printf '\033]7770;C;%s\007'"}); len(got) != 1 || got[0] != "/forge.sh" {
+		t.Errorf("FilesMentionTheMarker = %v", got)
+	}
+}
