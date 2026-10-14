@@ -83,10 +83,10 @@ export function CompaniesView({
         return;
       }
       toast.success("Company onboarded", input.name);
-      // Optimistic — the persisted row (with its real id/createdAt) also
-      // arrives on the next server render via revalidatePath.
-      const optimisticTeam = team.map((m, i) => ({ ...m, id: String(i) }));
-      setRows((r) => [{ ...input, team: optimisticTeam, id: crypto.randomUUID(), createdAt: new Date().toISOString() }, ...r]);
+      // The persisted row, under its real id — anything done from this card
+      // before the next server render (inviting a candidate, say) sends that
+      // id to the database, so an invented one isn't just a React key.
+      setRows((r) => [res.company, ...r]);
       reset();
       setOpen(false);
     });

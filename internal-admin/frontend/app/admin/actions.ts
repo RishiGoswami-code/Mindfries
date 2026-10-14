@@ -10,10 +10,17 @@ import { targetsStore } from "@/lib/targets-store";
 import { requireAdminRole } from "@/lib/auth/admins";
 import { backendReady, generateTaskViaBackend, resetSessionViaBackend, retriggerEvaluationViaBackend, type GeneratedTask } from "@/lib/backend/client";
 import type { EmailTemplate } from "@/lib/email-templates";
-import type { CompanyStatus, LeadStage, MemberRole, Plan, RubricCriterion, TaskVariant, TemplateStatus, TemplateVariant } from "@/lib/types";
+import type { Company, CompanyStatus, LeadStage, MemberRole, Plan, RubricCriterion, TaskVariant, TemplateStatus, TemplateVariant } from "@/lib/types";
 
 type Result = { ok: true } | { ok: false; error: string };
-const fail = (e: unknown): Result => ({ ok: false, error: e instanceof Error ? e.message : String(e) });
+// Supabase errors are plain objects, not Error instances — String(e) on one
+// is "[object Object]", which is what the toast used to show.
+const errMsg = (e: unknown): string => {
+  if (e instanceof Error) return e.message;
+  if (e && typeof e === "object" && "message" in e && typeof e.message === "string") return e.message;
+  return String(e);
+};
+const fail = (e: unknown): { ok: false; error: string } => ({ ok: false, error: errMsg(e) });
 
 // Send a demo/POC email to a lead, log it, advance the pipeline.
 export async function sendLeadEmail(input: {
@@ -166,7 +173,7 @@ export async function generateTaskDraft(input: {
     if (!backendReady()) throw new Error("Task generation isn't connected — set ADMIN_BACKEND_URL to the candidate backend");
     return { ok: true, task: await generateTaskViaBackend(input) };
   } catch (e) {
-    return { ok: false, error: e instanceof Error ? e.message : String(e) };
+    return fail(e);
   }
 }
 
@@ -186,13 +193,15 @@ export async function toggleTemplateStatus(id: string, status: TemplateStatus): 
 export async function onboardCompanyAccount(input: {
   name: string; website: string; plan: Plan; status: CompanyStatus; seats: number;
   team: { email: string; role: MemberRole }[]; defaultTemplateIds: string[];
-}): Promise<Result> {
+}): Promise<{ ok: true; company: Company } | { ok: false; error: string }> {
   try {
     await requireAdminRole();
     if (!input.name.trim()) throw new Error("Company name is required");
-    await createCompany(input);
+    // Returned so the client can show the row under its real id — inviting a
+    // candidate sends that id, and an invented one fails the FK on job_roles.
+    const company = await createCompany(input);
     revalidatePath("/admin/companies");
-    return { ok: true };
+    return { ok: true, company };
   } catch (e) {
     return fail(e);
   }
@@ -275,7 +284,7 @@ export async function inviteCandidate(input: {
     revalidatePath("/admin/companies");
     return { ok: true, link, emailed, note };
   } catch (e) {
-    return { ok: false, error: e instanceof Error ? e.message : String(e) };
+    return fail(e);
   }
 }
 
