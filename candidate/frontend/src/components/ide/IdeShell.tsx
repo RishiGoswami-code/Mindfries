@@ -956,7 +956,7 @@ export function IdeShell({ sessionId, candidateName, taskBrief, starterFiles, as
         <div className="flex min-w-0 flex-1 flex-col">
           <div
             className={clsx(
-              "flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border",
+              "relative flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border",
               palette.border,
               cardShadow
             )}
@@ -976,6 +976,9 @@ export function IdeShell({ sessionId, candidateName, taskBrief, starterFiles, as
                 breadcrumbs={<Breadcrumbs path={activeFile} theme={theme} />}
               />
             </div>
+            {/* In the editor's bottom-right corner, so it follows the editor
+                as the drawer opens and never covers the drawer or camera. */}
+            <ChatLauncher theme={theme} hidden={chatOpen} onClick={() => setChatOpen(true)} />
           </div>
 
           {/* The drawer's top edge: drag it up to open the drawer and size
@@ -1199,7 +1202,6 @@ export function IdeShell({ sessionId, candidateName, taskBrief, starterFiles, as
           {flagNotice}
         </div>
       )}
-      <ChatLauncher theme={theme} hidden={chatOpen} onClick={() => setChatOpen(true)} />
     </div>
   );
 }
