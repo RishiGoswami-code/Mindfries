@@ -140,8 +140,9 @@ func TestGeminiRetriesThenFallsBack(t *testing.T) {
 		t.Errorf("calls %v: want three tries on the busy model, then the fallback", calls)
 	}
 	calls = nil
-	if _, err := NewGeminiClient("k", srv.URL).Complete(context.Background(), "busy", []ChatMessage{{Role: "user", Content: "x"}}, 10); err == nil || !strings.Contains(err.Error(), "UNAVAILABLE") {
-		t.Errorf("without a fallback the last answer is the error: %v", err)
+	var busy *BusyError
+	if _, err := NewGeminiClient("k", srv.URL).Complete(context.Background(), "busy", []ChatMessage{{Role: "user", Content: "x"}}, 10); !errors.As(err, &busy) {
+		t.Errorf("without a fallback the last answer is a BusyError: %v", err)
 	}
 	if len(calls) != 3 {
 		t.Errorf("calls %v", calls)

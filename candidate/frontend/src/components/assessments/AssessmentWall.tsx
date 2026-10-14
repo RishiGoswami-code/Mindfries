@@ -110,7 +110,14 @@ function AssessmentNote({
           one role's name wraps to two lines and its neighbour's doesn't. */}
       <div className="mt-auto flex items-end justify-between gap-3 pt-5">
         {!unanswered && <span className="text-xs text-[#1A3D63]">{assessment.due}</span>}
-        {unanswered && <span className="self-start text-xs text-[#1A3D63]">{assessment.due}</span>}
+        {unanswered && (
+          <span className="self-start text-xs text-[#1A3D63]">
+            {assessment.due}
+            {/* Said before they answer too, so accepting doesn't lead to a
+                Start that isn't there yet. */}
+            {!taskReady && <span className="block pt-1 font-medium">{taskStatus === "failed" ? "Couldn't be prepared" : "Task being prepared…"}</span>}
+          </span>
+        )}
 
         {unanswered && <InvitationAnswer assessmentId={assessment.id} />}
 

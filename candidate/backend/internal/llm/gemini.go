@@ -57,9 +57,10 @@ func NewGeminiClient(apiKey, baseURL string) *GeminiClient {
 	return &GeminiClient{
 		apiKey:  apiKey,
 		baseURL: strings.TrimRight(baseURL, "/"),
-		// Evaluation prompts carry a whole session's trail and can think for
-		// a while before answering.
-		httpClient: &http.Client{Timeout: 3 * time.Minute},
+		// Evaluation prompts carry a whole session's trail, and task
+		// generation writes a whole codebase with full thinking: either can
+		// take minutes before answering.
+		httpClient: &http.Client{Timeout: 6 * time.Minute},
 	}
 }
 
@@ -101,6 +102,13 @@ type QuotaError struct {
 }
 
 func (e *QuotaError) Error() string { return "llm: gemini quota used up: " + e.Message }
+
+// BusyError is Google being temporarily unable to answer — "high demand,
+// try again later" (503), an internal error, or no reply in time — after
+// this client's own retries. Waiting a while and trying again is the fix.
+type BusyError struct{ Message string }
+
+func (e *BusyError) Error() string { return "llm: gemini is busy: " + e.Message }
 
 type geminiResponse struct {
 	Candidates []struct {
@@ -184,6 +192,9 @@ func (r geminiResponse) problem() error {
 			}
 		}
 		return q
+	}
+	if r.Error != nil && (r.Error.Status == "UNAVAILABLE" || r.Error.Status == "INTERNAL" || r.Error.Status == "DEADLINE_EXCEEDED") {
+		return &BusyError{Message: firstLine(r.Error.Message)}
 	}
 	if r.Error != nil {
 		return fmt.Errorf("llm: gemini error (%s): %s", r.Error.Status, r.Error.Message)
@@ -270,6 +281,11 @@ func (c *GeminiClient) postOnce(ctx context.Context, client *http.Client, model,
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := client.Do(req)
 	if err != nil {
+		if ctx.Err() == nil {
+			// The connection failed or the reply took longer than the
+			// client's limit — Google's side, not the request's.
+			return nil, &BusyError{Message: err.Error()}
+		}
 		return nil, fmt.Errorf("llm: gemini request failed: %w", err)
 	}
 	return resp, nil

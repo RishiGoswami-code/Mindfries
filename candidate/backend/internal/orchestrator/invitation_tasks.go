@@ -96,6 +96,7 @@ func (o *Orchestrator) RunInvitationTaskWorker(ctx context.Context) {
 const (
 	quotaPauseDefault = 5 * time.Minute
 	quotaPauseMax     = 30 * time.Minute
+	busyPause         = 2 * time.Minute
 )
 
 // prepareNextInvitationTask handles one waiting invitation. It reports
@@ -118,6 +119,17 @@ func (o *Orchestrator) prepareNextInvitationTask(ctx context.Context) (bool, tim
 	started := time.Now()
 	err = o.makeInvitationTask(ctx, *job)
 	var quota *llm.QuotaError
+	var busy *llm.BusyError
+	if errors.As(err, &busy) {
+		// Google was busy or slow even after its retries. Nothing is wrong
+		// with this invitation; it goes back in the queue uncounted.
+		slog.Warn("orchestrator: the AI service is busy; the invitation will wait", "invitation", job.ID, "pause", busyPause, "error", busy.Message)
+		reason := "Waiting: the AI service is busy right now. The task will be written shortly — no action is needed."
+		if derr := o.DB.DeferInvitationTask(context.WithoutCancel(ctx), *job, reason); derr != nil {
+			slog.Error("orchestrator: putting an invitation back in the queue", "invitation", job.ID, "error", derr)
+		}
+		return true, busyPause
+	}
 	if errors.As(err, &quota) {
 		pause := quota.RetryAfter
 		if pause <= 0 {
