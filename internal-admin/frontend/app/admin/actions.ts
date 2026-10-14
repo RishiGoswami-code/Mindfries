@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import {
   addOnboarded, addWaitlist, waitlistActivity, createCompany, listCompanyRoles, markInvitationEmailedByToken, type CompanyRole, createInvitation, createTemplate, recordEmailEvent, setCompanyStatus,
-  setLeadStage, setSessionState, setTemplateStatus,
+  setLeadStage, setTemplateStatus,
 } from "@/lib/db";
 import { mailerReady, sendMail, NOTIFY_EMAIL } from "@/lib/mailer";
 import { targetsStore } from "@/lib/targets-store";
@@ -285,28 +285,20 @@ export async function companyRoles(companyId: string): Promise<CompanyRole[]> {
   return listCompanyRoles(companyId);
 }
 
-// Session Monitor support overrides — go through the real Go Admin API
-// (candidate/backend/internal/httpapi/admin.go) when it's reachable, rather
-// than internal-admin's own direct-to-Supabase write. This is the
-// consolidation task.md's "Gaps worth naming" #3 asked for: two separate
-// implementations of "reset a session" is a real maintenance hazard, and
-// for retrigger specifically the two aren't even equivalent today — the
-// direct-Supabase version below only ever flips sessions.status to
-// "evaluating"; it never actually calls an evaluation agent. The backend's
-// own /retrigger-evaluation runs the real pipeline. ADMIN_BACKEND_URL is
-// unset in every deployed environment right now (the Go backend isn't
-// deployed anywhere — see task.md), so the fallback below is what actually
-// runs today; it's kept, not deleted, so this feature doesn't regress the
-// moment nobody's set that variable yet. Once the backend has a real home,
-// removing the fallback finishes what this pass started.
+// Session Monitor support overrides — through the Go Admin API
+// (candidate/backend/internal/httpapi/admin.go), the one implementation:
+// "reset" puts the session back to a fresh state there, and "retrigger"
+// runs the real evaluation pipeline. The direct-to-Supabase fallback that
+// used to stand in when ADMIN_BACKEND_URL was unset is gone (issue #71) — its
+// "retrigger" only flipped a status flag and evaluated nothing. Without
+// ADMIN_BACKEND_URL these say so instead of pretending.
+const NO_BACKEND = "ADMIN_BACKEND_URL isn't set on this portal, so sessions can't be reset or re-evaluated from here. Set it to the candidate backend's address.";
+
 export async function resetSession(id: string): Promise<Result> {
   try {
     await requireAdminRole();
-    if (backendReady()) {
-      await resetSessionViaBackend(id);
-    } else {
-      await setSessionState(id, { status: "live", sandboxHealth: "healthy", progressPct: 0, elapsedMin: 0 });
-    }
+    if (!backendReady()) throw new Error(NO_BACKEND);
+    await resetSessionViaBackend(id);
     revalidatePath("/admin/sessions");
     return { ok: true };
   } catch (e) {
@@ -317,15 +309,8 @@ export async function resetSession(id: string): Promise<Result> {
 export async function retriggerEval(id: string): Promise<Result> {
   try {
     await requireAdminRole();
-    if (backendReady()) {
-      await retriggerEvaluationViaBackend(id);
-    } else {
-      // Honest about what this fallback actually does: it flips the status
-      // flag the Sessions page reads, but doesn't call an evaluation agent
-      // the way the real backend path (above) does. Configuring
-      // ADMIN_BACKEND_URL is what makes "retrigger" genuinely retrigger.
-      await setSessionState(id, { status: "evaluating" });
-    }
+    if (!backendReady()) throw new Error(NO_BACKEND);
+    await retriggerEvaluationViaBackend(id);
     revalidatePath("/admin/sessions");
     return { ok: true };
   } catch (e) {
