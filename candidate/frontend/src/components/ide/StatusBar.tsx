@@ -1,3 +1,4 @@
+import clsx from "clsx";
 import { GitBranch, Bell, Moon, Sun, AlertCircle, AlertTriangle, Maximize2, Minimize2 } from "lucide-react";
 import { useFullscreen } from "@/lib/ide/fullscreen";
 import type { Diagnostic } from "@/lib/ide/diagnostics";
@@ -23,8 +24,13 @@ export function StatusBar({ activePath, dirtyCount, diagnostics, theme, onToggle
 
   return (
     <div
-      className="flex h-[22px] shrink-0 items-center justify-between px-2 text-xs text-white"
-      style={{ backgroundColor: STATUS_BAR_BG }}
+      // Dark: quiet, in the chrome's own colours, so it doesn't compete with
+      // the editor. Light: the brand-blue bar it has always been.
+      className={clsx(
+        "flex h-[24px] shrink-0 items-center justify-between px-3 text-xs",
+        theme === "dark" ? "bg-[#0E1431] text-[#9AA3C7]" : "text-white"
+      )}
+      style={theme === "dark" ? undefined : { backgroundColor: STATUS_BAR_BG }}
     >
       <div className="flex items-center gap-3">
         <span className="flex items-center gap-1">

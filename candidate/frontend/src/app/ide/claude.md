@@ -80,6 +80,14 @@ directly from a non-React callback.
 
 ## Layout model: floating rounded cards, not flush VS Code panels
 
+The task panels (Problems, Output, Debug Console, Terminal, Tests, Changes,
+Ports — `BottomPanel.tsx`) are a drawer under the editor, collapsed to its
+tab bar by default; `IdeShell` owns its open state and height. The camera
+card sits beside the drawer and is the same mounted `<video>` open or
+closed (`CameraPanel`'s `compact` only changes the layout). Panels inside
+the drawer stay mounted while it is closed — keep it that way, or terminal
+sessions lose their scrollback.
+
 `IdeShell.tsx` renders Explorer / Editor+Breadcrumbs / Terminal / status bar as
 independent `rounded-xl border overflow-hidden` cards on a `palette.panelBg`
 canvas, with `p-2 gap-2` spacing — not VS Code's original edge-to-edge flush

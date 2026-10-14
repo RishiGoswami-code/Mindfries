@@ -13,12 +13,16 @@ interface UseResizableOptions {
 /** Drag-to-resize a single dimension, clamped to [min, max]. */
 export function useResizable({ initial, min, max, axis, invert = false }: UseResizableOptions) {
   const [size, setSize] = useState(initial);
+  // True while the mouse is down on the handle — so a panel can animate its
+  // size when opened or closed, but follow the mouse exactly while dragged.
+  const [dragging, setDragging] = useState(false);
 
   const startDrag = useCallback(
     (e: ReactMouseEvent) => {
       e.preventDefault();
       const start = axis === "horizontal" ? e.clientX : e.clientY;
       const startSize = size;
+      setDragging(true);
 
       function onMouseMove(ev: MouseEvent) {
         const pos = axis === "horizontal" ? ev.clientX : ev.clientY;
@@ -28,6 +32,7 @@ export function useResizable({ initial, min, max, axis, invert = false }: UseRes
       }
 
       function onMouseUp() {
+        setDragging(false);
         window.removeEventListener("mousemove", onMouseMove);
         window.removeEventListener("mouseup", onMouseUp);
       }
@@ -38,5 +43,5 @@ export function useResizable({ initial, min, max, axis, invert = false }: UseRes
     [axis, invert, min, max, size]
   );
 
-  return { size, startDrag };
+  return { size, startDrag, dragging };
 }
