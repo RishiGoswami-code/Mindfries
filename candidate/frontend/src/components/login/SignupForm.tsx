@@ -16,12 +16,15 @@ function Submit() {
 }
 
 /** Real — createAccount hashes the password and inserts a row in candidate_users, then signs the new account straight in. See lib/auth/users.ts. */
-export function SignupForm() {
+export function SignupForm({ next = "" }: { next?: string }) {
   const [state, action] = useActionState<SignUpState, FormData>(signUp, { error: null });
 
   return (
     <div className="w-full max-w-sm">
       <form action={action} className="space-y-3.5">
+        {/* Where to go once the account exists — an invitation's own page,
+            usually. The action only follows a path on this site. */}
+        {next && <input type="hidden" name="next" value={next} />}
         <input
           name="name"
           type="text"
@@ -68,7 +71,7 @@ export function SignupForm() {
 
         <p className="text-center text-[12px] text-[#4A7FA7]">
           Already have an account?{" "}
-          <Link href="/login" className="font-medium text-[#1A3D63] hover:underline">
+          <Link href={next ? `/login?next=${encodeURIComponent(next)}` : "/login"} className="font-medium text-[#1A3D63] hover:underline">
             Sign in
           </Link>
         </p>

@@ -48,8 +48,8 @@ func TestLoadDefaults(t *testing.T) {
 func TestWarningsFlagEveryUnsetOptionalSetting(t *testing.T) {
 	cfg := Config{}
 	warnings := cfg.Warnings()
-	if len(warnings) != 6 {
-		t.Fatalf("got %d warnings, want 6 (one per optional setting): %v", len(warnings), warnings)
+	if len(warnings) != 5 {
+		t.Fatalf("got %d warnings, want 5 (one per optional setting; OpenRouter only counts when it is the provider): %v", len(warnings), warnings)
 	}
 }
 

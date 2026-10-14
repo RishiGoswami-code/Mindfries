@@ -1,7 +1,10 @@
-// Package llm is the AI Intelligence Layer's model access (PRD §1.9, §2.3).
-// OpenRouter is the single key/billing surface for every model call — the
-// four analysis agents (agents.go) and the candidate-facing assistant,
+// Package llm is the AI Intelligence Layer's model access (PRD §1.9, §2.3):
+// the four analysis agents (agents.go) and the candidate-facing assistant,
 // interviewer and task generation (conversation.go).
+//
+// Every one of them goes through a ChatClient. Google's Gemini API, called
+// directly (gemini.go), is the default; OpenRouter (this file) is the
+// alternative, chosen with AI_PROVIDER=openrouter.
 package llm
 
 import (
@@ -15,9 +18,25 @@ import (
 	"time"
 )
 
-// ErrNotConfigured is returned by Complete when no OpenRouter key is set —
-// the honest failure, never a fabricated completion.
-var ErrNotConfigured = errors.New("llm: OpenRouter is not configured (OPENROUTER_API_KEY unset)")
+// ErrNotConfigured is returned by every call when the chosen provider has no
+// key — the honest failure, never a fabricated completion.
+var ErrNotConfigured = errors.New("llm: the AI service is not configured (no API key for the chosen provider)")
+
+// ChatClient is a model provider as the agents use it. GeminiClient and
+// OpenRouterClient are the two.
+type ChatClient interface {
+	Configured() bool
+	// Complete returns the reply. ErrTruncated comes with the partial reply
+	// when it hit maxTokens.
+	Complete(ctx context.Context, model string, messages []ChatMessage, maxTokens int) (string, error)
+	// CompleteQuick is Complete with the model's thinking turned down, for
+	// a person who is waiting.
+	CompleteQuick(ctx context.Context, model string, messages []ChatMessage, maxTokens int) (string, error)
+	// CompleteQuickStream is CompleteQuick delivered piece by piece.
+	CompleteQuickStream(ctx context.Context, model string, messages []ChatMessage, maxTokens int, onDelta func(string)) (string, error)
+	// SetOnUsage registers the function told what each call used.
+	SetOnUsage(fn func(ctx context.Context, usage Usage))
+}
 
 // ErrTruncated is returned alongside the partial content when a reply was
 // cut off at its token ceiling.
@@ -54,6 +73,9 @@ func NewOpenRouterClient(apiKey, baseURL string) *OpenRouterClient {
 
 // Configured reports whether an API key is present.
 func (c *OpenRouterClient) Configured() bool { return c.apiKey != "" }
+
+// SetOnUsage sets OnUsage — the ChatClient form of it.
+func (c *OpenRouterClient) SetOnUsage(fn func(ctx context.Context, usage Usage)) { c.OnUsage = fn }
 
 // ChatMessage is one turn in a chat-completion request.
 type ChatMessage struct {

@@ -8,33 +8,32 @@ import (
 	"github.com/mindfries/candidate-backend/internal/db"
 )
 
-func TestToAssessmentViewCapsTagsAtTwoTechStackEntriesPlusDuration(t *testing.T) {
-	got := toAssessmentView(db.Template{
-		ID: "t1", Name: "Full-stack Engineer",
-		TechStack: []string{"React", "Go", "Postgres", "Redis"}, DurationMin: 90,
+func TestTechStackTagsCapsAtTwoEntriesPlusDuration(t *testing.T) {
+	cases := []struct {
+		stack []string
+		min   int
+		want  []string
+	}{
+		{[]string{"React", "Go", "Postgres", "Redis"}, 90, []string{"React", "Go", "90 min"}},
+		{[]string{"Rust"}, 60, []string{"Rust", "60 min"}},
+		{nil, 45, []string{"45 min"}},
+	}
+	for _, c := range cases {
+		if got := techStackTags(c.stack, c.min); !reflect.DeepEqual(got, c.want) {
+			t.Errorf("techStackTags(%v, %d) = %v, want %v", c.stack, c.min, got, c.want)
+		}
+	}
+}
+
+// An invitation says whether its task exists yet, and is named after its role.
+func TestToInvitationView(t *testing.T) {
+	role := "Backend Engineer"
+	got := toInvitationView(db.Invitation{
+		ID: "a1", CompanyName: "Acme", TemplateName: "Assessment", Role: &role,
+		TechStack: []string{"Go"}, DurationMin: 45, Status: "invited", TaskStatus: "generating",
 	})
-	want := []string{"React", "Go", "90 min"}
-	if !reflect.DeepEqual(got.Tags, want) {
-		t.Fatalf("Tags = %v, want %v", got.Tags, want)
-	}
-	if got.Role != "Full-stack Engineer" || got.Company != "Mindfries" || got.Status != "invited" {
+	if got.Role != "Backend Engineer" || got.Company != "Acme" || got.TaskStatus != "generating" || got.Status != "invited" {
 		t.Fatalf("unexpected view: %+v", got)
-	}
-}
-
-func TestToAssessmentViewHandlesFewerThanTwoTechStackEntries(t *testing.T) {
-	got := toAssessmentView(db.Template{ID: "t2", Name: "Backend Engineer", TechStack: []string{"Rust"}, DurationMin: 60})
-	want := []string{"Rust", "60 min"}
-	if !reflect.DeepEqual(got.Tags, want) {
-		t.Fatalf("Tags = %v, want %v", got.Tags, want)
-	}
-}
-
-func TestToAssessmentViewHandlesNoTechStack(t *testing.T) {
-	got := toAssessmentView(db.Template{ID: "t3", Name: "Generalist", DurationMin: 45})
-	want := []string{"45 min"}
-	if !reflect.DeepEqual(got.Tags, want) {
-		t.Fatalf("Tags = %v, want %v", got.Tags, want)
 	}
 }
 

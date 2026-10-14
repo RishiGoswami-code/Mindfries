@@ -49,7 +49,17 @@ export interface JobRole {
   interviewConfig: InterviewConfig;
   /** Whether candidates for this role get the AI assistant, and its message limit — always complete. */
   assistantConfig: AssistantConfig;
+  /**
+   * What the assessment should test — the work, the level, what to look
+   * for. Each invited candidate gets their own task, generated from this.
+   */
+  assessmentBrief: string;
+  /** The kind of task generated: bug_fix | feature | refactor | debug. */
+  taskVariant: TaskVariant;
 }
+
+/** Whether an invited candidate's own task has been made yet (candidate/backend makes it). */
+export type InviteTaskStatus = "pending" | "generating" | "ready" | "failed";
 
 export type ApplicationStage =
   | "invited"
@@ -75,6 +85,8 @@ export interface CandidateApplication {
   timeTakenMin: number | null;
   completedAt: string | null;
   createdAt: string;
+  /** The invitation behind this application: its own link, and whether its task exists yet. */
+  invite: { token: string | null; taskStatus: InviteTaskStatus; taskError: string | null } | null;
 }
 
 /** One role's pipeline at a glance — IMPLEMENTATION.md §9. */

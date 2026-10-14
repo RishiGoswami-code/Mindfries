@@ -42,6 +42,9 @@ type assessmentView struct {
 	// have one: the workspace to resume while Status is "in_progress", the
 	// report to open once it's "submitted".
 	SessionID string `json:"sessionId,omitempty"`
+	// TaskStatus is whether the candidate's own task has been made yet:
+	// pending|generating|ready|failed. Only "ready" can be started.
+	TaskStatus string `json:"taskStatus"`
 }
 
 func techStackTags(stack []string, durationMin int) []string {
@@ -67,13 +70,6 @@ func invitationStatus(dbStatus string) string {
 	return dbStatus // invited|submitted|closed already match
 }
 
-func toAssessmentView(t db.Template) assessmentView {
-	return assessmentView{
-		ID: t.ID, Role: t.Name, Company: "Mindfries", Location: "Remote",
-		Tags: techStackTags(t.TechStack, t.DurationMin), Status: "invited", Due: "Open now",
-	}
-}
-
 func toInvitationView(inv db.Invitation) assessmentView {
 	role := inv.TemplateName
 	if inv.Role != nil && *inv.Role != "" {
@@ -86,14 +82,12 @@ func toInvitationView(inv db.Invitation) assessmentView {
 	return assessmentView{
 		ID: inv.ID, Role: role, Company: inv.CompanyName, Location: "Remote",
 		Tags: techStackTags(inv.TechStack, inv.DurationMin), Status: invitationStatus(inv.Status),
-		Due: due, Match: inv.MatchScore,
+		Due: due, Match: inv.MatchScore, TaskStatus: inv.TaskStatus,
 	}
 }
 
-// handleListAssessments returns a candidate's real invitations (companies →
-// this candidate specifically, via `assessments.candidate_email`) followed
-// by the open self-serve pool of published templates anyone can start —
-// see orchestrator.StartAssessment's doc comment for why both coexist.
+// handleListAssessments returns a candidate's invitations — the only
+// assessments there are (orchestrator.StartAssessment).
 func (s *Server) handleListAssessments(w http.ResponseWriter, r *http.Request) {
 	c := candidateFrom(r)
 
@@ -103,18 +97,12 @@ func (s *Server) handleListAssessments(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "could not load assessments")
 		return
 	}
-	templates, err := s.db.ListPublishedTemplates(r.Context())
-	if err != nil {
-		slog.Error("handleListAssessments: templates", "error", err)
-		writeError(w, http.StatusInternalServerError, "could not load assessments")
-		return
-	}
 
 	// The candidate's own sessions, so each assessment can say whether it is
 	// under way and which workspace that is. Newest first, so the first one
-	// seen for an invitation or a template is the current one. A failure
-	// here costs the Resume links, not the list.
-	byInvitation, byTemplate := map[string]db.SessionRef{}, map[string]db.SessionRef{}
+	// seen for an invitation is the current one. A failure here costs the
+	// Resume links, not the list.
+	byInvitation := map[string]db.SessionRef{}
 	if refs, err := s.db.ListSessionRefsForCandidate(r.Context(), c.ID); err != nil {
 		slog.Error("handleListAssessments: sessions", "error", err)
 	} else {
@@ -123,32 +111,15 @@ func (s *Server) handleListAssessments(w http.ResponseWriter, r *http.Request) {
 				if _, seen := byInvitation[*ref.AssessmentID]; !seen {
 					byInvitation[*ref.AssessmentID] = ref
 				}
-			} else if ref.TemplateID != nil {
-				if _, seen := byTemplate[*ref.TemplateID]; !seen {
-					byTemplate[*ref.TemplateID] = ref
-				}
 			}
 		}
 	}
 
-	out := make([]assessmentView, 0, len(invitations)+len(templates))
+	out := make([]assessmentView, 0, len(invitations))
 	for _, inv := range invitations {
 		view := toInvitationView(inv)
 		if ref, ok := byInvitation[inv.ID]; ok {
 			view.SessionID = ref.ID
-		}
-		out = append(out, view)
-	}
-	for _, t := range templates {
-		view := toAssessmentView(t)
-		// The open pool has no invitation to carry a status, so a template
-		// the candidate has a session on takes its status from that session.
-		if ref, ok := byTemplate[t.ID]; ok {
-			view.SessionID = ref.ID
-			view.Status = "submitted"
-			if sessionIsLive(ref.Status) {
-				view.Status = "in-progress"
-			}
 		}
 		out = append(out, view)
 	}
@@ -163,10 +134,12 @@ func (s *Server) handleStartSession(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 
 	sess, err := s.orc.StartAssessment(r.Context(), c.ID, c.Email, c.Name, id)
-	if errors.Is(err, orchestrator.ErrSelfStartLimit) || errors.Is(err, orchestrator.ErrSelfStartLive) {
-		// Not a malformed request: the candidate has hit a limit, and the
-		// message is written for them.
-		writeError(w, http.StatusTooManyRequests, err.Error())
+	if errors.Is(err, orchestrator.ErrNotInvited) {
+		writeError(w, http.StatusNotFound, err.Error())
+		return
+	}
+	if errors.Is(err, orchestrator.ErrTaskNotReady) {
+		writeError(w, http.StatusConflict, err.Error())
 		return
 	}
 	if errors.Is(err, orchestrator.ErrEmailUnconfirmed) {

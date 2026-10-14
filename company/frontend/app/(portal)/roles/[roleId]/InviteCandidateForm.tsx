@@ -4,6 +4,7 @@ import { useActionState, useEffect, useRef } from "react";
 import { useFormStatus } from "react-dom";
 import { Button, Field, Input } from "@/components/ui";
 import { inviteCandidate, type InviteCandidateState } from "./actions";
+import { CopyLink } from "./CopyLink";
 
 function Submit() {
   const { pending } = useFormStatus();
@@ -51,6 +52,7 @@ export function InviteCandidateForm({ roleId }: { roleId: string }) {
         </p>
       )}
       {state.success && !state.error && <p className="w-full text-[13px] text-[color:var(--color-success)]">{state.notice ?? "Invited."}</p>}
+      {state.success && state.link && <CopyLink link={state.link} />}
     </form>
   );
 }

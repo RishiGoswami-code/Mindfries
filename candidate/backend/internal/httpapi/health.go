@@ -19,14 +19,18 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 	dbReachable := s.db.Ping(r.Context()) == nil
 
-	openrouterConfigured := s.orc.Agents != nil && s.orc.Agents.Configured()
+	aiConfigured := s.orc.Agents != nil && s.orc.Agents.Configured()
 	daytonaConfigured := s.orc.Sandbox != nil && s.orc.Sandbox.Configured()
 
 	writeJSON(w, http.StatusOK, map[string]any{
-		"status":                "online",
-		"service":               "mindfries-candidate-backend",
-		"database_reachable":    dbReachable,
-		"openrouter_configured": openrouterConfigured,
+		"status":             "online",
+		"service":            "mindfries-candidate-backend",
+		"database_reachable": dbReachable,
+		"ai_provider":        s.cfg.AIProvider,
+		"ai_configured":      aiConfigured,
+		// Kept under its old name for anything already reading it; it means
+		// "the AI service is configured", whichever provider that is.
+		"openrouter_configured": aiConfigured,
 		"daytona_configured":    daytonaConfigured,
 		"live_voice_configured": s.orc.Live.Configured(),
 	})
