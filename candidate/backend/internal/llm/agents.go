@@ -26,12 +26,12 @@ const conversationModel = "google/gemini-3.8-flash"
 // every call sets one. Sized to what each agent actually writes, with room
 // to spare.
 const (
-	analysisTokens  = 2000 // an evidence agent's handful of paragraphs
-	reportTokens    = 1500 // a recommendation and a short summary, as JSON
-	assistantTokens = 800  // a concise answer in the workspace chat
-	interviewTokens = 600  // one question
+	analysisTokens  = 2000  // an evidence agent's handful of paragraphs
+	reportTokens    = 1500  // a recommendation and a short summary, as JSON
+	assistantTokens = 800   // a concise answer in the workspace chat
+	interviewTokens = 600   // one question
 	taskGenTokens   = 12000 // a brief, a small codebase, and the solution's changed files
-	rubricTokens    = 2500 // a score and a short reason per criterion, as JSON
+	rubricTokens    = 2500  // a score and a short reason per criterion, as JSON
 )
 
 // AgentModels is which OpenRouter model slug each agent calls.
