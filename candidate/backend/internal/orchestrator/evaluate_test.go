@@ -2,6 +2,7 @@ package orchestrator
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"testing"
@@ -108,5 +109,19 @@ func TestFormatScorecardLeadsWithTheWeightedOverall(t *testing.T) {
 		if !strings.Contains(got, want) {
 			t.Errorf("scorecard missing %q:\n%s", want, got)
 		}
+	}
+}
+
+// A quota or a busy service stops a report for reasons that have nothing to
+// do with the session; anything else is a real failure.
+func TestServiceStopped(t *testing.T) {
+	if !serviceStopped(fmt.Errorf("agent: %w", &llm.QuotaError{Message: "used up"})) || !serviceStopped(&llm.BusyError{Message: "busy"}) {
+		t.Error("quota and busy errors should hold the report for later")
+	}
+	if serviceStopped(errors.New("the model returned nonsense")) || serviceStopped(nil) {
+		t.Error("other errors should not")
+	}
+	if !strings.HasPrefix(waitingForAIService, "Waiting:") {
+		t.Error("the sweep finds waiting reports by their text")
 	}
 }
