@@ -72,11 +72,18 @@ func GeminiAgentModels() AgentModels {
 		Report:         pick("GEMINI_MODEL_REPORT", geminiFlash),
 		Assistant:      pick("GEMINI_MODEL_ASSISTANT", geminiFlash),
 		Interviewer:    pick("GEMINI_MODEL_INTERVIEW", geminiFlash),
-		TaskGeneration: pick("GEMINI_MODEL_TASKGEN", geminiFlash),
+		TaskGeneration: pick("GEMINI_MODEL_TASKGEN", geminiTaskGen),
 	}
 }
 
 const geminiFlash = "gemini-3.5-flash"
+
+// geminiTaskGen writes each candidate's task. Measured 2026-10-14: with full
+// thinking it wrote two tasks for one role, both of which passed the run
+// check (tests fail as given, pass with the solution), in about six minutes
+// each. It is the newer model, and was often "high demand" that day — an
+// invitation waits for it rather than failing (orchestrator/invitation_tasks.go).
+const geminiTaskGen = "gemini-3.8-flash"
 
 // DefaultAgentModels is each agent's model on OpenRouter, for
 // AI_PROVIDER=openrouter.
