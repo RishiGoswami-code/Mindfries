@@ -7,7 +7,10 @@ export const metadata: Metadata = {
   description: "Create your Mindfries candidate account.",
 };
 
-export default function SignupPage() {
+export default async function SignupPage({ searchParams }: { searchParams: Promise<{ next?: string }> }) {
+  const { next } = await searchParams;
+  // Only a path on this site — the same rule as the sign-in page.
+  const safeNext = typeof next === "string" && next.startsWith("/") && !next.startsWith("//") ? next : "";
   return (
     <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-[#F6FAFD] px-6 py-16">
       <LoginBlobs />
@@ -19,7 +22,7 @@ export default function SignupPage() {
           <span className="text-[22px] font-semibold tracking-tight text-[#0A1931]">Mindfries</span>
         </div>
 
-        <SignupForm />
+        <SignupForm next={safeNext} />
       </div>
     </div>
   );

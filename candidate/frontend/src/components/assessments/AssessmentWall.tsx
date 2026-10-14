@@ -1,8 +1,9 @@
 "use client";
 
-import { useTransition } from "react";
+import { useEffect, useTransition } from "react";
 import clsx from "clsx";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { statusLabels, type Assessment } from "@/lib/dashboard/data";
@@ -18,10 +19,12 @@ import { InvitationAnswer } from "./InvitationAnswer";
  * exactly the same way and share one Start implementation rather than two
  * that could drift apart.
  *
- * Every button goes somewhere. A company's invitation asks to be accepted
- * or declined first (InvitationAnswer); once accepted — and for an
- * open-pool assessment straight away — Start begins the onboarding wizard.
- * In-progress resumes the session, and Submitted opens its report.
+ * Every button goes somewhere. An invitation asks to be accepted or
+ * declined first (InvitationAnswer); once accepted, Start begins the
+ * onboarding wizard — as soon as the candidate's own task has been made.
+ * Until then the note says it is being prepared, and the wall looks again
+ * every few seconds. In-progress resumes the session, and Submitted opens
+ * its report.
  */
 export function AssessmentWall({
   items,
@@ -33,6 +36,13 @@ export function AssessmentWall({
   emptyBody?: string;
 }) {
   const [pending, start] = useTransition();
+  const router = useRouter();
+  const preparing = items.some((a) => a.status === "invited" && (a.taskStatus === "pending" || a.taskStatus === "generating"));
+  useEffect(() => {
+    if (!preparing) return;
+    const timer = setInterval(() => router.refresh(), 10_000);
+    return () => clearInterval(timer);
+  }, [preparing, router]);
 
   if (items.length === 0) {
     return (
@@ -71,7 +81,9 @@ function AssessmentNote({
   pending: boolean;
   onStart: () => void;
 }) {
-  const { status, invitation } = assessment;
+  const { status, invitation, taskStatus } = assessment;
+  // An older backend doesn't say; treat that as ready, as it always was.
+  const taskReady = !taskStatus || taskStatus === "ready";
   // A company's invitation the candidate hasn't answered yet: it asks for
   // an answer before it offers Start.
   const unanswered = status === "invited" && !!invitation && !invitation.accepted;
@@ -102,7 +114,13 @@ function AssessmentNote({
 
         {unanswered && <InvitationAnswer assessmentId={assessment.id} />}
 
-        {status === "invited" && !unanswered && (
+        {status === "invited" && !unanswered && !taskReady && (
+          <span role="status" className={clsx("shrink-0 text-right text-xs font-medium", taskStatus === "failed" ? "text-[#a6203c]" : "text-[#1A3D63]")}>
+            {taskStatus === "failed" ? "Couldn't be prepared — the team that invited you can see this" : "Being prepared…"}
+          </span>
+        )}
+
+        {status === "invited" && !unanswered && taskReady && (
           <Button
             type="button"
             size="sm"

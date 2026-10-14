@@ -41,11 +41,8 @@ func (f *fakeDB) GetTemplateContent(_ context.Context, templateID string) (db.Te
 }
 
 func (f *fakeDB) Ping(ctx context.Context) error { return nil }
-func (f *fakeDB) ListPublishedTemplates(ctx context.Context) ([]db.Template, error) { panic("unimplemented") }
 func (f *fakeDB) ListInvitationsForCandidate(ctx context.Context, candidateID, email string) ([]db.Invitation, error) { panic("unimplemented") }
-func (f *fakeDB) StartSession(ctx context.Context, candidateID, candidateName string, tmpl db.Template) (db.Session, error) { panic("unimplemented") }
 func (f *fakeDB) StartSessionFromInvitation(ctx context.Context, candidateID, candidateName string, inv db.Invitation) (db.Session, error) { panic("unimplemented") }
-func (f *fakeDB) GetSessionByCandidateAndTemplate(ctx context.Context, candidateID, templateID string) (db.Session, error) { panic("unimplemented") }
 func (f *fakeDB) MarkSubmitted(ctx context.Context, id string) error { panic("unimplemented") }
 func (f *fakeDB) GetReportBySession(ctx context.Context, sessionID string) (db.Report, error) { panic("unimplemented") }
 func (f *fakeDB) GetEvidenceItems(ctx context.Context, reportID string) ([]db.EvidenceItem, error) { panic("unimplemented") }

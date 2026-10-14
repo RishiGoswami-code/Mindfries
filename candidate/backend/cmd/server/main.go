@@ -19,6 +19,7 @@ import (
 	"github.com/mindfries/candidate-backend/internal/llm"
 	"github.com/mindfries/candidate-backend/internal/orchestrator"
 	"github.com/mindfries/candidate-backend/internal/sandbox"
+	"github.com/mindfries/candidate-backend/internal/verify"
 	"github.com/mindfries/candidate-backend/internal/ws"
 )
 
@@ -69,6 +70,11 @@ func main() {
 	// Sessions whose candidate closed the tab are submitted from here — see
 	// orchestrator/abandoned.go.
 	go orc.RunAbandonedSweep(ctx, time.Minute)
+
+	// Each new invitation's own task is generated here — see
+	// orchestrator/invitation_tasks.go.
+	orc.Verifier = verify.FromEnv(sandboxClient)
+	go orc.RunInvitationTaskWorker(ctx)
 
 	server := httpapi.New(cfg, database, orc, hub)
 

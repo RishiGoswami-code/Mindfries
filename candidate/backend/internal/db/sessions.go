@@ -50,19 +50,6 @@ func scanSession(row pgx.Row) (Session, error) {
 	return s, err
 }
 
-// StartSession is the Assessment Orchestrator's entry point: a signed-in
-// candidate starts a published template, and a live session appears in the
-// admin's Global Session Monitor — same effect as the TS startSession, but
-// now attributed to a real candidate_id (CANDIDATE_BACKEND_PLAN.md §5's
-// "startSession() takes a candidate id" target).
-func (d *DB) StartSession(ctx context.Context, candidateID, candidateName string, tmpl Template) (Session, error) {
-	row := d.pool.QueryRow(ctx, `
-		insert into sessions (template_id, candidate_id, candidate_name, status, duration_min)
-		values ($1, $2, $3, 'live', $4)
-		returning `+sessionColumns, tmpl.ID, candidateID, candidateName, tmpl.DurationMin)
-	return scanSession(row)
-}
-
 // StartSessionFromInvitation is StartSession's counterpart for a real,
 // company-issued invitation (the `assessments` table) rather than the open
 // self-serve pool: the resulting session carries assessment_id and
@@ -74,23 +61,6 @@ func (d *DB) StartSessionFromInvitation(ctx context.Context, candidateID, candid
 		values ($1, $2, $3, $4, $5, 'live', $6)
 		returning `+sessionColumns, inv.ID, inv.CompanyID, inv.TemplateID, candidateID, candidateName, inv.DurationMin)
 	return scanSession(row)
-}
-
-// GetSessionByCandidateAndTemplate returns the live (or most recent) session
-// for a given candidate and template, or ErrNotFound if none exists. Used by
-// the orchestrator to enforce "one active session per candidate per template"
-// on the open self-serve pool.
-func (d *DB) GetSessionByCandidateAndTemplate(ctx context.Context, candidateID, templateID string) (Session, error) {
-	row := d.pool.QueryRow(ctx, `
-		select `+sessionColumns+` from sessions
-		where candidate_id = $1 and template_id = $2
-		order by started_at desc
-	`, candidateID, templateID)
-	s, err := scanSession(row)
-	if errors.Is(err, pgx.ErrNoRows) || isInvalidID(err) {
-		return Session{}, ErrNotFound
-	}
-	return s, err
 }
 
 // GetSession fetches one session by id, for status polling, ownership
@@ -187,20 +157,6 @@ func (d *DB) CountEarlierSessions(ctx context.Context, templateID, sessionID str
 type SelfStarted struct {
 	Recent int
 	Live   bool
-}
-
-// CountSelfStarted is what the limit on self-started sessions is checked
-// against (orchestrator.startFromTemplate). A session with no assessment_id
-// is one nobody invited the candidate to.
-func (d *DB) CountSelfStarted(ctx context.Context, candidateID string, since time.Time) (SelfStarted, error) {
-	var out SelfStarted
-	err := d.pool.QueryRow(ctx, `
-		select count(*) filter (where started_at >= $2),
-		       coalesce(bool_or(status = 'live'), false)
-		from sessions
-		where candidate_id = $1 and assessment_id is null
-	`, candidateID, since).Scan(&out.Recent, &out.Live)
-	return out, err
 }
 
 // SessionRef is where one of a candidate's sessions stands: which invitation
