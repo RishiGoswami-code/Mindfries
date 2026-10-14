@@ -125,3 +125,25 @@ func TestServiceStopped(t *testing.T) {
 		t.Error("the sweep finds waiting reports by their text")
 	}
 }
+
+func TestActivityFlagsNote(t *testing.T) {
+	start := time.Date(2026, 10, 14, 10, 0, 0, 0, time.UTC)
+	flag := func(id int64, kind, at string, detail string) db.ActivityEvent {
+		payload := `{"kind":"` + kind + `","at":"` + at + `"` + detail + `}`
+		return db.ActivityEvent{ID: id, EventType: "activity_flag", Payload: json.RawMessage(payload), OccurredAt: start}
+	}
+	note := activityFlagsNote([]db.ActivityEvent{
+		flag(1, "left_workspace", "2026-10-14T10:12:30Z", ""),
+		flag(2, "external_paste", "2026-10-14T10:20:05Z", `,"detail":{"chars":812}`),
+		flag(3, "multiple_faces", "2026-10-14T10:31:00Z", ""),
+		flag(4, "not_a_kind", "2026-10-14T10:32:00Z", ""),
+	}, start)
+	for _, want := range []string{"3 moments were flagged", "12:30 — Left the workspace", "20:05 — Large paste from outside the workspace (812 characters)", "31:00 — More than one face on camera", "not findings", "skin tone"} {
+		if !strings.Contains(note, want) {
+			t.Errorf("note lacks %q:\n%s", want, note)
+		}
+	}
+	if activityFlagsNote(nil, start) != "" {
+		t.Error("no flags, no note")
+	}
+}

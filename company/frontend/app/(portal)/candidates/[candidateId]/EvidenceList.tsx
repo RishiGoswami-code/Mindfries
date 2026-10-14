@@ -30,6 +30,7 @@ const LABEL: Record<string, string> = {
   ai_usage: "AI assistant usage",
   provenance: "Where the work came from",
   integrity: "Integrity",
+  activity_flags: "Flagged moments",
   rubric: "Rubric scores",
   interview_status: "Interview",
   incomplete: "Missing from this report",

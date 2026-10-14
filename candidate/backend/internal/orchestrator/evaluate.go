@@ -163,6 +163,13 @@ func (o *Orchestrator) Evaluate(ctx context.Context, sessionID string) error {
 	// directly and doesn't — see llm.DetectSteering.
 	integrity = append(integrity, detectSteering(events)...)
 
+	// Moments the candidate's browser flagged live (issue #120), as facts
+	// with their times — for a person to look at, beside their evidence.
+	if text := activityFlagsNote(events, sess.StartedAt); text != "" {
+		evidence = append(evidence, db.EvidenceItem{Category: "activity_flags", Observation: text})
+		forReport = append(forReport, "Flagged moments (prompts to look, not findings):\n"+text)
+	}
+
 	// The command record is the candidate's own shell reporting on itself;
 	// when it was changed, the report says so before anyone relies on it.
 	if text := commandRecordNote(events); text != "" {
