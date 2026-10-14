@@ -107,6 +107,13 @@ export interface SessionSummary {
   id: string;
   status: string;
   sandboxHealth: string;
+  /**
+   * Where the candidate worked: on a sandbox machine, or in their browser
+   * (no sandbox could be had — the pool was full, or it didn't come up).
+   * The two are different environments, which a hiring team comparing
+   * candidates should know.
+   */
+  workspace: "sandbox" | "browser";
   progressPct: number;
   durationMin: number;
   elapsedMin: number;

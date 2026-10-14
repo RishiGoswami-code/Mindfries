@@ -542,10 +542,20 @@ export async function getCandidateReport(assessmentId: string | null): Promise<C
     .maybeSingle();
   if (!sessionRow) return empty;
 
+  // A sandbox session is marked by its sandbox_ready event (candidate/backend
+  // writes it when the machine holds the task); the sandbox id itself is
+  // cleared once the session is submitted.
+  const { count: sandboxReady } = await c
+    .from("activity_events")
+    .select("id", { count: "exact", head: true })
+    .eq("session_id", sessionRow.id)
+    .eq("event_type", "sandbox_ready");
+
   const session: SessionSummary = {
     id: sessionRow.id,
     status: sessionRow.status,
     sandboxHealth: sessionRow.sandbox_health,
+    workspace: (sandboxReady ?? 0) > 0 ? "sandbox" : "browser",
     progressPct: sessionRow.progress_pct ?? 0,
     durationMin: sessionRow.duration_min ?? 60,
     elapsedMin: sessionRow.elapsed_min ?? 0,

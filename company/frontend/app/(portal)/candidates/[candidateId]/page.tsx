@@ -83,7 +83,9 @@ export default async function CandidateDetailPage({ params }: { params: Promise<
               <span className="mono text-dim">
                 {session.elapsedMin}/{session.durationMin}m
               </span>
-              <span className="text-dim">sandbox {session.sandboxHealth}</span>
+              <span className="text-dim" title="Where the candidate worked. The browser workspace runs Python and JavaScript for real but can't install every package or run servers.">
+                {session.workspace === "sandbox" ? "Worked on a sandbox machine" : "Worked in the browser workspace"}
+              </span>
             </div>
           </div>
 

@@ -943,6 +943,16 @@ export function IdeShell({ sessionId, candidateName, taskBrief, starterFiles, as
         </div>
       )}
 
+      {/* A real session that didn't get a machine — the pool was full, or
+          it didn't come up — runs here in the browser. Said once, so a
+          candidate isn't surprised that some packages won't install. */}
+      {sessionId && !sandboxed && !practice && (
+        <div role="status" className={clsx("shrink-0 rounded-xl border px-3 py-1.5 text-xs", palette.border, palette.textMuted)}>
+          This session runs in your browser: Python and JavaScript run for real, but some packages can&apos;t be installed and servers can&apos;t be
+          started. The hiring team can see which workspace you had.
+        </div>
+      )}
+
       {/* Files the editor leaves out are still in the project. Without this
           line a candidate who generated a large data file from the terminal
           would see nothing appear and reasonably think it failed. */}
