@@ -4,7 +4,7 @@ import { db } from "@/lib/supabase";
 import { currentCandidate } from "@/lib/auth/users";
 import { revalidatePath } from "next/cache";
 import { MAX_RESUME_TEXT, parseResumeText, type ResumeFields } from "./resume-fields";
-import { AccountNotFound, dropKnowledge, isKnowledgeSource, readAccount, storeKnowledge } from "./knowledge";
+import { AccountNotFound, dropKnowledge, dropLinkedIn, isKnowledgeSource, readAccount, storeKnowledge } from "./knowledge";
 import { statsOf } from "./knowledge-shape";
 import { readThroughConnection } from "./knowledge-connection";
 import { endConnection } from "../composio";
@@ -223,6 +223,7 @@ export async function removeLink(platform: string) {
 
   if (error) return { error: error.message };
   if (isKnowledgeSource(platform)) await dropKnowledge(session.id, platform);
+  if (platform === "linkedin") await dropLinkedIn(session.id);
 
   revalidatePath("/profile");
   return { ok: true };

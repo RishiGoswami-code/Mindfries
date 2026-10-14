@@ -60,10 +60,12 @@ export function LinkedAccounts({
       <h2 className="text-sm font-semibold text-[#0A1931]">Linked accounts</h2>
       {!preview && (
         <p className="mt-1 text-[12px] leading-relaxed text-[#4A7FA7]">
-          A GitHub or GitLab username is looked up when you add it, and the account&apos;s public projects are
-          read. LinkedIn and a portfolio are stored as you enter them — there&apos;s no public way to check those two.
-          {verifiable.length > 0 &&
-            ` Signing in to ${verifiable.map((id) => PLATFORMS[id as LinkPlatform]?.label ?? id).join(", ")} shows hiring teams the account is yours and lets us read it for your profile: your projects, the languages they are in and your recent activity; from LinkedIn, your name, headline and picture. Private projects are only counted — their names are never stored or shown. We only read: nothing is posted or changed. The connection stays until you remove the account here, which ends it.`}
+          {verifiable.length > 0
+            ? `Connect signs you in to ${verifiable.map((id) => PLATFORMS[id as LinkPlatform]?.label ?? id).join(", ")} on the platform itself. It shows hiring teams the account is yours and lets us read it for your profile: your projects, the languages they are in and your recent activity; from LinkedIn, your name, headline and picture. The access is read-only — nothing is ever posted or changed — and it ends when you remove the account here.`
+            : "A GitHub or GitLab username is looked up when you add it, and the account's public projects are read."}
+          {" "}
+          {verifiable.length < 3 && "Where sign-in isn't available, an account is stored as you enter it. "}
+          A portfolio is stored as you enter it.
         </p>
       )}
       {connectResult && PLATFORMS[connectResult.platform as LinkPlatform] && CONNECT_RESULT[connectResult.result] && (
@@ -300,22 +302,25 @@ function PlatformTile({
         <p className="text-[13.5px] font-medium text-[#0A1931]">{platform.label}</p>
       </div>
       <p className="mt-2 text-[11.5px] leading-relaxed text-[#4A7FA7]">{platform.pitch}</p>
-      <button
-        type="button"
-        onClick={onOpen}
-        className="btn-wipe mt-2.5 px-3 py-1.5 text-[12px] font-semibold"
-        style={{ "--btn-bg": "#1A3D63", "--btn-fg": "#F6FAFD", "--btn-fill": "#4A7FA7", "--btn-fg-hover": "#FFFFFF" } as React.CSSProperties}
-      >
-        {canVerify ? (id === "linkedin" ? "Enter the address" : "Enter a username") : "Connect"}
-      </button>
-      {canVerify && (
+      {canVerify ? (
+        // A plain link: Connect leaves this site for the platform's own
+        // sign-in (through Composio), which grants read access only.
         <a
           href={`/api/connect/${id}/start`}
-          className="btn-wipe mt-2 block px-3 py-1.5 text-center text-[12px] font-semibold"
-          style={{ "--btn-bg": "#0A1931", "--btn-fg": "#F6FAFD", "--btn-fill": "#1A3D63", "--btn-fg-hover": "#FFFFFF" } as React.CSSProperties}
+          className="btn-wipe mt-2.5 inline-block px-3 py-1.5 text-[12px] font-semibold"
+          style={{ "--btn-bg": "#1A3D63", "--btn-fg": "#F6FAFD", "--btn-fill": "#4A7FA7", "--btn-fg-hover": "#FFFFFF" } as React.CSSProperties}
         >
-          Sign in with {platform.label}
+          Connect
         </a>
+      ) : (
+        <button
+          type="button"
+          onClick={onOpen}
+          className="btn-wipe mt-2.5 px-3 py-1.5 text-[12px] font-semibold"
+          style={{ "--btn-bg": "#1A3D63", "--btn-fg": "#F6FAFD", "--btn-fill": "#4A7FA7", "--btn-fg-hover": "#FFFFFF" } as React.CSSProperties}
+        >
+          Connect
+        </button>
       )}
     </div>
   );
