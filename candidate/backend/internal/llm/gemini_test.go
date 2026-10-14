@@ -147,3 +147,23 @@ func TestGeminiRetriesThenFallsBack(t *testing.T) {
 		t.Errorf("calls %v", calls)
 	}
 }
+
+// A used-up quota is its own kind of error, says how long to wait, and is
+// tried on the fallback model (quotas are per model) before giving up.
+func TestGeminiQuota(t *testing.T) {
+	var calls []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls = append(calls, r.URL.Path)
+		w.WriteHeader(http.StatusTooManyRequests)
+		_, _ = w.Write([]byte(`{"error":{"code":429,"status":"RESOURCE_EXHAUSTED","message":"You exceeded your current quota.\n* Quota exceeded for metric: x","details":[{"@type":"type.googleapis.com/google.rpc.RetryInfo","retryDelay":"44975s"}]}}`))
+	}))
+	defer srv.Close()
+	_, err := NewGeminiClient("k", srv.URL).WithFallback("other").Complete(context.Background(), "m", []ChatMessage{{Role: "user", Content: "x"}}, 10)
+	var quota *QuotaError
+	if !errors.As(err, &quota) || quota.RetryAfter != 44975*time.Second || quota.Message != "You exceeded your current quota." {
+		t.Fatalf("got %#v", err)
+	}
+	if len(calls) != 2 || !strings.Contains(calls[1], "other") {
+		t.Errorf("calls %v: want the model, then the fallback, once each", calls)
+	}
+}

@@ -174,6 +174,18 @@ func (d *DB) SaveInvitationTask(ctx context.Context, job InvitationTaskJob, task
 	return templateID, tx.Commit(ctx)
 }
 
+// DeferInvitationTask puts an invitation back in the queue without counting
+// this attempt against it — for a failure that is nobody's fault and that
+// waiting fixes, like the AI service's quota being used up. The reason is
+// recorded so the people who sent the invitation can see why it waits.
+func (d *DB) DeferInvitationTask(ctx context.Context, job InvitationTaskJob, reason string) error {
+	_, err := d.pool.Exec(ctx, `
+		update assessments set task_status = 'pending', task_error = $2, task_attempts = greatest(task_attempts - 1, 0)
+		where id = $1 and task_status = 'generating'
+	`, job.ID, reason)
+	return err
+}
+
 // FailInvitationTask records why this attempt didn't produce a task. The
 // invitation goes back to 'pending' for another try, or to 'failed' once it
 // has had MaxInvitationTaskAttempts.

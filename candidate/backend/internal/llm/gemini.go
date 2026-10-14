@@ -91,6 +91,17 @@ type geminiRequest struct {
 	} `json:"generationConfig"`
 }
 
+// QuotaError is Google refusing a call because the key's quota is used up
+// (429 RESOURCE_EXHAUSTED). Measured 2026-10-14: a free-tier key allows 20
+// requests a day per model. Trying again in a few seconds doesn't help;
+// RetryAfter is how long Google says to wait, when it says.
+type QuotaError struct {
+	Message    string
+	RetryAfter time.Duration
+}
+
+func (e *QuotaError) Error() string { return "llm: gemini quota used up: " + e.Message }
+
 type geminiResponse struct {
 	Candidates []struct {
 		Content      geminiContent `json:"content"`
@@ -108,6 +119,9 @@ type geminiResponse struct {
 		Code    int    `json:"code"`
 		Message string `json:"message"`
 		Status  string `json:"status"`
+		Details []struct {
+			RetryDelay string `json:"retryDelay"`
+		} `json:"details"`
 	} `json:"error,omitempty"`
 }
 
@@ -162,6 +176,15 @@ func (r geminiResponse) text() string {
 }
 
 func (r geminiResponse) problem() error {
+	if r.Error != nil && r.Error.Status == "RESOURCE_EXHAUSTED" {
+		q := &QuotaError{Message: firstLine(r.Error.Message)}
+		for _, d := range r.Error.Details {
+			if wait, err := time.ParseDuration(d.RetryDelay); err == nil && wait > 0 {
+				q.RetryAfter = wait
+			}
+		}
+		return q
+	}
 	if r.Error != nil {
 		return fmt.Errorf("llm: gemini error (%s): %s", r.Error.Status, r.Error.Message)
 	}
@@ -196,6 +219,9 @@ func retryable(status int) bool {
 	return status == http.StatusServiceUnavailable || status == http.StatusInternalServerError || status == http.StatusBadGateway
 }
 
+// Google's quotas are per model: when one model's is used up, the fallback
+// model (if any) may still have room. It isn't worth retrying the same one.
+
 func (c *GeminiClient) post(ctx context.Context, client *http.Client, model, method string, body geminiRequest) (*http.Response, error) {
 	models := []string{model}
 	if c.fallback != "" && c.fallback != model {
@@ -204,6 +230,10 @@ func (c *GeminiClient) post(ctx context.Context, client *http.Client, model, met
 	for mi, m := range models {
 		for attempt := 0; ; attempt++ {
 			resp, err := c.postOnce(ctx, client, m, method, body)
+			if err == nil && resp.StatusCode == http.StatusTooManyRequests && mi < len(models)-1 {
+				resp.Body.Close()
+				break // on to the fallback model
+			}
 			if err != nil || !retryable(resp.StatusCode) {
 				return resp, err
 			}
@@ -363,6 +393,13 @@ func stoppedEarly(reason string) error {
 		return nil
 	}
 	return fmt.Errorf("llm: gemini stopped the reply early (%s)", reason)
+}
+
+func firstLine(s string) string {
+	if i := strings.IndexAny(s, "\n*"); i > 0 {
+		return strings.TrimSpace(s[:i])
+	}
+	return s
 }
 
 func truncateForError(b []byte) string {
