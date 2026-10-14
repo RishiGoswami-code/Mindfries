@@ -48,6 +48,38 @@ type AgentModels struct {
 
 // DefaultAgentModels reads a per-agent override from the environment,
 // falling back to defaultModel for whichever agents don't have one.
+// GeminiAgentModels is each agent's model on Google's Gemini API — the
+// default provider.
+//
+// Every agent defaults to geminiFlash. Measured on 2026-10-14 with the
+// project's key: it is on Google's free tier, where every Pro model is
+// refused outright (quota 0), and of the Flash models gemini-3.5-flash
+// answered every call in about two seconds while the newer 3.7 and 3.8 were
+// mostly "high demand, try later". With billing on the key, the evaluation
+// agents, the report and task generation are worth a Pro model:
+// GEMINI_MODEL_<AGENT> changes any one without a code change.
+func GeminiAgentModels() AgentModels {
+	pick := func(env, fallback string) string {
+		if v := os.Getenv(env); v != "" {
+			return v
+		}
+		return fallback
+	}
+	return AgentModels{
+		CodeEvaluation: pick("GEMINI_MODEL_CODE_EVAL", geminiFlash),
+		Reasoning:      pick("GEMINI_MODEL_REASONING", geminiFlash),
+		Workflow:       pick("GEMINI_MODEL_WORKFLOW", geminiFlash),
+		Report:         pick("GEMINI_MODEL_REPORT", geminiFlash),
+		Assistant:      pick("GEMINI_MODEL_ASSISTANT", geminiFlash),
+		Interviewer:    pick("GEMINI_MODEL_INTERVIEW", geminiFlash),
+		TaskGeneration: pick("GEMINI_MODEL_TASKGEN", geminiFlash),
+	}
+}
+
+const geminiFlash = "gemini-3.5-flash"
+
+// DefaultAgentModels is each agent's model on OpenRouter, for
+// AI_PROVIDER=openrouter.
 func DefaultAgentModels() AgentModels {
 	pickOr := func(env, fallback string) string {
 		if v := os.Getenv(env); v != "" {
@@ -67,24 +99,24 @@ func DefaultAgentModels() AgentModels {
 	}
 }
 
-// Agents wraps an OpenRouterClient with per-agent model routing and the
+// Agents wraps a ChatClient with per-agent model routing and the
 // system prompt that keeps each agent to its one job — PRD §1.9's
 // "specialized agents, not one giant model."
 type Agents struct {
-	client *OpenRouterClient
+	client ChatClient
 	models AgentModels
 }
 
 // NewAgents builds the agent layer. client may be unconfigured (no API
 // key) — every method below then returns ErrNotConfigured, same as the
 // client itself.
-func NewAgents(client *OpenRouterClient, models AgentModels) *Agents {
+func NewAgents(client ChatClient, models AgentModels) *Agents {
 	return &Agents{client: client, models: models}
 }
 
 // OnUsage registers the function told what each model call cost — see
 // OpenRouterClient.OnUsage.
-func (a *Agents) OnUsage(fn func(ctx context.Context, usage Usage)) { a.client.OnUsage = fn }
+func (a *Agents) OnUsage(fn func(ctx context.Context, usage Usage)) { a.client.SetOnUsage(fn) }
 
 // Configured reports whether the underlying OpenRouter client has a key.
 func (a *Agents) Configured() bool { return a.client.Configured() }

@@ -47,7 +47,13 @@ func main() {
 	}
 	defer database.Close()
 
-	agents := llm.NewAgents(llm.NewOpenRouterClient(cfg.OpenRouterAPIKey, cfg.OpenRouterBaseURL), llm.DefaultAgentModels())
+	// Every agent's model calls go to one provider: Google's Gemini API by
+	// default, OpenRouter with AI_PROVIDER=openrouter.
+	agents := llm.NewAgents(llm.NewGeminiClient(cfg.GeminiAPIKey, os.Getenv("GEMINI_BASE_URL")).WithFallback(os.Getenv("GEMINI_FALLBACK_MODEL")), llm.GeminiAgentModels())
+	if cfg.AIProvider == "openrouter" {
+		agents = llm.NewAgents(llm.NewOpenRouterClient(cfg.OpenRouterAPIKey, cfg.OpenRouterBaseURL), llm.DefaultAgentModels())
+	}
+	slog.Info("ai provider", "provider", cfg.AIProvider, "configured", agents.Configured())
 	sandboxClient := sandbox.New(cfg.DaytonaAPIKey, cfg.DaytonaBaseURL)
 	hub := ws.NewHub(cfg.AllowedOrigins)
 	orc := orchestrator.New(database, agents, sandboxClient, hub)

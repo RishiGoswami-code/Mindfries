@@ -62,7 +62,7 @@ func (o *Orchestrator) Evaluate(ctx context.Context, sessionID string) error {
 	}
 
 	if !o.configured() {
-		return fail("OpenRouter is not configured (OPENROUTER_API_KEY unset) — no model was called")
+		return fail("The AI service is not configured — no model was called")
 	}
 
 	events, err := o.DB.GetSessionEvents(ctx, sessionID)
