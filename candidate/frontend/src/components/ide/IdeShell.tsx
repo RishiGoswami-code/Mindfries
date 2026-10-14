@@ -30,6 +30,11 @@ import { loadPersistedWorkspace, pickWorkspace, savePersistedWorkspace } from "@
 import { buildPreview, releaseBuild, type PreviewBuild } from "@/lib/ide/preview/build-preview";
 import { useResizable } from "@/lib/ide/use-resizable";
 import { useProctorCamera } from "@/lib/ide/proctor-camera";
+import { startScreenKeyframes, useProctorScreen, type ScreenKeyframes } from "@/lib/ide/screen-capture";
+import { keepStill, stillTaker, type StillSink, type StillTaker } from "@/lib/ide/stills";
+import { FLAG_NOTICE, watchActivity, type Flag } from "@/lib/ide/activity-watch";
+import { watchFaces } from "@/lib/ide/face-watch";
+import { watchAudio } from "@/lib/ide/audio-watch";
 import { useDiagnostics } from "@/lib/ide/diagnostics";
 import { CHANNELS, output } from "@/lib/ide/output";
 import { exitFullscreen } from "@/lib/ide/fullscreen";
@@ -333,7 +338,7 @@ export function IdeShell({ sessionId, candidateName, taskBrief, starterFiles, as
   const [taskCollapsed, setTaskCollapsed] = useState(false);
   // The session is camera-proctored: the gate below blocks the workspace
   // until this is live, and re-blocks if the stream ever stops.
-  const camera = useProctorCamera();
+  const camera = useProctorCamera(!!sessionId && !practice);
   // A still of the camera every half minute, kept with the session — see
   // lib/ide/camera-snapshots.ts. Only in a real session: a scratch workspace
   // records nothing.
@@ -341,12 +346,120 @@ export function IdeShell({ sessionId, candidateName, taskBrief, starterFiles, as
     if (!sessionId || !camera.stream) return;
     return startCameraSnapshots(camera.stream, {
       uploadTarget: async () => {
-        const target = await startSnapshotUpload(sessionId);
+        const target = await startSnapshotUpload(sessionId, "camera");
         return "error" in target ? null : target;
       },
       stored: (snapshot) => telemetryRef.current?.record("camera_snapshot", snapshot),
     });
   }, [sessionId, camera.stream]);
+
+  // ── The screen, and live activity flags (issue #120) ──────────────────
+  // A real session also needs the entire screen shared (a practice run and
+  // the scratch workspace don't record anything, so they don't ask). Its
+  // keyframes, and the flags raised during the session, each with a camera
+  // still and a screen still of that moment — see lib/ide/screen-capture.ts
+  // and lib/ide/activity-watch.ts.
+  const screen = useProctorScreen();
+  const proctored = !!sessionId && !practice;
+  const keyframesRef = useRef<ScreenKeyframes | null>(null);
+  const cameraStillsRef = useRef<StillTaker | null>(null);
+  const [flagNotice, setFlagNotice] = useState<string | null>(null);
+  const stillSink = useMemo<StillSink | null>(
+    () =>
+      sessionId
+        ? {
+            uploadTarget: async (kind) => {
+              const target = await startSnapshotUpload(sessionId, kind);
+              return "error" in target ? null : target;
+            },
+          }
+        : null,
+    [sessionId],
+  );
+  useEffect(() => {
+    if (!proctored || !screen.stream || !stillSink) return;
+    const keyframes = startScreenKeyframes(screen.stream, stillSink, (still) => telemetryRef.current?.record("screen_snapshot", still));
+    keyframesRef.current = keyframes;
+    return () => {
+      keyframes.stop();
+      keyframesRef.current = null;
+    };
+  }, [proctored, screen.stream, stillSink]);
+  useEffect(() => {
+    if (!proctored || !camera.stream) return;
+    const taker = stillTaker(camera.stream, { width: 320, quality: 0.6 });
+    cameraStillsRef.current = taker;
+    return () => {
+      taker.stop();
+      cameraStillsRef.current = null;
+    };
+  }, [proctored, camera.stream]);
+
+  // One flagged moment: the camera and the screen as they are right now,
+  // kept, and the flag recorded with both. The candidate is told.
+  const raiseFlag = useCallback(
+    async (flag: Flag, audioClip?: Promise<Blob | null>) => {
+      const at = new Date().toISOString();
+      const notice = FLAG_NOTICE[flag.kind];
+      if (notice) setFlagNotice(notice);
+      const cameraStill = async () => {
+        const blob = await cameraStillsRef.current?.take();
+        if (!blob || !stillSink) return null;
+        const path = await keepStill(blob, "camera", stillSink);
+        if (path) telemetryRef.current?.record("camera_snapshot", { path, bytes: blob.size, reason: "flag" });
+        return path;
+      };
+      // A sound's clip finishes a few seconds after the flag; it is kept and
+      // named in the same record.
+      const audio = async () => {
+        const blob = audioClip ? await audioClip : null;
+        if (!blob || !stillSink) return null;
+        const path = await keepStill(blob, "audio", stillSink);
+        if (path) telemetryRef.current?.record("audio_clip", { path, bytes: blob.size });
+        return path;
+      };
+      const [cameraPath, screenPath, audioPath] = await Promise.all([cameraStill(), keyframesRef.current?.captureNow() ?? Promise.resolve(null), audio()]);
+      telemetryRef.current?.record("activity_flag", {
+        kind: flag.kind,
+        at,
+        ...(flag.detail ? { detail: flag.detail } : {}),
+        cameraPath,
+        screenPath,
+        ...(audioClip ? { audioPath } : {}),
+      });
+    },
+    [stillSink],
+  );
+  useEffect(() => {
+    if (!flagNotice) return;
+    const timer = setTimeout(() => setFlagNotice(null), 8000);
+    return () => clearTimeout(timer);
+  }, [flagNotice]);
+  // Watching starts once the workspace is in use — both shares live — so
+  // the permission prompts themselves aren't flagged as leaving.
+  const watching = proctored && camera.status === "live" && screen.status === "live";
+  useEffect(() => {
+    if (!watching || !sessionId) return;
+    return watchActivity((flag) => void raiseFlag(flag), sessionId);
+  }, [watching, sessionId, raiseFlag]);
+  useEffect(() => {
+    if (!watching || !camera.stream) return;
+    return watchAudio(camera.stream, (event) => void raiseFlag({ kind: event.kind }, event.clip));
+  }, [watching, camera.stream, raiseFlag]);
+  useEffect(() => {
+    if (!watching || !cameraStillsRef.current) return;
+    return watchFaces(cameraStillsRef.current.video, (event) =>
+      void raiseFlag({ kind: event.kind, ...(event.kind === "multiple_faces" ? { detail: { faces: event.faces } } : {}) }),
+    );
+  }, [watching, raiseFlag]);
+  // The share stopping is a moment too; the gate below locks the workspace.
+  const screenStatus = screen.status;
+  useEffect(() => {
+    if (!proctored || screenStatus !== "ended") return;
+    // After this render, not during it: raising a flag updates state.
+    const timer = setTimeout(() => void raiseFlag({ kind: "screen_share_stopped" }), 0);
+    return () => clearTimeout(timer);
+  }, [proctored, screenStatus, raiseFlag]);
 
   // Real markers from Monaco's TypeScript service — see lib/ide/diagnostics.ts.
   const diagnostics = useDiagnostics(tree, files);
@@ -725,6 +838,7 @@ export function IdeShell({ sessionId, candidateName, taskBrief, starterFiles, as
     telemetryRef.current?.destroy();
     telemetryRef.current = null;
     camera.stop();
+    screen.stop();
     // Hand the screen back: staying fullscreen on a closing screen leaves
     // someone stuck in a chrome-less tab with nothing left to do in it.
     void exitFullscreen();
@@ -1028,6 +1142,7 @@ export function IdeShell({ sessionId, candidateName, taskBrief, starterFiles, as
               // original local-only confirmation.
               setSubmitting(false);
               camera.stop();
+              screen.stop();
               exitFullscreen();
               setSubmitted(true);
               return;
@@ -1050,7 +1165,12 @@ export function IdeShell({ sessionId, candidateName, taskBrief, starterFiles, as
           beforeInterview={!interviewed}
         />
       )}
-      <ProctorGate theme={theme} camera={camera} />
+      <ProctorGate theme={theme} camera={camera} screen={proctored ? screen : null} />
+      {flagNotice && (
+        <div role="status" className="fixed bottom-4 left-1/2 z-40 max-w-md -translate-x-1/2 rounded-xl bg-[#0A1931] px-4 py-2.5 text-center text-xs text-white shadow-lg">
+          {flagNotice}
+        </div>
+      )}
       <ChatLauncher theme={theme} hidden={chatOpen} onClick={() => setChatOpen(true)} />
     </div>
   );
