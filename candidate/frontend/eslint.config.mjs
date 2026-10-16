@@ -12,6 +12,13 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Third-party bundles, not our code: Monaco and Pyodide are copied in by
+    // scripts/copy-*.js (gitignored, ~40MB of minified JS), vendor/ holds the
+    // pdf.js worker. Flat-config ESLint doesn't read .gitignore, and linting
+    // these runs Node out of memory before a single real error is reported.
+    "public/monaco-editor/**",
+    "public/pyodide/**",
+    "public/vendor/**",
   ]),
 ]);
 
