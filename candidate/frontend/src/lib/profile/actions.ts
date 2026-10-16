@@ -10,6 +10,7 @@ import { readThroughConnection } from "./knowledge-connection";
 import { endConnection } from "../composio";
 import { PLATFORMS, type LinkPlatform } from "./links";
 import { NOTICE_PERIODS, OPEN_TO_OPTIONS } from "./data";
+import type { CandidateProfile, StoredLinks } from "./types";
 
 // The edit form limits what can be typed, but a server action is a public
 // endpoint: these are the limits that actually hold. The bio's matches the
@@ -25,7 +26,7 @@ const isPlatform = (p: string): p is LinkPlatform => Object.hasOwn(PLATFORMS, p)
 /** A linked account's knowledge base can be re-read this often, per account. */
 const REFRESH_EVERY_MS = 10 * 60_000;
 
-export async function getProfile() {
+export async function getProfile(): Promise<CandidateProfile | null> {
   const session = await currentCandidate();
   if (!session) return null;
 
@@ -43,7 +44,7 @@ export async function getProfile() {
   // *that* an account is connected. The connection's id never leaves the
   // server; code that needs it reads the row itself.
   const links = Object.fromEntries(
-    Object.entries((data.links ?? {}) as Record<string, Record<string, unknown> | null>).map(([platform, link]) => [
+    Object.entries((data.links ?? {}) as StoredLinks).map(([platform, link]) => [
       platform,
       link?.connectionId ? { ...link, connectionId: "connected" } : link,
     ]),

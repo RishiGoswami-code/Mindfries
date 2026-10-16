@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { AlertTriangle, Loader2, Pencil, Sparkles, X } from "lucide-react";
+import { Loader2, Pencil, X } from "lucide-react";
 import clsx from "clsx";
 import { Button } from "@/components/ui/Button";
 import { saveIdentity } from "@/lib/profile/actions";
@@ -16,7 +16,7 @@ type FormState = { name: string; role: string; location: string; openTo: string[
  *
  * Saves directly to the database via a Server Action (saveIdentity).
  */
-export function EditProfileModal({ savedIdentity }: { savedIdentity: any }) {
+export function EditProfileModal({ savedIdentity }: { savedIdentity: FormState }) {
   const preview = usePreviewMode();
 
   const [open, setOpen] = useState(false);

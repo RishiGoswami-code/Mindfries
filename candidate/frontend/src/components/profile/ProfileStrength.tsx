@@ -3,6 +3,7 @@
 import { Check } from "lucide-react";
 import clsx from "clsx";
 import { PLATFORM_ORDER, PLATFORMS } from "@/lib/profile/links";
+import type { CandidateProfile } from "@/lib/profile/types";
 
 /**
  * One number for how complete this profile is — the same kind of signal the
@@ -14,7 +15,7 @@ import { PLATFORM_ORDER, PLATFORMS } from "@/lib/profile/links";
  * product's whole premise — the PRD's own line is that the system should
  * show its work, not just render a verdict.
  */
-export function ProfileStrength({ profile, hasResume }: { profile: any; hasResume: boolean }) {
+export function ProfileStrength({ profile, hasResume }: { profile: CandidateProfile | null; hasResume: boolean }) {
   const bio = profile?.bio || "";
   const links = profile?.links || {};
 

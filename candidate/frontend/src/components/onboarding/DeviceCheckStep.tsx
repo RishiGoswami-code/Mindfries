@@ -5,7 +5,7 @@ import { Camera, CheckCircle2, AlertTriangle, ArrowRight, ArrowLeft, RefreshCcw 
 import { Button } from "@/components/ui/Button";
 import clsx from "clsx";
 
-type CheckStatus = "idle" | "requesting" | "ok" | "denied" | "unavailable";
+type CheckStatus = "requesting" | "ok" | "denied" | "unavailable";
 
 interface DeviceCheckStepProps {
   onBack: () => void;
@@ -25,40 +25,47 @@ interface DeviceCheckStepProps {
 export function DeviceCheckStep({ onBack, onContinue }: DeviceCheckStepProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
-  const [status, setStatus] = useState<CheckStatus>("idle");
+  // Starts as "requesting": the check begins on mount, so there is no idle
+  // moment to show — and the effect below must not set state synchronously.
+  const [status, setStatus] = useState<CheckStatus>("requesting");
 
-  const startCamera = async () => {
+  // A promise chain rather than async/await so every setStatus sits in a
+  // callback: the mount effect starts this, and must not set state itself.
+  // Starting inside .then also turns a missing navigator.mediaDevices (an
+  // insecure page) into a rejection, the same as the old try/catch did.
+  const requestCamera = () =>
+    Promise.resolve()
+      .then(() => navigator.mediaDevices.getUserMedia({ video: true, audio: false }))
+      .then(
+        (stream) => {
+          streamRef.current = stream;
+          if (videoRef.current) {
+            videoRef.current.srcObject = stream;
+          }
+          setStatus("ok");
+        },
+        (err: unknown) => {
+          if (err instanceof DOMException && (err.name === "NotFoundError" || err.name === "DevicesNotFoundError")) {
+            setStatus("unavailable");
+          } else {
+            setStatus("denied");
+          }
+        },
+      );
+
+  const retryCamera = () => {
     setStatus("requesting");
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
-      streamRef.current = stream;
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-      }
-      setStatus("ok");
-    } catch (err: unknown) {
-      if (err instanceof DOMException) {
-        if (err.name === "NotAllowedError" || err.name === "PermissionDeniedError") {
-          setStatus("denied");
-        } else if (err.name === "NotFoundError" || err.name === "DevicesNotFoundError") {
-          setStatus("unavailable");
-        } else {
-          setStatus("denied");
-        }
-      } else {
-        setStatus("denied");
-      }
-    }
+    void requestCamera();
   };
 
   // Auto-start check on mount
   useEffect(() => {
-    void startCamera();
+    void requestCamera();
     return () => {
       // Clean up stream when leaving this step
       streamRef.current?.getTracks().forEach((t) => t.stop());
     };
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, []);
 
   const isOk = status === "ok";
 
@@ -91,12 +98,10 @@ export function DeviceCheckStep({ onBack, onContinue }: DeviceCheckStepProps) {
           {/* Overlay for non-ok states */}
           {!isOk && (
             <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-center px-8">
-              {status === "idle" || status === "requesting" ? (
+              {status === "requesting" ? (
                 <>
                   <Camera size={32} className="text-[#4A7FA7] animate-pulse" />
-                  <p className="text-sm text-[#B3CFE5]">
-                    {status === "idle" ? "Starting camera…" : "Waiting for permission…"}
-                  </p>
+                  <p className="text-sm text-[#B3CFE5]">Waiting for permission…</p>
                 </>
               ) : status === "denied" ? (
                 <>
@@ -147,7 +152,7 @@ export function DeviceCheckStep({ onBack, onContinue }: DeviceCheckStepProps) {
           {(status === "denied" || status === "unavailable") && (
             <button
               type="button"
-              onClick={() => void startCamera()}
+              onClick={retryCamera}
               className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs text-[#B3CFE5] transition-colors hover:bg-[#1A3D63]"
             >
               <RefreshCcw size={13} />

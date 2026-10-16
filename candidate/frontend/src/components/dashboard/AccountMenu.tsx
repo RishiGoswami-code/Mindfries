@@ -6,6 +6,7 @@ import { LogOut, ShieldCheck, User } from "lucide-react";
 import { useDismissablePanel } from "@/lib/useDismissablePanel";
 import { signOut as endSession, signOutEverywhere } from "@/app/login/actions";
 import { PoliciesModal } from "./PoliciesModal";
+import type { CandidateProfile } from "@/lib/profile/types";
 
 /**
  * The avatar, turned into a menu instead of a direct link to /profile — the
@@ -21,7 +22,7 @@ import { PoliciesModal } from "./PoliciesModal";
  */
 interface AccountMenuProps {
   sessionName?: string;
-  profile?: any;
+  profile?: CandidateProfile | null;
 }
 
 export function AccountMenu({ sessionName, profile }: AccountMenuProps) {

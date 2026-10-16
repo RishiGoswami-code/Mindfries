@@ -2,6 +2,7 @@
 
 import { CalendarClock, Clock, Navigation } from "lucide-react";
 import { EditProfileModal } from "./EditProfileModal";
+import type { CandidateProfile } from "@/lib/profile/types";
 
 function formatUpdated(iso: string): string {
   return new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
@@ -18,7 +19,7 @@ function formatUpdated(iso: string): string {
  */
 interface IdentityCardProps {
   sessionName?: string;
-  profile: any;
+  profile: CandidateProfile | null;
 }
 
 export function IdentityCard({ sessionName, profile }: IdentityCardProps) {

@@ -2,6 +2,7 @@
 
 import { ListChecks } from "lucide-react";
 import { usePreviewMode } from "./PreviewMode";
+import type { StoredLinks } from "@/lib/profile/types";
 
 /**
  * What's left to do, in the order it's worth doing it — the same idea as the
@@ -14,7 +15,7 @@ import { usePreviewMode } from "./PreviewMode";
  * still asks you to do something you've already done stops being trustworthy
  * the first time it's wrong.
  */
-export function NextSteps({ hasResume, links }: { hasResume: boolean; links: any }) {
+export function NextSteps({ hasResume, links }: { hasResume: boolean; links: StoredLinks }) {
   const preview = usePreviewMode();
 
   // This is guidance for the candidate, not something a hiring team's view
