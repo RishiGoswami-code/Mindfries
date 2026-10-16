@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import clsx from "clsx";
 import { NotificationBell } from "./NotificationBell";
 import { AccountMenu } from "./AccountMenu";
+import type { CandidateProfile } from "@/lib/profile/types";
 
 /**
  * Top bar, following Eightfold's shape: wordmark, a short set of sections,
@@ -29,7 +30,7 @@ const SECTIONS = [
 interface DashboardNavProps {
   /** The signed-in candidate's real name, read server-side from the session by whichever page renders this — threaded down to AccountMenu so the avatar/menu never disagrees with the page's own greeting. */
   sessionName?: string;
-  profile?: any;
+  profile?: CandidateProfile | null;
 }
 
 export function DashboardNav({ sessionName, profile }: DashboardNavProps) {
