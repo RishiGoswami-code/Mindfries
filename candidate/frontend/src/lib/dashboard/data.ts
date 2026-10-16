@@ -87,18 +87,21 @@ export function deriveStats(items: Assessment[], practiceRuns = 0): Stat[] {
   ];
 }
 
-export const resources = [
+export const resources: { title: string; body: string; href?: string; action?: "policies" }[] = [
   {
     title: "What the workspace records",
     body: "Every signal captured during a session, and what a hiring team sees.",
+    action: "policies",
   },
   {
     title: "Explaining your decisions",
     body: "The reasoning prompts matter as much as the code. How to answer them well.",
+    href: "/practice",
   },
   {
     title: "Before your first session",
     body: "Camera, microphone and a five-minute practice run.",
+    href: "/practice",
   },
 ];
 
