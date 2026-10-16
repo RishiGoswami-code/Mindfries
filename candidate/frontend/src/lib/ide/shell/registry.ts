@@ -29,6 +29,7 @@ const COMMANDS: Record<string, CommandFn> = {
 
   // Text processing
   echo: text.echo,
+  printf: text.printf,
   grep: text.grep,
   sed: text.sed,
   head: text.head,
@@ -79,6 +80,8 @@ const COMMANDS: Record<string, CommandFn> = {
   date: builtins.date,
   uname: builtins.uname,
   help: builtins.help,
+  true: builtins.trueCommand,
+  false: builtins.falseCommand,
   write: builtins.write,
 };
 

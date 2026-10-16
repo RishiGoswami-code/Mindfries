@@ -80,15 +80,17 @@ code that writes to the terminal — that separation is precisely what lets
 | Commands | |
 |---|---|
 | Files | `ls` (`-l -a -1`), `cd` (incl. `cd -`), `pwd`, `cat`, `touch`, `mkdir -p`, `rm -r -f`, `mv`, `cp -r`, `find -name -type`, `tree` |
-| Text | `echo`, `grep` (`-i -n -v -c -r`), `sed s///`, `head`, `tail`, `wc`, `sort` (`-n -r -u`), `uniq` (`-c -d`), `cut`, `tr`, `diff` |
+| Text | `echo`, `printf` (`%s %d %f %x %o %c %b`, width/precision, format reuse), `grep` (`-i -n -v -c -r`), `sed s///`, `head`, `tail`, `wc`, `sort` (`-n -r -u`), `uniq` (`-c -d`), `cut`, `tr`, `diff` |
 | Run | `node`/`js`, `ts-node`/`tsx`, `python`/`python3` (incl. `-c`) |
 | Packages | `pip install/list/show`, `npm install/list/uninstall` |
 | Network | `curl` (`-o -s -I`), `wget` |
-| Shell | `export`, `env`, `unset`, `alias`, `unalias`, `which`, `history`, `clear`, `whoami`, `date`, `uname`, `help` |
+| Shell | `export`, `env`, `unset`, `alias`, `unalias`, `which`, `history`, `clear`, `whoami`, `date`, `uname`, `help`, `true`, `false` |
 
 Errors and exit codes are real: `grep` exits 1 when nothing matches, `diff`
 exits 1 when files differ, an unknown command exits 127 — so `&&`/`||` branch
-on genuine status, not on a guess.
+on genuine status, not on a guess. A redirect that can't be written fails the
+command with exit 1, and `/dev/null` discards (`2>/dev/null`) or reads empty
+(`< /dev/null`) though there is no `/dev` in the workspace.
 
 ### 4.3.1 Packages (`lib/ide/shell/commands/pkg.ts`, `lib/ide/packages.ts`)
 - **`pip`** — real installs via **micropip**, the package manager Pyodide

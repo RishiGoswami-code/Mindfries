@@ -40,6 +40,98 @@ export function echo(ctx: CommandContext): CommandResult {
   return ok(noNewline ? text : `${text}\n`);
 }
 
+const ESCAPES: Record<string, string> = { n: "\n", t: "\t", r: "\r", a: "\x07", b: "\b", f: "\f", v: "\v", "\\": "\\", '"': '"', "'": "'" };
+
+/** printf's backslash escapes: \n \t \\ …, plus octal \0NNN. Unknown ones are kept as written. */
+function unescape(text: string): string {
+  return text.replace(/\\(0[0-7]{0,3}|.)/g, (whole, seq: string) => {
+    if (seq[0] === "0") return String.fromCharCode(parseInt(seq, 8) || 0);
+    return ESCAPES[seq] ?? whole;
+  });
+}
+
+/**
+ * bash's printf: `%s %d %i %f %x %X %o %c %b %%` with flags, width and
+ * precision (`%-8s`, `%05d`, `%.2f`). The format is reused until every
+ * argument is consumed; a missing argument is "" or 0. A non-number for a
+ * numeric conversion prints 0 and fails the command, as bash does.
+ */
+export function printf(ctx: CommandContext): CommandResult {
+  const [rawFormat, ...args] = ctx.argv.slice(1);
+  if (rawFormat === undefined) return fail("printf: usage: printf format [arguments]", 2);
+  // Escapes belong to the format only — an argument printed with %s is
+  // printed as given, backslashes and all (%b is the one that unescapes).
+  const format = unescape(rawFormat);
+
+  const conversion = /%([-+ 0#]*)(\d+)?(?:\.(\d+))?([sdifxXocb%])/g;
+  let stdout = "";
+  let stderr = "";
+  let next = 0;
+
+  const number = (raw: string | undefined, integer: boolean): number => {
+    if (raw === undefined || raw === "") return 0;
+    // 'c gives the character's code, as in bash.
+    if (/^['"]./.test(raw)) return raw.codePointAt(1) ?? 0;
+    const value = integer && /^[-+]?0x[0-9a-f]+$/i.test(raw) ? parseInt(raw, 16) : Number(raw);
+    if (Number.isNaN(value) || (integer && !Number.isInteger(value))) {
+      stderr += `printf: ${raw}: invalid number\n`;
+      return 0;
+    }
+    return integer ? Math.trunc(value) : value;
+  };
+
+  const pad = (body: string, flags: string, width: number, numeric: boolean): string => {
+    if (body.length >= width) return body;
+    if (flags.includes("-")) return body.padEnd(width);
+    if (numeric && flags.includes("0")) {
+      const sign = /^[-+ ]/.test(body) ? body[0] : "";
+      return sign + body.slice(sign.length).padStart(width - sign.length, "0");
+    }
+    return body.padStart(width);
+  };
+
+  do {
+    const before = next;
+    stdout += format.replace(conversion, (_whole, flags: string, w?: string, p?: string, type?: string) => {
+      if (type === "%") return "%";
+      const width = w ? Number(w) : 0;
+      const precision = p === undefined ? undefined : Number(p);
+      const raw = args[next++];
+      let body: string;
+      switch (type) {
+        case "s":
+          body = raw ?? "";
+          if (precision !== undefined) body = body.slice(0, precision);
+          return pad(body, flags, width, false);
+        case "b":
+          return pad(unescape(raw ?? ""), flags, width, false);
+        case "c":
+          return pad((raw ?? "").slice(0, 1), flags, width, false);
+        case "f":
+          body = number(raw, false).toFixed(precision ?? 6);
+          break;
+        case "x":
+        case "X":
+        case "o": {
+          const n = number(raw, true);
+          body = n.toString(type === "o" ? 8 : 16);
+          if (type === "X") body = body.toUpperCase();
+          break;
+        }
+        default:
+          body = String(number(raw, true));
+      }
+      if (flags.includes("+") && !body.startsWith("-")) body = `+${body}`;
+      else if (flags.includes(" ") && !body.startsWith("-")) body = ` ${body}`;
+      return pad(body, flags, width, true);
+    });
+    // A format with no conversions consumes nothing: print it once, don't loop.
+    if (next === before) break;
+  } while (next < args.length);
+
+  return { stdout, stderr, code: stderr ? 1 : 0 };
+}
+
 export function grep(ctx: CommandContext): CommandResult {
   const { flags, operands } = parseFlags(ctx.argv);
   const pattern = operands[0];
