@@ -27,11 +27,33 @@ function expandArgv(
   return argv;
 }
 
+/** Where a redirect writes. `null` segments is /dev/null: the output is discarded. */
+interface RedirectTarget {
+  segments: string[] | null;
+  append: boolean;
+}
+
 interface Redirection {
-  stdinFrom: string[] | null;
-  stdoutTo: { segments: string[]; append: boolean } | null;
-  stderrTo: { segments: string[]; append: boolean } | null;
+  /** `null` segments here is `< /dev/null`: empty input. */
+  stdinFrom: { segments: string[] | null } | null;
+  stdoutTo: RedirectTarget | null;
+  stderrTo: RedirectTarget | null;
   error: string | null;
+}
+
+/**
+ * The workspace has no /dev, but `2>/dev/null` is too common an idiom to
+ * fail on — without this it errors with "dev/null: No such file or
+ * directory", the opposite of what was asked for.
+ */
+function isDevNull(segments: string[]): boolean {
+  return segments.length === 2 && segments[0] === "dev" && segments[1] === "null";
+}
+
+/** Writes a redirect's output; returns an error message, or null on success. */
+function writeRedirect(vfs: VfsBridge, target: RedirectTarget, text: string): string | null {
+  if (target.segments === null) return null;
+  return vfs.write(segmentsToPath(target.segments), text, target.append);
 }
 
 function resolveRedirects(command: SimpleCommand, session: ShellSession): Redirection {
@@ -43,8 +65,9 @@ function resolveRedirects(command: SimpleCommand, session: ShellSession): Redire
       out.error = "syntax error near unexpected token `newline'";
       return out;
     }
-    const segments = resolve(session, value);
-    if (redirect.op === "<") out.stdinFrom = segments;
+    const resolved = resolve(session, value);
+    const segments = isDevNull(resolved) ? null : resolved;
+    if (redirect.op === "<") out.stdinFrom = { segments };
     else if (redirect.op === "2>") out.stderrTo = { segments, append: false };
     else out.stdoutTo = { segments, append: redirect.op === ">>" };
   }
@@ -87,9 +110,10 @@ async function runPipeline(
 
     let stdin = piped;
     if (redirects.stdinFrom) {
-      const content = readFile(vfs, redirects.stdinFrom);
+      const from = redirects.stdinFrom.segments;
+      const content = from === null ? "" : readFile(vfs, from);
       if (content === null) {
-        io.write(`${argv[0]}: ${segmentsToPath(redirects.stdinFrom)}: No such file or directory\r\n`);
+        io.write(`${argv[0]}: ${segmentsToPath(from ?? [])}: No such file or directory\r\n`);
         return 1;
       }
       stdin = content;
@@ -128,16 +152,24 @@ async function runPipeline(
 
     if (stderr) {
       if (redirects.stderrTo) {
-        const error = vfs.write(segmentsToPath(redirects.stderrTo.segments), stderr, redirects.stderrTo.append);
-        if (error) io.write(`${argv[0]}: ${error}\r\n`);
+        const error = writeRedirect(vfs, redirects.stderrTo, stderr);
+        if (error) {
+          io.write(`${argv[0]}: ${error}\r\n`);
+          exitCode = 1;
+        }
       } else {
         io.write(`\x1b[31m${toTerminalText(stderr)}\x1b[0m`);
       }
     }
 
     if (redirects.stdoutTo) {
-      const error = vfs.write(segmentsToPath(redirects.stdoutTo.segments), stdout, redirects.stdoutTo.append);
-      if (error) io.write(`\x1b[31m${argv[0]}: ${error}\x1b[0m\r\n`);
+      const error = writeRedirect(vfs, redirects.stdoutTo, stdout);
+      // A redirect that can't be written fails the command, as in bash —
+      // otherwise `echo x > missing/dir/f && next` carries on regardless.
+      if (error) {
+        io.write(`\x1b[31m${argv[0]}: ${error}\x1b[0m\r\n`);
+        exitCode = 1;
+      }
       piped = "";
     } else if (isLast) {
       io.write(toTerminalText(stdout));
