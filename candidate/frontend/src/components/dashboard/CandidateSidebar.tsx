@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import clsx from "clsx";
-import { Briefcase, ClipboardList, FileText, Home, UserRound } from "lucide-react";
+import { Briefcase, ClipboardList, FileText, Home, Settings, UserRound } from "lucide-react";
 import { display } from "@/lib/dashboard/fonts";
 
 const SECTIONS = [
@@ -12,6 +12,7 @@ const SECTIONS = [
   { label: "Applications", href: "/applications", icon: ClipboardList },
   { label: "Assessments", href: "/assessments", icon: FileText },
   { label: "Profile", href: "/profile", icon: UserRound },
+  { label: "Settings", href: "/settings", icon: Settings },
 ];
 
 /**
