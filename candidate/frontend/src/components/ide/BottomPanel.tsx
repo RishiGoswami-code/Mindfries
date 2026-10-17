@@ -29,10 +29,10 @@ const TABS: { id: PanelTab; label: string; icon: LucideIcon }[] = [
 
 /**
  * The Terminal card under the editor: Terminal, Output and Debug Console,
- * then Problems, Changes and Ports. The Tests card sits beside it.
+ * then Problems, Changes and Ports.
  *
- * Its cross tucks the card away (IdeShell keeps a chip on the screen edge
- * that brings it back). Every panel stays mounted while another tab is
+ * Its cross tucks the card away (IdeShell floats a chip over the camera
+ * picture that brings it back). Every panel stays mounted while another tab is
  * shown, and while the card is tucked away: terminals and the debug
  * console keep their sessions and scrollback.
  */

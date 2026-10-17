@@ -82,13 +82,15 @@ directly from a non-React callback.
 
 Files on the left; the editor in the middle with a row under it — the
 Terminal card (`BottomPanel.tsx`: Terminal, Output, Debug Console, Problems,
-Changes, Ports) and the Tests card (`TestsPanel.tsx`); Mindfries AI on the
+Changes, Ports); Mindfries AI on the
 right with the camera under it. `IdeShell` owns the row's height (the camera
 under the assistant follows it). The header and status bar run edge to edge.
 
-Terminal, Tests and Mindfries AI each have a cross that tucks the card away;
-a closed card leaves a chip on the right edge of the screen (`EdgeChips` in
-`IdeShell.tsx`) that opens it again. With the assistant closed, the camera
+Terminal and Mindfries AI each have a cross that tucks the card away; a
+closed card leaves a chip floating over the camera picture (`ClosedChips` in
+`IdeShell.tsx`) that opens it again. Tests are run from the terminal; the
+runs are still read into results (`lib/ide/test-results.ts`) for telemetry
+and the assistant, there's just no card showing them. With the assistant closed, the camera
 joins the bottom row. The Terminal card is hidden with `display: none`, never
 unmounted, while closed — keep it that way, or terminal sessions lose their
 scrollback. The camera has no cross: proctoring needs it on screen.
@@ -228,9 +230,8 @@ caveats below.
     reload reattaches to it (each terminal tab remembers its own in
     `sessionStorage`), and only closing the tab ends it. The backend half
     is `candidate/backend/internal/httpapi/terminals.go`.
-  - `TestsPanel` runs the test command on the sandbox. In sandbox mode the
-    page parses the output only to *show* it; the `test_run` evidence is
-    read and recorded by the backend, which refuses one posted by the page.
+  - Test runs on the sandbox: the `test_run` evidence is read and
+    recorded by the backend, which refuses one posted by the page.
   - `PortsPanel` shows `SandboxPorts` — what is really listening on the
     machine, each with a signed link — instead of the in-editor preview.
   - Notebook cells, live preview, the package shims and in-browser git are
