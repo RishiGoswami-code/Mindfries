@@ -10,6 +10,7 @@ import type { ApplicationStage, CandidateApplication } from "@/lib/types";
 import { AssistantSettingsForm } from "./AssistantSettingsForm";
 import { InterviewSettingsForm } from "./InterviewSettingsForm";
 import { RoleBriefForm } from "./RoleBriefForm";
+import { JobPostingForm } from "./JobPostingForm";
 import { InviteCandidateForm } from "./InviteCandidateForm";
 import { PipelineList } from "./PipelineList";
 import { RoleStatusToggle } from "./RoleStatusToggle";
@@ -78,6 +79,8 @@ export default async function RoleDetailPage({
         <Pill tone={roleStatusTone[role.status]}>{role.status}</Pill>
         {canWriteRole && <RoleStatusToggle roleId={role.id} status={role.status} />}
         {role.assessmentBrief ? <Pill tone="violet">Brief written</Pill> : <Pill tone="amber">No brief yet</Pill>}
+        {role.posting.listed && role.status === "open" && <Pill tone="green">On the job board</Pill>}
+        {role.posting.selfAssessment && <Pill tone="violet">Open assessment</Pill>}
         <Link href={`/roles/${role.id}`}>
           <Pill tone={activeStage === null ? "violet" : "gray"}>All ({allApplications.length})</Pill>
         </Link>
@@ -89,6 +92,8 @@ export default async function RoleDetailPage({
           </Link>
         ))}
       </div>
+
+      {canWriteRole && <JobPostingForm roleId={role.id} posting={role.posting} roleOpen={role.status === "open"} />}
 
       {canWriteRole && <RoleBriefForm roleId={role.id} brief={role.assessmentBrief} taskVariant={role.taskVariant} />}
 

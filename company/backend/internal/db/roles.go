@@ -138,12 +138,17 @@ func (d *DB) SetJobRoleStatus(ctx context.Context, companyID, roleID, status str
 // StageCounts mirrors company/frontend/lib/types.ts's StageCounts — one
 // count per ApplicationStage, zero-filled for stages with no rows.
 type StageCounts struct {
-	Invited     int `json:"invited"`
-	InProgress  int `json:"in_progress"`
-	Completed   int `json:"completed"`
-	Shortlisted int `json:"shortlisted"`
-	Rejected    int `json:"rejected"`
-	Hired       int `json:"hired"`
+	Applied      int `json:"applied"`
+	Invited      int `json:"invited"`
+	InProgress   int `json:"in_progress"`
+	Completed    int `json:"completed"`
+	Shortlisted  int `json:"shortlisted"`
+	Interviewing int `json:"interviewing"`
+	Offered      int `json:"offered"`
+	Rejected     int `json:"rejected"`
+	Hired        int `json:"hired"`
+	Declined     int `json:"declined"`
+	Withdrawn    int `json:"withdrawn"`
 }
 
 // StageCountsForRole mirrors stageCountsForRole.
@@ -161,6 +166,8 @@ func (d *DB) StageCountsForRole(ctx context.Context, roleID string) (StageCounts
 			return c, err
 		}
 		switch stage {
+		case "applied":
+			c.Applied++
 		case "invited":
 			c.Invited++
 		case "in_progress":
@@ -173,6 +180,14 @@ func (d *DB) StageCountsForRole(ctx context.Context, roleID string) (StageCounts
 			c.Rejected++
 		case "hired":
 			c.Hired++
+		case "interviewing":
+			c.Interviewing++
+		case "offered":
+			c.Offered++
+		case "declined":
+			c.Declined++
+		case "withdrawn":
+			c.Withdrawn++
 		}
 	}
 	return c, rows.Err()

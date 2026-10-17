@@ -8,11 +8,13 @@ import { bulkChangeStage, changeStage, retryTask } from "./actions";
 import { CopyLink } from "./CopyLink";
 import type { ApplicationStage, CandidateApplication } from "@/lib/types";
 
-// The three moves a company actually makes by hand — any stage to any of
-// these, not a strict state machine. Everything else (invited → in_progress
-// → completed) is the candidate's own progress through the assessment.
+// The moves a company makes by hand — any stage to any of these, not a
+// strict state machine. Everything else (invited → in_progress → completed)
+// is the candidate's own progress through the assessment; interviewing is
+// set by scheduling an interview, and applied/withdrawn by the candidate.
 const STAGE_ACTIONS: { stage: ApplicationStage; label: string; variant: "primary" | "danger" | "soft" }[] = [
   { stage: "shortlisted", label: "Shortlist", variant: "soft" },
+  { stage: "offered", label: "Offer", variant: "soft" },
   { stage: "hired", label: "Hire", variant: "primary" },
   { stage: "rejected", label: "Reject", variant: "danger" },
 ];
@@ -92,6 +94,11 @@ export function PipelineList({
             <div className="truncate text-xs text-dim">{a.candidateEmail}</div>
           </Link>
           <Pill tone={stageTone[a.stage]}>{stageLabel[a.stage]}</Pill>
+          {a.stage === "applied" && (
+            <Link href={`/candidates/${a.id}`} className="text-xs font-semibold text-[color:var(--color-accent,#5B3BE0)] hover:underline">
+              Review and invite →
+            </Link>
+          )}
           {a.stage === "invited" && a.invite && a.invite.taskStatus !== "ready" && (
             <span className="flex items-center gap-2 text-xs">
               {a.invite.taskStatus === "failed" ? (

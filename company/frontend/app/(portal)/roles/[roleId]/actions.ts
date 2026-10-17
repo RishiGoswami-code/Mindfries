@@ -2,8 +2,9 @@
 
 import { revalidatePath } from "next/cache";
 import { ForbiddenError, requireCompanyPermission } from "@/lib/auth/company-users";
-import { bulkSetApplicationStage, getJobRole, inviteCandidateToRole, markInvitationEmailed, retryInvitationTask, setApplicationStage, setJobRoleAssistant, setJobRoleBrief, setJobRoleInterview, setJobRoleStatus, TASK_VARIANTS } from "@/lib/db";
-import type { ApplicationStage, TaskVariant } from "@/lib/types";
+import { bulkSetApplicationStage, getApplicationForCompany, getJobRole, inviteCandidateToRole, markInvitationEmailed, retryInvitationTask, setApplicationStage, setJobRoleAssistant, setJobRoleBrief, setJobRoleInterview, setJobRoleStatus, TASK_VARIANTS } from "@/lib/db";
+import type { ApplicationStage, EmploymentType, TaskVariant, WorkMode } from "@/lib/types";
+import { EMPLOYMENT_TYPES, WORK_MODES, inviteApplicant, setJobPosting } from "@/lib/hiring";
 import { inviteLink } from "@/lib/invite-link";
 import { invitationMail } from "@/lib/invitation-mail";
 import { mailerReady, sendMail } from "@/lib/mailer";
@@ -230,4 +231,89 @@ export async function setRoleStatus(
   revalidatePath(`/roles/${roleId}`);
   revalidatePath("/roles");
   return { error: null, success: true };
+}
+
+export type JobPostingState = { error: string | null; saved: boolean };
+
+/**
+ * How the role appears on the candidates' job board: whether it's listed,
+ * whether every applicant can take the assessment straight away, and what
+ * the posting says. Listing needs a description, so a candidate never finds
+ * a job that says nothing.
+ */
+export async function saveJobPosting(roleId: string, _prev: JobPostingState, form: FormData): Promise<JobPostingState> {
+  let companyId: string;
+  try {
+    companyId = (await requireCompanyPermission("role:write")).companyId;
+  } catch (e) {
+    return { error: e instanceof ForbiddenError ? e.message : "Not signed in.", saved: false };
+  }
+  const listed = form.get("listed") === "on";
+  const description = text(form.get("description"), 8000);
+  const workMode = String(form.get("workMode") ?? "");
+  const employmentType = String(form.get("employmentType") ?? "");
+  if (listed && description.length < 40) {
+    return { error: "Write a description of at least a few sentences before listing the job — it's what candidates read first.", saved: false };
+  }
+  try {
+    await setJobPosting(companyId, roleId, {
+      listed,
+      selfAssessment: form.get("selfAssessment") === "on",
+      description,
+      location: text(form.get("location"), 120),
+      workMode: (WORK_MODES as string[]).includes(workMode) ? (workMode as WorkMode) : null,
+      employmentType: (EMPLOYMENT_TYPES as string[]).includes(employmentType) ? (employmentType as EmploymentType) : null,
+    });
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "Couldn't save that — try again.", saved: false };
+  }
+  revalidatePath(`/roles/${roleId}`);
+  revalidatePath("/roles");
+  return { error: null, saved: true };
+}
+
+export type InviteApplicantState = { error: string | null; notice: string | null };
+
+/**
+ * Invites someone who applied from the job board to the role's assessment,
+ * and emails them their link when email is set up — reporting what actually
+ * happened to the email, like a direct invitation does.
+ */
+export async function inviteApplicantToAssessment(roleId: string, applicationId: string, _prev: InviteApplicantState, form: FormData): Promise<InviteApplicantState> {
+  let session: Awaited<ReturnType<typeof requireCompanyPermission>>;
+  try {
+    session = await requireCompanyPermission("candidate:invite");
+  } catch (e) {
+    return { error: e instanceof ForbiddenError ? e.message : "Not signed in.", notice: null };
+  }
+  const dueDate = text(form.get("dueDate"), 10) || undefined;
+  let notice: string;
+  try {
+    const application = await getApplicationForCompany(session.companyId, applicationId);
+    if (!application) return { error: "Candidate not found.", notice: null };
+    const { assessmentId, inviteToken } = await inviteApplicant(session.companyId, applicationId, dueDate);
+    const link = inviteLink(inviteToken);
+    const portal = process.env.CANDIDATE_PORTAL_URL?.replace(/\/+$/, "");
+    if (!mailerReady() || !portal || !link) {
+      notice = `Invited — their own task is being prepared. No email was sent (${!mailerReady() ? "email isn't set up on this portal" : "CANDIDATE_PORTAL_URL isn't set"}); it shows on their dashboard.`;
+    } else {
+      try {
+        await sendMail({
+          to: application.candidateEmail,
+          ...invitationMail({ link, companyName: session.companyName, roleTitle: application.roleTitle, candidateName: application.candidateName ?? undefined, dueDate }),
+        });
+        await markInvitationEmailed(session.companyId, assessmentId);
+        notice = `Invited, and emailed ${application.candidateEmail} their link. Their own task is being prepared.`;
+      } catch (e) {
+        notice = `Invited, but the email couldn't be sent (${e instanceof Error ? e.message : "unknown error"}). It shows on their dashboard.`;
+      }
+    }
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "Couldn't invite them — try again.", notice: null };
+  }
+  revalidatePath(`/roles/${roleId}`);
+  revalidatePath("/candidates");
+  revalidatePath(`/candidates/${applicationId}`);
+  revalidatePath("/dashboard");
+  return { error: null, notice };
 }

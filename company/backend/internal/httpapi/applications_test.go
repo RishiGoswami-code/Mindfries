@@ -58,8 +58,8 @@ func TestSetCandidateStageRejectsInvalidStage(t *testing.T) {
 	}
 }
 
-func TestValidStagesMatchesAllSixStages(t *testing.T) {
-	want := []string{"invited", "in_progress", "completed", "shortlisted", "rejected", "hired"}
+func TestValidStagesMatchesEveryStage(t *testing.T) {
+	want := []string{"applied", "invited", "in_progress", "completed", "shortlisted", "interviewing", "offered", "hired", "rejected", "declined", "withdrawn"}
 	if len(db.ValidStages) != len(want) {
 		t.Fatalf("len(ValidStages) = %d, want %d", len(db.ValidStages), len(want))
 	}
