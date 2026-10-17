@@ -37,73 +37,11 @@ export interface Assessment {
   taskStatus?: "pending" | "generating" | "ready" | "failed";
 }
 
-export interface Stat {
-  kind: AssessmentStatus | "practice";
-  label: string;
-  value: number;
-  hint: string;
-}
-
-/**
- * The counters, derived from the same list `AssessmentNotes` renders, so the
- * two can never disagree. `kind` ties each counter to the same state an
- * assessment can be in, so a counter and the assessments it counts share a
- * colour.
- *
- * "Practice runs" counts the practice runs the candidate has opened
- * (practice_runs) — that one happened is all that is kept about it.
- */
-export function deriveStats(items: Assessment[], practiceRuns = 0): Stat[] {
-  const count = (status: AssessmentStatus) => items.filter((a) => a.status === status).length;
-  const invited = count("invited");
-  const inProgress = count("in-progress");
-  const submitted = count("submitted");
-
-  return [
-    {
-      kind: "invited",
-      label: "Open invitations",
-      value: invited,
-      hint: invited === 0 ? "Nothing open right now" : `${invited} open right now`,
-    },
-    {
-      kind: "in-progress",
-      label: "In progress",
-      value: inProgress,
-      hint: inProgress === 0 ? "Nothing in progress" : "Resume from your assessments",
-    },
-    {
-      kind: "submitted",
-      label: "Submitted",
-      value: submitted,
-      hint: submitted === 0 ? "Nothing submitted yet" : submitted === 1 ? "Under review" : "All under review",
-    },
-    {
-      kind: "practice",
-      label: "Practice runs",
-      value: practiceRuns,
-      hint: practiceRuns === 0 ? "Try the workspace first" : "Never recorded or scored",
-    },
-  ];
-}
-
-export const resources: { title: string; body: string; href?: string; action?: "policies" }[] = [
-  {
-    title: "What the workspace records",
-    body: "Every signal captured during a session, and what a hiring team sees.",
-    action: "policies",
-  },
-  {
-    title: "Explaining your decisions",
-    body: "The reasoning prompts matter as much as the code. How to answer them well.",
-    href: "/practice",
-  },
-  {
-    title: "Before your first session",
-    body: "Camera, microphone and a five-minute practice run.",
-    href: "/practice",
-  },
-];
+/** Shown when the list couldn't be read â€” distinct from a real, empty list. */
+export const UNAVAILABLE = {
+  title: "Assessments unavailable",
+  body: "We couldn't load your assessments just now. Nothing is lost â€” try again in a moment.",
+};
 
 export const statusLabels: Record<AssessmentStatus, string> = {
   invited: "Invited",

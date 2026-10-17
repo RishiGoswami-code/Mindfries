@@ -1,12 +1,15 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { AlertTriangle, Loader2, Pencil, Sparkles, X } from "lucide-react";
+import { Loader2, Pencil, X } from "lucide-react";
 import clsx from "clsx";
 import { Button } from "@/components/ui/Button";
 import { saveIdentity } from "@/lib/profile/actions";
 import { usePreviewMode } from "./PreviewMode";
 import type { SavedIdentity } from "@/lib/profile/types";
+
+/** Dispatch on `window` to open the Edit profile form from anywhere on the profile page. */
+export const EDIT_PROFILE_EVENT = "mindfries:edit-profile";
 
 type FormState = { name: string; role: string; location: string; openTo: string[]; noticePeriod: string; bio: string };
 
@@ -33,6 +36,18 @@ export function EditProfileModal({ savedIdentity }: { savedIdentity: SavedIdenti
     setFieldError(null);
     setOpen(true);
   }
+
+  // The profile completion checklist's "Profile details" row opens this
+  // form from elsewhere on the page (CompletionSection).
+  const openRef = useRef(openModal);
+  useEffect(() => {
+    openRef.current = openModal;
+  });
+  useEffect(() => {
+    const onRequest = () => openRef.current();
+    window.addEventListener(EDIT_PROFILE_EVENT, onRequest);
+    return () => window.removeEventListener(EDIT_PROFILE_EVENT, onRequest);
+  }, []);
 
   useEffect(() => {
     if (open) firstFieldRef.current?.focus();
@@ -87,10 +102,14 @@ export function EditProfileModal({ savedIdentity }: { savedIdentity: SavedIdenti
 
   return (
     <>
-      <Button tone="ghost" size="sm" onClick={openModal} className="border border-[#B3CFE5]">
-        <Pencil size={13} />
+      <button
+        type="button"
+        onClick={openModal}
+        className="inline-flex h-[48px] items-center gap-3 rounded-2xl border border-white/90 bg-white/80 px-5 text-[15px] font-semibold text-[#1F1B4D] shadow-[0_8px_22px_-14px_rgba(76,58,160,0.5)] transition-colors hover:bg-white"
+      >
+        <Pencil size={18} strokeWidth={1.9} className="text-[#5B3BE0]" />
         Edit profile
-      </Button>
+      </button>
 
       {open && (
         <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-[#0A1931]/45 p-4 py-10 backdrop-blur-[2px]" onClick={() => setOpen(false)}>

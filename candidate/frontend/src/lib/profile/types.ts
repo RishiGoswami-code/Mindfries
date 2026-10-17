@@ -12,13 +12,18 @@ export interface ProfileLink {
   [key: string]: unknown;
 }
 
-/** The links JSONB column, keyed by platform. */
+/** The links JSONB column, keyed by platform. Read fields off it defensively — older rows don't carry every key. */
 export type ProfileLinks = Partial<Record<LinkPlatform | string, ProfileLink | null>>;
+
+/** The same column under the name the profile cards use (lib/profile/completion.ts and the job preferences). */
+export type StoredLinks = ProfileLinks;
 
 /**
  * The shape returned by `getProfile()` (lib/profile/actions.ts) —
  * exactly the columns selected from `candidate_users` plus the
- * redacted `links` object.
+ * redacted `links` object. The Supabase client is untyped, so this is
+ * the one place that shape is written down; the select there and this
+ * type have to move together.
  *
  * Every component that accepts a profile prop should use this type
  * instead of `any`.

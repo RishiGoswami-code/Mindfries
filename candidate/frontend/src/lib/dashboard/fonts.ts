@@ -1,20 +1,22 @@
-import { Caveat } from "next/font/google";
+import { Inter, Newsreader } from "next/font/google";
 
 /**
- * The handwriting on the sticky notes.
+ * The candidate portal's display serif — the greeting, page and card
+ * titles, the practice-run headline. Only ever at heading sizes; everything
+ * a candidate has to read quickly is in `ui` below.
  *
- * Caveat, because it stays legible at the sizes a dashboard needs — most
- * script faces turn into texture below about 20px. It's still only used for
- * what someone would actually scrawl on a note: a headline, a number, a
- * label. The small print on each note stays in the UI sans, because a
- * deadline you can't read at a glance isn't doing its job.
- *
- * Loaded as the variable font (no `weight` list): one file covers 500 and
- * 700 alike. Listing the two weights made Turbopack's production build fail
- * to resolve the font's file ("next/font/google queries have exactly one
+ * Loaded as the variable font (no `weight` list): one file covers every
+ * weight used. Listing weights made Turbopack's production build fail to
+ * resolve the font's file ("next/font/google queries have exactly one
  * entry"), though webpack and `next dev` accepted it.
  */
-export const hand = Caveat({
+export const display = Newsreader({
+  subsets: ["latin"],
+  display: "swap",
+});
+
+/** The candidate portal's UI sans: labels, counts, buttons, body copy. */
+export const ui = Inter({
   subsets: ["latin"],
   display: "swap",
 });

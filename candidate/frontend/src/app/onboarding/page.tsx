@@ -10,7 +10,7 @@ export const dynamic = "force-dynamic";
 
 /**
  * Server entry point for the onboarding wizard. Its one job: resolve
- * `?template=<id>` — set by src/app/dashboard/actions.ts's startAssessment
+ * `?template=<id>` — set by the Start link on an assessment (components/assessments/AssessmentItem.tsx)
  * when the candidate picked a real assessment — into that assessment's real
  * display details, then hand both down to the client-side step wizard.
  *

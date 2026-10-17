@@ -32,7 +32,9 @@ function formatWhen(iso: string): string {
  * It asks again when the tab comes back into view, so a tab left open
  * overnight isn't showing yesterday's list.
  */
-export function NotificationBell() {
+/** `large` is the dashboard's bigger, violet-dotted trigger; the menu is the same either way. */
+export function NotificationBell({ appearance = "default" }: { appearance?: "default" | "large" }) {
+  const large = appearance === "large";
   const { open, setOpen, ref } = useDismissablePanel<HTMLDivElement>();
   const [items, setItems] = useState<BellItem[]>([]);
 
@@ -79,11 +81,21 @@ export function NotificationBell() {
         aria-label="Notifications"
         aria-expanded={open}
         onClick={() => setOpen((v) => !v)}
-        className="relative rounded-lg p-2 text-[#4A7FA7] transition-colors hover:bg-[#B3CFE5]/30 hover:text-[#1A3D63]"
+        className={
+          large
+            ? "relative rounded-xl p-2 text-[#1B1840] transition-colors hover:bg-white/70"
+            : "relative rounded-lg p-2 text-[#4A7FA7] transition-colors hover:bg-[#B3CFE5]/30 hover:text-[#1A3D63]"
+        }
       >
-        <Bell size={17} />
+        <Bell size={large ? 23 : 17} strokeWidth={large ? 1.75 : 2} />
         {unreadCount > 0 && !open && (
-          <span className="absolute top-1.5 right-1.5 h-1.5 w-1.5 rounded-full bg-[#E06C75]" />
+          <span
+            className={
+              large
+                ? "absolute top-1.5 right-1.5 h-2 w-2 rounded-full bg-[#8B6CF6] ring-2 ring-[#F3F0FB]"
+                : "absolute top-1.5 right-1.5 h-1.5 w-1.5 rounded-full bg-[#E06C75]"
+            }
+          />
         )}
       </button>
 

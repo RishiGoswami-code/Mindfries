@@ -82,6 +82,15 @@ export function clear(ctx: CommandContext): CommandResult {
   return ok();
 }
 
+/** `true` and `false` do nothing but exit 0 and 1 — the usual way to test `&&`, `||` and loops. */
+export function trueCommand(): CommandResult {
+  return ok();
+}
+
+export function falseCommand(): CommandResult {
+  return { code: 1 };
+}
+
 export function whoami(ctx: CommandContext): CommandResult {
   return ok(`${ctx.session.env.USER ?? "candidate"}\n`);
 }
@@ -99,12 +108,12 @@ export function uname(ctx: CommandContext): CommandResult {
 export function help(): CommandResult {
   const sections = [
     "Files:      ls cd pwd cat touch mkdir rm mv cp find tree",
-    "Text:       echo grep sed head tail wc sort uniq cut tr diff",
+    "Text:       echo printf grep sed head tail wc sort uniq cut tr diff",
     "Run:        node/js <file>.js  ts-node/tsx <file>.ts  python/python3 <file>.py",
     "Packages:   pip install <pkg>   npm install <pkg>   (pip list, npm list)",
     "Git:        git init/add/commit/status/log/diff/branch/checkout",
     "Network:    curl <url>  wget <url>",
-    "Shell:      export FOO=bar, $FOO, alias, unalias, which, env, history, clear",
+    "Shell:      export FOO=bar, $FOO, alias, unalias, which, env, history, clear, true, false",
     "Operators:  |  >  >>  <  &&  ||  ;   globs (*.ts)   $? for last exit code",
     "",
     `All commands: ${commandNames().join(" ")}`,

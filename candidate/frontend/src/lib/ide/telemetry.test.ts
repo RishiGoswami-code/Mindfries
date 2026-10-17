@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach, type Mock } from 'vitest';
 import { TelemetryBuffer } from './telemetry';
 
 // Mock the global fetch
@@ -6,12 +6,12 @@ const originalFetch = global.fetch;
 
 describe('TelemetryBuffer', () => {
   let buffer: TelemetryBuffer;
-  let fetchMock: any;
+  let fetchMock: Mock;
 
   beforeEach(() => {
     vi.useFakeTimers();
     fetchMock = vi.fn();
-    global.fetch = fetchMock;
+    global.fetch = fetchMock as unknown as typeof fetch;
     buffer = new TelemetryBuffer('sess-123');
   });
 
@@ -45,7 +45,7 @@ describe('TelemetryBuffer', () => {
     expect(body.events[0].type).toBe('file_edit');
 
     // Queue should be empty after successful flush
-    // @ts-expect-error
+    // @ts-expect-error queue is private; read here to see what was buffered
     expect(buffer.queue.length).toBe(0);
   });
 
@@ -59,9 +59,9 @@ describe('TelemetryBuffer', () => {
     await buffer.flush();
 
     // Since the flush failed, the event should be prepended back to the queue
-    // @ts-expect-error
+    // @ts-expect-error queue is private; read here to see what was buffered
     expect(buffer.queue.length).toBe(1);
-    // @ts-expect-error
+    // @ts-expect-error queue is private; read here to see what was buffered
     expect(buffer.queue[0].type).toBe('file_edit');
   });
 
@@ -75,9 +75,9 @@ describe('TelemetryBuffer', () => {
     await buffer.flush();
 
     // Event should be restored
-    // @ts-expect-error
+    // @ts-expect-error queue is private; read here to see what was buffered
     expect(buffer.queue.length).toBe(1);
-    // @ts-expect-error
+    // @ts-expect-error queue is private; read here to see what was buffered
     expect(buffer.queue[0].type).toBe('terminal');
   });
 
@@ -101,7 +101,7 @@ describe('TelemetryBuffer', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
     
     // Queue should be empty after successful flush
-    // @ts-expect-error
+    // @ts-expect-error queue is private; read here to see what was buffered
     expect(buffer.queue.length).toBe(0);
   });
 
@@ -123,7 +123,7 @@ describe('TelemetryBuffer', () => {
     // but we can verify it was called.
     
     // Queue should be cleared
-    // @ts-expect-error
+    // @ts-expect-error queue is private; read here to see what was buffered
     expect(buffer.queue.length).toBe(0);
   });
 });

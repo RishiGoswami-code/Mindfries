@@ -54,7 +54,7 @@ export async function signIn(_prev: LoginState, form: FormData): Promise<LoginSt
 /**
  * Called from the account menu (a client component) as well as anywhere
  * server-side — Next allows a "use server" export to be imported directly
- * into client code, same as startAssessment already is from AssessmentWall.
+ * into client code.
  */
 export async function signOut(): Promise<void> {
   const jar = await cookies();
