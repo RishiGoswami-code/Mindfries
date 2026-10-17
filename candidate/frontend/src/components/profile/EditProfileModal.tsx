@@ -7,6 +7,9 @@ import { Button } from "@/components/ui/Button";
 import { saveIdentity } from "@/lib/profile/actions";
 import { usePreviewMode } from "./PreviewMode";
 
+/** Dispatch on `window` to open the Edit profile form from anywhere on the profile page. */
+export const EDIT_PROFILE_EVENT = "mindfries:edit-profile";
+
 type FormState = { name: string; role: string; location: string; openTo: string[]; noticePeriod: string; bio: string };
 
 /**
@@ -32,6 +35,18 @@ export function EditProfileModal({ savedIdentity }: { savedIdentity: FormState }
     setFieldError(null);
     setOpen(true);
   }
+
+  // The profile completion checklist's "Profile details" row opens this
+  // form from elsewhere on the page (CompletionSection).
+  const openRef = useRef(openModal);
+  useEffect(() => {
+    openRef.current = openModal;
+  });
+  useEffect(() => {
+    const onRequest = () => openRef.current();
+    window.addEventListener(EDIT_PROFILE_EVENT, onRequest);
+    return () => window.removeEventListener(EDIT_PROFILE_EVENT, onRequest);
+  }, []);
 
   useEffect(() => {
     if (open) firstFieldRef.current?.focus();
