@@ -45,6 +45,7 @@ type flagMoment struct {
 	what       string
 	kind       string
 	screenPath string // the screen still in proctor-snapshots, for the describer
+	eventID    int64  // the activity_event row, so a caption can be stored against it
 }
 
 // flagMoments parses the session's activity_flag events into moments, in
@@ -78,7 +79,7 @@ func flagMoments(events []db.ActivityEvent, startedAt time.Time) ([]flagMoment, 
 		if p.Kind == "face_missing" || p.Kind == "multiple_faces" {
 			camera = true
 		}
-		moments = append(moments, flagMoment{at: max(0, when.Sub(startedAt)), what: what, kind: p.Kind, screenPath: p.ScreenPath})
+		moments = append(moments, flagMoment{at: max(0, when.Sub(startedAt)), what: what, kind: p.Kind, screenPath: p.ScreenPath, eventID: e.ID})
 	}
 	return moments, camera
 }

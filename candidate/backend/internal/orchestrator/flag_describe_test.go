@@ -35,7 +35,7 @@ func TestDescribedFlagsNoteLive(t *testing.T) {
 		"screenPath": still,
 	})
 	events := []db.ActivityEvent{{EventType: "activity_flag", Payload: payload, OccurredAt: start.Add(2 * time.Minute)}}
-	note := o.describedFlagsNote(context.Background(), events, start,
+	note := o.describedFlagsNote(context.Background(), "test-session", events, start,
 		"A Python bug-fix task worked entirely in the workspace; no outside site was required.")
 	if note == "" {
 		t.Fatal("empty note")
