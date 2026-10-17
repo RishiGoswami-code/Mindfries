@@ -80,7 +80,31 @@ export interface CandidateProfile {
     readable: boolean;
   } | null;
   codeAccounts: ProfileCodeAccount[];
+  /** What they're looking for (job_preferences, migration 0022), or null when unset or not in this database. */
+  jobPreferences: ProfileJobPreferences | null;
+  /** Supporting documents they added (candidate_documents, 0022). Empty when none, or not in this database. */
+  documents: ProfileDocument[];
 }
+
+export interface ProfileJobPreferences {
+  roles: string[];
+  employment: string[];
+  locations: string[];
+  salary: { min: number; max: number; currency: string } | null;
+}
+
+export interface ProfileDocument {
+  id: string;
+  kind: "certificate" | "report" | "other";
+  title: string;
+  mimeType: string;
+  sizeBytes: number;
+  uploadedAt: string;
+  /** A link that works for an hour, or null if it couldn't be signed. */
+  url: string | null;
+}
+
+const DOCUMENTS_BUCKET = "candidate-documents";
 
 const LINK_URL: Record<ProfileLink["platform"], (v: string) => string> = {
   github: (v) => `https://github.com/${encodeURIComponent(v)}`,
@@ -163,6 +187,9 @@ export async function getCandidateProfile(candidateEmail: string): Promise<Candi
   ]);
 
   const parsed = r.resume_parsed as { skills?: string[]; years?: { from: number; to: number } } | null;
+  // Read apart from the profile row: they depend on migration 0022, and a
+  // select naming a column that isn't there fails the whole query.
+  const [jobPreferences, documents] = await Promise.all([readJobPreferences(c, r.id), readDocuments(c, r.id)]);
 
   return {
     name: r.name ?? "",
@@ -185,5 +212,46 @@ export async function getCandidateProfile(candidateEmail: string): Promise<Candi
         }
       : null,
     codeAccounts: (knowledge ?? []).map(toCodeAccount).filter((a): a is ProfileCodeAccount => a !== null),
+    jobPreferences,
+    documents,
   };
+}
+
+const strings = (v: unknown, max = 8): string[] =>
+  Array.isArray(v) ? v.filter((x): x is string => typeof x === "string" && x.trim() !== "").slice(0, max).map((x) => x.slice(0, 60)) : [];
+
+async function readJobPreferences(c: NonNullable<ReturnType<typeof db>>, candidateId: string): Promise<ProfileJobPreferences | null> {
+  const { data, error } = await c.from("candidate_users").select("job_preferences").eq("id", candidateId).maybeSingle();
+  const p = !error ? (data as any)?.job_preferences : null;
+  if (!p || typeof p !== "object") return null;
+  const s = p.salary;
+  const salary =
+    s && Number.isInteger(s.min) && Number.isInteger(s.max) && s.min <= s.max
+      ? { min: s.min as number, max: s.max as number, currency: typeof s.currency === "string" ? s.currency.slice(0, 3) : "USD" }
+      : null;
+  const prefs = { roles: strings(p.roles), employment: strings(p.employment), locations: strings(p.locations), salary };
+  return prefs.roles.length || prefs.employment.length || prefs.locations.length || prefs.salary ? prefs : null;
+}
+
+async function readDocuments(c: NonNullable<ReturnType<typeof db>>, candidateId: string): Promise<ProfileDocument[]> {
+  const { data, error } = await c
+    .from("candidate_documents")
+    .select("id, kind, title, path, mime_type, size_bytes, uploaded_at")
+    .eq("candidate_id", candidateId)
+    .order("uploaded_at", { ascending: false });
+  if (error || !data) return [];
+  return Promise.all(
+    (data as any[]).map(async (d) => {
+      const { data: signed } = await c.storage.from(DOCUMENTS_BUCKET).createSignedUrl(d.path, 3600);
+      return {
+        id: d.id,
+        kind: d.kind,
+        title: d.title,
+        mimeType: d.mime_type,
+        sizeBytes: d.size_bytes,
+        uploadedAt: d.uploaded_at,
+        url: signed?.signedUrl ?? null,
+      };
+    })
+  );
 }

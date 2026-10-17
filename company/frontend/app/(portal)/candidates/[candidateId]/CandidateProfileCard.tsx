@@ -4,12 +4,24 @@ import type { CandidateProfile } from "@/lib/candidate-profile";
 
 const n = (count: number, one: string, many = `${one}s`) => `${count} ${count === 1 ? one : many}`;
 
+const KIND_LABEL = { certificate: "Certificate", report: "Project report", other: "Document" } as const;
+const kb = (bytes: number) => (bytes < 1024 * 1024 ? `${Math.round(bytes / 1024)} KB` : `${(bytes / (1024 * 1024)).toFixed(1)} MB`);
+/** The currency code came from the candidate's side; a malformed one makes Intl throw, so fall back to plain digits. */
+const money = (amount: number, currency: string) => {
+  try {
+    return new Intl.NumberFormat("en", { style: "currency", currency, maximumFractionDigits: 0 }).format(amount);
+  } catch {
+    return `${amount.toLocaleString("en")} ${currency}`;
+  }
+};
+
 /**
  * The candidate's profile, beside their report.
  *
  * Three kinds of information, kept apart and labelled, because a reviewer
  * should weigh them differently: what the candidate wrote, what was read
- * from their resume, and what their linked code accounts show publicly.
+ * from their resume, and what their linked code accounts show publicly —
+ * plus the work they say they're looking for, and documents they added.
  * None of it is evidence from the session — that is the report below.
  */
 export function CandidateProfileCard({ profile }: { profile: CandidateProfile | null }) {
@@ -112,6 +124,66 @@ export function CandidateProfileCard({ profile }: { profile: CandidateProfile | 
           </>
         )}
       </div>
+
+      {profile.jobPreferences && (
+        <div className="p-5">
+          <div className="eyebrow">Looking for</div>
+          <dl className="mt-2 grid gap-x-6 gap-y-1.5 text-sm sm:grid-cols-[auto_1fr]">
+            {profile.jobPreferences.roles.length > 0 && (
+              <>
+                <dt className="text-faint">Roles</dt>
+                <dd>{profile.jobPreferences.roles.join(", ")}</dd>
+              </>
+            )}
+            {profile.jobPreferences.employment.length > 0 && (
+              <>
+                <dt className="text-faint">Employment</dt>
+                <dd>{profile.jobPreferences.employment.join(", ")}</dd>
+              </>
+            )}
+            {profile.jobPreferences.locations.length > 0 && (
+              <>
+                <dt className="text-faint">Locations</dt>
+                <dd>{profile.jobPreferences.locations.join(", ")}</dd>
+              </>
+            )}
+            {profile.jobPreferences.salary && (
+              <>
+                <dt className="text-faint">Salary</dt>
+                <dd>
+                  {money(profile.jobPreferences.salary.min, profile.jobPreferences.salary.currency)} –{" "}
+                  {money(profile.jobPreferences.salary.max, profile.jobPreferences.salary.currency)} a year
+                </dd>
+              </>
+            )}
+          </dl>
+          <p className="mt-2 text-xs text-faint">Written by the candidate. Work mode is in the profile above.</p>
+        </div>
+      )}
+
+      {profile.documents.length > 0 && (
+        <div className="p-5">
+          <div className="eyebrow">Supporting documents</div>
+          <ul className="mt-2 space-y-1.5 text-sm">
+            {profile.documents.map((d) => (
+              <li key={d.id}>
+                {d.url ? (
+                  <a href={d.url} target="_blank" rel="noreferrer" className="font-semibold underline underline-offset-2">
+                    {d.title}
+                  </a>
+                ) : (
+                  <span className="font-semibold">{d.title}</span>
+                )}
+                <span className="text-faint">
+                  {" "}
+                  · {KIND_LABEL[d.kind] ?? "Document"} · {kb(d.sizeBytes)} · added {fmtDate(d.uploadedAt)}
+                </span>
+              </li>
+            ))}
+          </ul>
+          <p className="mt-2 text-xs text-faint">Uploaded by the candidate and not checked by Mindfries. Links work for an hour.</p>
+        </div>
+      )}
 
       {profile.codeAccounts.map((a) => (
         <div key={a.source} className="p-5">
