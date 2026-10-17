@@ -38,6 +38,19 @@ export const RECORDED_SIGNALS = [
   },
 ];
 
+/**
+ * The same thing in six tiles, for the consent step: each says what is kept
+ * and how, in a few words. The full sentence is WHAT_IS_RECORDED.
+ */
+export const RECORDED_SUMMARY = [
+  { key: "screen", label: "Screen", detail: "Stills when it changes" },
+  { key: "camera", label: "Camera", detail: "A still every half minute" },
+  { key: "microphone", label: "Microphone", detail: "A short clip only on voices or noise" },
+  { key: "code", label: "Code activity", detail: "Every edit and file opened" },
+  { key: "terminal", label: "Terminal", detail: "Commands and their output" },
+  { key: "behaviour", label: "Workspace behaviour", detail: "Focus, pastes and flagged moments" },
+];
+
 export const WHAT_IS_RECORDED = {
   title: "What is recorded during a session",
   body: "Your camera, your screen, your microphone, code activity, and workspace behaviour are part of a session. None of it is continuous video or audio: the camera is kept as a still every half minute; your entire screen is shared and kept as a still when it changes, every few minutes, and at flagged moments; the microphone is listened to in your browser, and only when voices or a loud noise last a few seconds is a short clip kept. Moments such as leaving the workspace, leaving fullscreen, a large paste from elsewhere, a second display or window, nobody or more than one person on camera, or a developer-tools shortcut are flagged as they happen, with the camera, screen and sound from that moment, for the hiring team to look at — a flag is not a decision. Nothing is recorded until you click Enter Workspace on the final onboarding step.",
@@ -57,6 +70,8 @@ export const EVIDENCE_POINTS = [
 export const HOW_EVIDENCE_IS_USED = {
   title: "How evidence is used",
   body: "Mindfries doesn't score your final code. Instead, it produces an evidence report for the hiring team that describes how you approached the problem — what you explored, where you debugged, how you used tests, and how you explained your decisions. The hiring team makes the final call.",
+  /** The consent step's shorter form. */
+  short: "We create an evidence report showing how you approached the problem, debugged, used tests and explained your decisions. Your code isn't simply scored — the hiring team makes the call.",
 };
 
 export const RETENTION = {
@@ -73,17 +88,20 @@ export const RETENTION = {
 export const TOOL_RULES = {
   title: "Allowed tools",
   body: "Work the way you normally would, with the resources an engineer reaches for — but the thinking has to be yours.",
+  /** `label` is the policy window's line; `short` and `example` are the consent step's tile. */
   allowed: [
-    { key: "docs", label: "Documentation and references" },
-    { key: "cloud", label: "Cloud platforms (e.g. Supabase, Firebase)" },
-    { key: "apis", label: "APIs and external services" },
-    { key: "devtools", label: "Non-AI developer tools" },
-    { key: "packages", label: "Package managers (e.g. npm, pip)" },
-    { key: "assistant", label: "The workspace's own AI assistant, when the company has turned it on" },
+    { key: "docs", label: "Documentation and references", short: "Documentation", example: "" },
+    { key: "cloud", label: "Cloud platforms (e.g. Supabase, Firebase)", short: "Cloud platforms", example: "e.g. Supabase, Firebase" },
+    { key: "apis", label: "APIs and external services", short: "APIs & services", example: "e.g. Stripe, OpenAI API" },
+    { key: "devtools", label: "Non-AI developer tools", short: "Non-AI dev tools", example: "e.g. Docker, Postman, git" },
+    { key: "packages", label: "Package managers (e.g. npm, pip)", short: "Package managers", example: "e.g. npm, pip" },
+    { key: "assistant", label: "The workspace's own AI assistant, when the company has turned it on", short: "Workspace AI assistant", example: "if the company turned it on" },
   ],
   notAllowed: [
-    { key: "ai", label: "Other AI tools (e.g. ChatGPT, Claude, Copilot)" },
-    { key: "people", label: "Help from other people" },
+    { key: "ai", label: "AI coding assistants (e.g. ChatGPT, Claude, Copilot, Cursor)", short: "AI coding assistants", example: "e.g. ChatGPT, Claude, Copilot, Cursor" },
+    { key: "people", label: "Help from other people", short: "Getting help from other people", example: "e.g. friends, colleagues" },
+    { key: "paste", label: "Copying large code blocks from elsewhere", short: "Copying large code blocks from elsewhere", example: "e.g. blog posts, GitHub, templates" },
+    { key: "external", label: "AI tools on any other platform", short: "Using AI tools on any external platform", example: "e.g. in a browser, an IDE or another app" },
   ],
   note: "Leaving the workspace, large pastes from elsewhere and second windows or displays are flagged for the hiring team to look at. A flag is not a decision.",
 };

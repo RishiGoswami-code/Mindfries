@@ -8,6 +8,7 @@ import {
   Box,
   Bug,
   CheckCircle2,
+  ClipboardPaste,
   Clock,
   Cloud,
   Database,
@@ -66,6 +67,8 @@ const TOOL_ICONS: Record<string, LucideIcon> = {
   ai: Ban,
   people: Users,
 };
+
+const NOT_ALLOWED_ICONS: Record<string, LucideIcon> = { ai: Bot, people: Users, paste: ClipboardPaste, external: Ban };
 
 /**
  * The privacy and recording policy: what a session records, how it's used,
@@ -181,7 +184,7 @@ export function PoliciesModal({ onClose }: { onClose: () => void }) {
               </p>
               <ul className="space-y-2.5 px-4 py-3.5">
                 {TOOL_RULES.notAllowed.map((t) => {
-                  const Icon = t.key === "people" ? Users : Bot;
+                  const Icon = NOT_ALLOWED_ICONS[t.key] ?? Ban;
                   return (
                     <li key={t.key} className="flex items-start gap-3 text-[14px] text-[#2A2654]">
                       <Icon size={19} strokeWidth={1.7} className="mt-px shrink-0 text-[#4C4874]" />

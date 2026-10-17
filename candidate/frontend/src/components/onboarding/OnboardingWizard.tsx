@@ -6,6 +6,9 @@ import { ConsentStep } from "@/components/onboarding/ConsentStep";
 import { DeviceCheckStep } from "@/components/onboarding/DeviceCheckStep";
 import { LobbyStep, type LobbyAssessment } from "@/components/onboarding/LobbyStep";
 import { enterWorkspace } from "@/app/onboarding/actions";
+import { BrandMark } from "@/components/dashboard/CandidateSidebar";
+import { ui } from "@/lib/dashboard/fonts";
+import clsx from "clsx";
 
 interface OnboardingWizardProps {
   templateId: string | null;
@@ -62,32 +65,26 @@ export function OnboardingWizard({ templateId, assessment }: OnboardingWizardPro
   }
 
   return (
-    <div className="min-h-screen bg-[#F6FAFD]">
+    <div className={clsx(ui.className, "min-h-screen bg-[#F7F8FC]")}>
       {/* Minimal top bar — no full nav, keeps focus on the flow */}
-      <header className="border-b border-[#B3CFE5] bg-[#F6FAFD]/85 backdrop-blur">
-        <div className="mx-auto flex h-14 max-w-2xl items-center gap-3 px-5">
-          {/* eslint-disable-next-line @next/next/no-img-element -- tiny static local SVG */}
-          <img src="/mindfries-logo.svg" alt="" width={22} height={22} />
-          <span className="text-[14px] font-semibold tracking-tight text-[#0A1931]">Mindfries</span>
-          <span className="ml-auto text-xs text-[#4A7FA7]">Step {step} of 3</span>
+      <header className="border-b border-[#E6E9F2] bg-white/85 backdrop-blur">
+        <div className="mx-auto flex h-[72px] max-w-[1560px] items-center gap-3 px-5 sm:px-10">
+          <BrandMark size={32} />
+          <span className="text-[21px] font-bold tracking-tight text-[#0B1033]">Mindfries</span>
+          <span className="ml-auto text-[14px] text-[#5B6385] sm:text-[15px]">
+            Step {step} of 3
+          </span>
+          <div className="hidden items-center gap-2 sm:flex" aria-hidden>
+            {([1, 2, 3] as const).map((n) => (
+              <span key={n} className={clsx("h-1.5 w-16 rounded-full transition-colors duration-300 md:w-28", step >= n ? "bg-[#3D5AF1]" : "bg-[#E1E5EF]")} />
+            ))}
+          </div>
         </div>
       </header>
 
-      {/* Step progress dots */}
-      <div className="mx-auto flex max-w-2xl items-center gap-2 px-5 pt-6">
-        {([1, 2, 3] as const).map((n) => (
-          <div
-            key={n}
-            className="h-1.5 flex-1 rounded-full transition-colors duration-300"
-            style={{
-              backgroundColor: step >= n ? "#1A3D63" : "#B3CFE5",
-            }}
-          />
-        ))}
-      </div>
-
       {/* Active step */}
-      <main className="mx-auto max-w-2xl px-5 py-8">
+      {/* The consent step is laid out wide; the device check and lobby keep their narrow column. */}
+      <main className={clsx("mx-auto px-5 py-8 sm:px-10", step === 1 ? "max-w-[1560px] sm:py-12" : "max-w-2xl")}>
         {step === 1 && <ConsentStep onContinue={() => setStep(2)} />}
         {step === 2 && <DeviceCheckStep onBack={() => setStep(1)} onContinue={() => setStep(3)} />}
         {step === 3 && (
