@@ -2,10 +2,11 @@
 
 import { useState, useTransition } from "react";
 import Link from "next/link";
-import { LogOut, ShieldCheck, User } from "lucide-react";
+import { ChevronDown, LogOut, ShieldCheck, User } from "lucide-react";
 import { useDismissablePanel } from "@/lib/useDismissablePanel";
 import { signOut as endSession, signOutEverywhere } from "@/app/login/actions";
 import { PoliciesModal } from "./PoliciesModal";
+import { display } from "@/lib/dashboard/fonts";
 import type { CandidateProfile } from "@/lib/profile/types";
 
 /**
@@ -23,9 +24,11 @@ import type { CandidateProfile } from "@/lib/profile/types";
 interface AccountMenuProps {
   sessionName?: string;
   profile?: CandidateProfile | null;
+  /** `large` is the dashboard's trigger: a bigger avatar with a chevron. The menu itself doesn't change. */
+  appearance?: "default" | "large";
 }
 
-export function AccountMenu({ sessionName, profile }: AccountMenuProps) {
+export function AccountMenu({ sessionName, profile, appearance = "default" }: AccountMenuProps) {
   const { open, setOpen, ref } = useDismissablePanel<HTMLDivElement>();
   
   const identity = profile?.profile_updated_at ? {
@@ -69,9 +72,22 @@ export function AccountMenu({ sessionName, profile }: AccountMenuProps) {
           aria-label="Your account"
           aria-expanded={open}
           onClick={() => setOpen((v) => !v)}
-          className="flex h-9 w-9 items-center justify-center rounded-full bg-[#1A3D63] text-[13px] font-semibold text-[#F6FAFD] transition-opacity hover:opacity-90"
+          className={
+            appearance === "large"
+              ? "flex items-center gap-3 rounded-full transition-opacity hover:opacity-90"
+              : "flex h-9 w-9 items-center justify-center rounded-full bg-[#1A3D63] text-[13px] font-semibold text-[#F6FAFD] transition-opacity hover:opacity-90"
+          }
         >
-          {identity.name.trim().charAt(0).toUpperCase() || "?"}
+          {appearance === "large" ? (
+            <>
+              <span className={`${display.className} flex h-[46px] w-[46px] items-center justify-center rounded-full bg-[#1F1B4D] text-[21px] text-white shadow-[0_6px_16px_-6px_rgba(31,27,77,0.6)]`}>
+                {identity.name.trim().charAt(0).toUpperCase() || "?"}
+              </span>
+              <ChevronDown size={16} strokeWidth={2} className={`text-[#1B1840] transition-transform ${open ? "rotate-180" : ""}`} />
+            </>
+          ) : (
+            identity.name.trim().charAt(0).toUpperCase() || "?"
+          )}
         </button>
 
         {open && (

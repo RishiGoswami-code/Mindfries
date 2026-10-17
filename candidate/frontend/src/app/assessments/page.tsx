@@ -1,10 +1,10 @@
 import type { Metadata } from "next";
 import { DashboardNav } from "@/components/dashboard/DashboardNav";
 import { AssessmentWall } from "@/components/assessments/AssessmentWall";
-import { UNAVAILABLE } from "@/components/dashboard/AssessmentNotes";
 import { StatusTabs } from "@/components/assessments/StatusTabs";
 import {
   ASSESSMENT_STATUSES,
+  UNAVAILABLE,
   sortByAttention,
   statusLabels,
   type AssessmentStatus,
@@ -30,9 +30,12 @@ export const dynamic = "force-dynamic";
 export default async function AssessmentsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ status?: string }>;
+  searchParams: Promise<{ status?: string; q?: string }>;
 }) {
-  const { status } = await searchParams;
+  const { status, q } = await searchParams;
+  // The dashboard's search box lands here: a case-insensitive match on the
+  // role, company, location or tags of the candidate's own assessments.
+  const query = typeof q === "string" ? q.trim().slice(0, 100) : "";
   const [items, session] = await Promise.all([listAssessmentsOrUndefined(), currentCandidate()]);
   const all = sortByAttention(items ?? []);
 
@@ -41,7 +44,10 @@ export default async function AssessmentsPage({
   ) as Record<AssessmentStatus, number>;
 
   const active = status && ASSESSMENT_STATUSES.includes(status as AssessmentStatus) ? (status as AssessmentStatus) : undefined;
-  const filtered = active ? all.filter((a) => a.status === active) : all;
+  const needle = query.toLowerCase();
+  const matches = (a: (typeof all)[number]) =>
+    !needle || [a.role, a.company, a.location, ...a.tags].some((field) => field?.toLowerCase().includes(needle));
+  const filtered = all.filter((a) => (!active || a.status === active) && matches(a));
 
   return (
     <div className="min-h-full flex-1 bg-[#F6FAFD]">
@@ -54,7 +60,16 @@ export default async function AssessmentsPage({
               Assessments
             </h1>
             <p className="mt-1.5 text-sm text-[#4A7FA7]">
-              Every invitation, session and result, in one place.
+              {query ? (
+                <>
+                  Results for “{query}” ·{" "}
+                  <a href={active ? `/assessments?status=${active}` : "/assessments"} className="underline underline-offset-2 hover:text-[#1A3D63]">
+                    clear search
+                  </a>
+                </>
+              ) : (
+                "Every invitation, session and result, in one place."
+              )}
             </p>
           </div>
         </div>
@@ -64,8 +79,12 @@ export default async function AssessmentsPage({
         <div className="mt-8">
           <AssessmentWall
             items={filtered}
-            emptyTitle={!items ? UNAVAILABLE.title : active ? `No ${statusLabels[active].toLowerCase()} assessments` : undefined}
-            emptyBody={!items ? UNAVAILABLE.body : active ? "Nothing here right now — check back later." : undefined}
+            emptyTitle={
+              !items ? UNAVAILABLE.title : query ? `Nothing matches “${query}”` : active ? `No ${statusLabels[active].toLowerCase()} assessments` : undefined
+            }
+            emptyBody={
+              !items ? UNAVAILABLE.body : query ? "Try a role or a company name." : active ? "Nothing here right now — check back later." : undefined
+            }
           />
         </div>
       </main>

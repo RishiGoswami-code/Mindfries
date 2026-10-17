@@ -14,7 +14,7 @@ import { InvitationAnswer } from "./InvitationAnswer";
 
 /**
  * The note-wall grid, shared by the dashboard's preview and the full
- * Assessments page — moved out of AssessmentNotes so both render assessments
+ * Assessments page — moved out of the old dashboard notes so both render assessments
  * exactly the same way and share one Start implementation rather than two
  * that could drift apart.
  *

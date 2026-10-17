@@ -5,7 +5,7 @@ import type { Assessment } from "@/lib/dashboard/data";
  * What this candidate's evidence adds up to so far — the profile page's
  * answer to "why should this be here at all", given the product's whole
  * differentiator is evidence over a bare score (PRD's framing, and the same
- * one SideRail's "What gets recorded" card leads with on the dashboard).
+ * one RecordedPanel ("What gets recorded") leads with on the dashboard).
  *
  * Every number is counted from the candidate's own real assessments — the
  * same list the dashboard renders — so a brand-new account reads 0 across
