@@ -18,6 +18,12 @@ type Usage struct {
 	// CompletionTokens includes any reasoning tokens — they're billed as output.
 	PromptTokens     int `json:"promptTokens"`
 	CompletionTokens int `json:"completionTokens"`
+	// CachedTokens is how many of PromptTokens were served from a context
+	// cache at a discount (Gemini's cachedContentTokenCount / OpenRouter's
+	// cached prompt tokens). It is already included in PromptTokens — it's
+	// surfaced on its own so a session's cache-hit rate is visible, which is
+	// what tells us whether prefix caching is actually saving anything.
+	CachedTokens int `json:"cachedTokens"`
 	// CostUSD is the charge for this call in US dollars, as billed.
 	CostUSD float64 `json:"costUsd"`
 }

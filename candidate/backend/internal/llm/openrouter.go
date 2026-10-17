@@ -109,9 +109,12 @@ type chatChoice struct {
 type chatResponse struct {
 	Choices []chatChoice `json:"choices"`
 	Usage   *struct {
-		PromptTokens     int     `json:"prompt_tokens"`
-		CompletionTokens int     `json:"completion_tokens"`
-		Cost             float64 `json:"cost"`
+		PromptTokens        int     `json:"prompt_tokens"`
+		CompletionTokens    int     `json:"completion_tokens"`
+		Cost                float64 `json:"cost"`
+		PromptTokensDetails *struct {
+			CachedTokens int `json:"cached_tokens"`
+		} `json:"prompt_tokens_details,omitempty"`
 	} `json:"usage,omitempty"`
 	Error *struct {
 		Message string `json:"message"`
@@ -187,10 +190,14 @@ func (c *OpenRouterClient) complete(ctx context.Context, model string, messages 
 	}
 	if c.OnUsage != nil && out.Usage != nil {
 		agent, sessionID := tagsFrom(ctx)
-		c.OnUsage(ctx, Usage{
+		u := Usage{
 			Agent: agent, SessionID: sessionID, Model: model,
 			PromptTokens: out.Usage.PromptTokens, CompletionTokens: out.Usage.CompletionTokens, CostUSD: out.Usage.Cost,
-		})
+		}
+		if out.Usage.PromptTokensDetails != nil {
+			u.CachedTokens = out.Usage.PromptTokensDetails.CachedTokens
+		}
+		c.OnUsage(ctx, u)
 	}
 	content := out.Choices[0].Message.Content
 	if out.Choices[0].FinishReason == "length" {

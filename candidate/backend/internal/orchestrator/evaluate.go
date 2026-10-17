@@ -441,7 +441,8 @@ func clipMiddle(text string, max int) string {
 // cancelled a moment later shouldn't lose the record of it.
 func (o *Orchestrator) recordUsage(_ context.Context, u llm.Usage) {
 	slog.Info("llm usage", "agent", u.Agent, "model", u.Model, "session", u.SessionID,
-		"prompt_tokens", u.PromptTokens, "completion_tokens", u.CompletionTokens, "cost_usd", math.Round(u.CostUSD*1e6)/1e6)
+		"prompt_tokens", u.PromptTokens, "completion_tokens", u.CompletionTokens,
+		"cached_tokens", u.CachedTokens, "cost_usd", math.Round(u.CostUSD*1e6)/1e6)
 	if u.SessionID == "" || o.DB == nil {
 		return
 	}
