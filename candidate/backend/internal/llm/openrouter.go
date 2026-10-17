@@ -81,6 +81,16 @@ func (c *OpenRouterClient) SetOnUsage(fn func(ctx context.Context, usage Usage))
 type ChatMessage struct {
 	Role    string `json:"role"` // "system" | "user" | "assistant"
 	Content string `json:"content"`
+	// Images is optional vision input, carried on a user message. Only the
+	// Gemini client reads it (buildGeminiRequest); it is not serialised into
+	// the OpenRouter request, so OpenRouter calls stay text-only for now.
+	Images []ImagePart `json:"-"`
+}
+
+// ImagePart is one inline image for a vision-capable model.
+type ImagePart struct {
+	MimeType string // e.g. "image/png", "image/jpeg"
+	Data     string // base64-encoded image bytes
 }
 
 type chatRequest struct {

@@ -402,7 +402,7 @@ export function IdeShell({ sessionId, candidateName, taskBrief, starterFiles, as
   }, [proctored, screen.stream, stillSink]);
   useEffect(() => {
     if (!proctored || !camera.stream) return;
-    const taker = stillTaker(camera.stream, { width: 320, quality: 0.6 });
+    const taker = stillTaker(camera.stream, { width: 640, quality: 0.6 });
     cameraStillsRef.current = taker;
     return () => {
       taker.stop();

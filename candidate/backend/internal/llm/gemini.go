@@ -69,8 +69,15 @@ func (c *GeminiClient) Configured() bool { return c.apiKey != "" }
 func (c *GeminiClient) SetOnUsage(fn func(ctx context.Context, usage Usage)) { c.onUsage = fn }
 
 type geminiPart struct {
-	Text    string `json:"text,omitempty"`
-	Thought bool   `json:"thought,omitempty"`
+	Text       string            `json:"text,omitempty"`
+	Thought    bool              `json:"thought,omitempty"`
+	InlineData *geminiInlineData `json:"inlineData,omitempty"`
+}
+
+// geminiInlineData is an image carried in a request part, for vision calls.
+type geminiInlineData struct {
+	MimeType string `json:"mimeType"`
+	Data     string `json:"data"` // base64-encoded image bytes
 }
 
 type geminiContent struct {
@@ -154,7 +161,11 @@ func buildGeminiRequest(messages []ChatMessage, maxTokens int, quick bool) gemin
 		case "assistant":
 			req.Contents = append(req.Contents, geminiContent{Role: "model", Parts: []geminiPart{{Text: m.Content}}})
 		default:
-			req.Contents = append(req.Contents, geminiContent{Role: "user", Parts: []geminiPart{{Text: m.Content}}})
+			parts := []geminiPart{{Text: m.Content}}
+			for _, img := range m.Images {
+				parts = append(parts, geminiPart{InlineData: &geminiInlineData{MimeType: img.MimeType, Data: img.Data}})
+			}
+			req.Contents = append(req.Contents, geminiContent{Role: "user", Parts: parts})
 		}
 	}
 	if len(system) > 0 {

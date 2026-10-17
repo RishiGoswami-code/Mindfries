@@ -151,6 +151,10 @@ const (
 	// following it.
 	notableAbsence  = 60 * time.Second
 	afterAbsenceGap = 20 * time.Second
+	// How soon after a large paste a sudden all-green test run counts as
+	// following it — a paste that turns a failing suite green is the shape of
+	// a pasted solution, though it can also be the candidate's own fix.
+	afterPasteTestGap = 120 * time.Second
 )
 
 type pasteEvent struct {
@@ -181,6 +185,17 @@ func provenanceSignals(events []db.ActivityEvent) string {
 	var longest time.Duration
 	var large []string
 	externalChars, afterAbsence, seen := 0, 0, 0
+	// When tests came back all-green — a sudden pass just after a large paste
+	// is the shape of a pasted solution.
+	var passTimes []time.Time
+	for _, e := range events {
+		if e.EventType == eventTestRun {
+			var tr TestRun
+			if json.Unmarshal(e.Payload, &tr) == nil && tr.Parsed && tr.Failed == 0 && tr.Passed > 0 {
+				passTimes = append(passTimes, e.OccurredAt)
+			}
+		}
+	}
 
 	for _, e := range events {
 		switch e.EventType {
@@ -219,6 +234,12 @@ func provenanceSignals(events []db.ActivityEvent) string {
 				if gap := e.OccurredAt.Sub(a.end); gap >= 0 && gap <= afterAbsenceGap {
 					note += fmt.Sprintf(", %d seconds after returning from %s away", int(gap.Seconds()), a.dur.Round(time.Second))
 					afterAbsence++
+					break
+				}
+			}
+			for _, pt := range passTimes {
+				if gap := pt.Sub(e.OccurredAt); gap >= 0 && gap <= afterPasteTestGap {
+					note += fmt.Sprintf(", and the tests passed %d seconds later", int(gap.Seconds()))
 					break
 				}
 			}

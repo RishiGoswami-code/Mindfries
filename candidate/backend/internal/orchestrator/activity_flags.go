@@ -39,24 +39,28 @@ var flagWords = map[string]string{
 	"second_window":        "Assessment open in a second window",
 }
 
-// activityFlagsNote is the report's list of flagged moments, or "" when
-// there were none.
-func activityFlagsNote(events []db.ActivityEvent, startedAt time.Time) string {
-	type moment struct {
-		at   time.Duration
-		what string
-	}
-	var moments []moment
-	counts := map[string]int{}
+// flagMoment is one flagged moment, parsed from an activity_flag event.
+type flagMoment struct {
+	at         time.Duration
+	what       string
+	kind       string
+	screenPath string // the screen still in proctor-snapshots, for the describer
+}
+
+// flagMoments parses the session's activity_flag events into moments, in
+// order, and reports whether any came from the camera (the least reliable).
+func flagMoments(events []db.ActivityEvent, startedAt time.Time) ([]flagMoment, bool) {
+	var moments []flagMoment
 	camera := false
 	for _, e := range events {
 		if e.EventType != eventActivityFlag {
 			continue
 		}
 		var p struct {
-			Kind   string         `json:"kind"`
-			At     string         `json:"at"`
-			Detail map[string]any `json:"detail"`
+			Kind       string         `json:"kind"`
+			At         string         `json:"at"`
+			Detail     map[string]any `json:"detail"`
+			ScreenPath string         `json:"screenPath"`
 		}
 		if json.Unmarshal(e.Payload, &p) != nil || flagWords[p.Kind] == "" {
 			continue
@@ -74,9 +78,22 @@ func activityFlagsNote(events []db.ActivityEvent, startedAt time.Time) string {
 		if p.Kind == "face_missing" || p.Kind == "multiple_faces" {
 			camera = true
 		}
-		counts[p.Kind]++
-		moments = append(moments, moment{at: max(0, when.Sub(startedAt)), what: what})
+		moments = append(moments, flagMoment{at: max(0, when.Sub(startedAt)), what: what, kind: p.Kind, screenPath: p.ScreenPath})
 	}
+	return moments, camera
+}
+
+// activityFlagsNote is the report's list of flagged moments, or "" when there
+// were none.
+func activityFlagsNote(events []db.ActivityEvent, startedAt time.Time) string {
+	moments, camera := flagMoments(events, startedAt)
+	return formatFlagMoments(moments, camera, nil)
+}
+
+// formatFlagMoments renders the moments. captions, when non-nil, maps a
+// moment's index to a one-line description of what its screen still shows,
+// appended to that moment's line — "on screen: an AI chat assistant is open".
+func formatFlagMoments(moments []flagMoment, camera bool, captions map[int]string) string {
 	if len(moments) == 0 {
 		return ""
 	}
@@ -87,7 +104,11 @@ func activityFlagsNote(events []db.ActivityEvent, startedAt time.Time) string {
 			fmt.Fprintf(&b, "- … and %d more\n", len(moments)-25)
 			break
 		}
-		fmt.Fprintf(&b, "- %02d:%02d — %s\n", int(m.at.Minutes()), int(m.at.Seconds())%60, m.what)
+		fmt.Fprintf(&b, "- %02d:%02d — %s", int(m.at.Minutes()), int(m.at.Seconds())%60, m.what)
+		if c := captions[i]; c != "" {
+			fmt.Fprintf(&b, " — on screen: %s", c)
+		}
+		b.WriteString("\n")
 	}
 	b.WriteString("\nThese are prompts to look, not findings. Leaving the workspace can be reading documentation; voices can be the candidate thinking aloud.")
 	if camera {
