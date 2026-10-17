@@ -1,7 +1,8 @@
 import { notFound } from "next/navigation";
 import { currentCompanyUser } from "@/lib/auth/company-users";
 import { can } from "@/lib/auth/permissions";
-import { getApplicationForCompany, getCandidateReport, getInvitationResponse } from "@/lib/db";
+import { getApplicationForCompany, getCandidateReport, getInvitationResponse, getJobRole } from "@/lib/db";
+import { listApplicationEmails, listInterviews } from "@/lib/hiring";
 import { getCandidateProfile } from "@/lib/candidate-profile";
 import { EmptyState, PageHeader, Pill } from "@/components/ui";
 import { fmtDate, recommendationLabel, sessionStatusTone, stageLabel, stageTone } from "@/lib/format";
@@ -13,6 +14,7 @@ import { EvidenceList } from "./EvidenceList";
 import { InterviewTranscript } from "./InterviewTranscript";
 import { ReviewerDecisionForm } from "./ReviewerDecisionForm";
 import { ReportAutoRefresh } from "./ReportAutoRefresh";
+import { ApplicantCard, EmailPanel, InterviewsPanel } from "./HiringPanels";
 
 export const dynamic = "force-dynamic";
 
@@ -24,11 +26,15 @@ export default async function CandidateDetailPage({ params }: { params: Promise<
   const application = await getApplicationForCompany(user.companyId, candidateId);
   if (!application) notFound();
 
-  const [{ session, report, interview, camera, screen, flags }, profile, invitation] = await Promise.all([
+  const [{ session, report, interview, camera, screen, flags }, profile, invitation, role, interviews, emails] = await Promise.all([
     getCandidateReport(application.assessmentId),
     getCandidateProfile(application.candidateEmail),
     getInvitationResponse(user.companyId, application.assessmentId),
+    getJobRole(user.companyId, application.jobRoleId),
+    listInterviews(user.companyId, application.id),
+    listApplicationEmails(user.companyId, application.id),
   ]);
+  const closed = application.stage === "withdrawn" || application.stage === "declined";
   const pending = report?.status === "pending" || report?.status === "generating";
   const canReview = can("candidate:stage", user.role);
 
@@ -41,7 +47,9 @@ export default async function CandidateDetailPage({ params }: { params: Promise<
       <div className="flex flex-wrap items-center gap-1.5">
         <Pill tone={stageTone[application.stage]}>{stageLabel[application.stage]}</Pill>
         {application.score != null && <span className="mono text-sm text-dim">{application.score}%</span>}
-        <span className="text-xs text-faint">Invited {fmtDate(application.createdAt)}</span>
+        <span className="text-xs text-faint">
+          {application.source === "applied" ? "Applied" : "Invited"} {fmtDate(application.createdAt)}
+        </span>
         {invitation && (
           <span className="text-xs text-faint">
             · {invitation.emailedAt ? `emailed ${fmtDate(invitation.emailedAt)}` : "no invitation email was sent"}
@@ -77,9 +85,29 @@ export default async function CandidateDetailPage({ params }: { params: Promise<
         sessionStatus={session?.status ?? null}
       />
 
+      {application.stage === "withdrawn" && (
+        <div className="hair-card p-5">
+          <div className="eyebrow">Withdrawn by the candidate</div>
+          <p className="mt-2 text-sm text-dim">They pulled their application from the job board. Nothing more can be scheduled or sent for it.</p>
+        </div>
+      )}
+
+      {application.source === "applied" && !application.assessmentId && !closed && (
+        <ApplicantCard
+          roleId={application.jobRoleId}
+          applicationId={application.id}
+          coverNote={application.coverNote}
+          selfAssessment={role?.posting.selfAssessment ?? false}
+          canInvite={can("candidate:invite", user.role)}
+        />
+      )}
+
       <CandidateProfileCard profile={profile} />
 
-      {!session && invitation?.declinedAt ? null : !session ? (
+      <InterviewsPanel applicationId={application.id} interviews={interviews} canEdit={canReview && !closed} />
+      <EmailPanel applicationId={application.id} emails={emails} canSend={canReview && !closed} candidateEmail={application.candidateEmail} />
+
+      {!session && (invitation?.declinedAt || !application.assessmentId) ? null : !session ? (
         <EmptyState title="Hasn't started yet" hint="A session and report show up here once the candidate begins their assessment." />
       ) : (
         <>

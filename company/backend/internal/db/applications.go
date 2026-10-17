@@ -274,13 +274,16 @@ func (d *DB) ListUpcomingDueDates(ctx context.Context, companyID string) ([]DueC
 // — kept as a sentinel so the HTTP layer can map it to 404 instead of 500.
 var ErrApplicationNotFound = errors.New("db: application not found")
 
-// ValidStages is ApplicationStage's full set — the same six values
+// ValidStages is ApplicationStage's full set — the values
 // candidate_applications.stage is constrained to by convention (no DB CHECK
-// constraint exists yet, so the Go and TypeScript layers are this value
-// set's only enforcement; keep both in sync if it ever changes).
+// constraint exists, so the Go and TypeScript layers are this value set's
+// only enforcement; keep both in sync — company/frontend/lib/types.ts).
+// applied, interviewing, offered and withdrawn came with the job board
+// (migration 0025); declined is the candidate turning an invitation down.
 var ValidStages = map[string]bool{
-	"invited": true, "in_progress": true, "completed": true,
-	"shortlisted": true, "rejected": true, "hired": true,
+	"applied": true, "invited": true, "in_progress": true, "completed": true,
+	"shortlisted": true, "interviewing": true, "offered": true, "hired": true,
+	"rejected": true, "declined": true, "withdrawn": true,
 }
 
 // SetApplicationStage mirrors setApplicationStage — scoped through job_roles

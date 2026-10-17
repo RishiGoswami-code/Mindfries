@@ -20,6 +20,25 @@ export interface CompanyUser {
 export type RoleVisibility = "invite_only" | "open_pool";
 export type RoleStatus = "open" | "closed";
 
+export type WorkMode = "remote" | "hybrid" | "onsite";
+export type EmploymentType = "full_time" | "part_time" | "contract" | "internship";
+
+/**
+ * A role as a job posting on the candidates' job board (migration 0025).
+ * `listed` shows it there while the role is open; `selfAssessment` lets every
+ * applicant take the role's assessment straight away instead of waiting to
+ * be invited.
+ */
+export interface JobPosting {
+  listed: boolean;
+  selfAssessment: boolean;
+  description: string;
+  location: string;
+  workMode: WorkMode | null;
+  employmentType: EmploymentType | null;
+  publishedAt: string | null;
+}
+
 // The shared Assessment/Game Library — authored by Mindfries ops in
 // internal-admin; a role can attach one of the published ones (§3.3/§3.7).
 export type TaskVariant = "bug_fix" | "feature" | "refactor" | "debug";
@@ -56,18 +75,28 @@ export interface JobRole {
   assessmentBrief: string;
   /** The kind of task generated: bug_fix | feature | refactor | debug. */
   taskVariant: TaskVariant;
+  /** How the role appears on the job board, if it's listed there. */
+  posting: JobPosting;
 }
 
 /** Whether an invited candidate's own task has been made yet (candidate/backend makes it). */
 export type InviteTaskStatus = "pending" | "generating" | "ready" | "failed";
 
 export type ApplicationStage =
+  // The candidate applied from the job board and is waiting for the
+  // hiring team (migration 0025).
+  | "applied"
   | "invited"
   | "in_progress"
   | "completed"
   | "shortlisted"
   | "rejected"
+  | "interviewing"
+  | "offered"
   | "hired"
+  // The candidate pulled their application from the job board — theirs to
+  // set, like declined below.
+  | "withdrawn"
   // The candidate turned the invitation down (candidate/frontend's
   // lib/invitations.ts sets it) — theirs to set, not one of the moves a
   // company makes.
@@ -87,6 +116,38 @@ export interface CandidateApplication {
   createdAt: string;
   /** The invitation behind this application: its own link, and whether its task exists yet. */
   invite: { token: string | null; taskStatus: InviteTaskStatus; taskError: string | null } | null;
+  /** How the candidate came in: the company's invitation, or applying from the job board. */
+  source: "invited" | "applied";
+  /** What the candidate wrote when they applied, if anything. */
+  coverNote: string | null;
+}
+
+export type InterviewStatus = "scheduled" | "confirmed" | "reschedule_requested" | "cancelled_by_candidate" | "cancelled" | "completed";
+
+/** An interview the hiring team scheduled for an application (application_interviews, 0025). */
+export interface ApplicationInterview {
+  id: string;
+  applicationId: string;
+  title: string;
+  startsAt: string;
+  durationMin: number;
+  location: string | null;
+  notes: string | null;
+  status: InterviewStatus;
+  /** What the candidate said with a confirmation, a reschedule request or a cancellation. */
+  candidateMessage: string | null;
+  updatedAt: string;
+}
+
+/** An email the hiring team sent the candidate from the portal (application_emails, 0025). */
+export interface ApplicationEmail {
+  id: string;
+  subject: string;
+  body: string;
+  sentByName: string | null;
+  delivered: boolean;
+  error: string | null;
+  sentAt: string;
 }
 
 /** One role's pipeline at a glance — IMPLEMENTATION.md §9. */

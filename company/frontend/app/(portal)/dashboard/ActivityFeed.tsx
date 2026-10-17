@@ -53,8 +53,17 @@ export function ActivityFeed({
               </Link>
             ) : (
               <Link href={`/candidates/${item.application.id}`} className="truncate text-sm font-medium hover:underline">
-                Invited <span className="font-bold">{item.application.candidateName ?? item.application.candidateEmail}</span> to{" "}
-                {item.application.roleTitle}
+                {item.application.source === "applied" ? (
+                  <>
+                    <span className="font-bold">{item.application.candidateName ?? item.application.candidateEmail}</span> applied to{" "}
+                    {item.application.roleTitle}
+                  </>
+                ) : (
+                  <>
+                    Invited <span className="font-bold">{item.application.candidateName ?? item.application.candidateEmail}</span> to{" "}
+                    {item.application.roleTitle}
+                  </>
+                )}
               </Link>
             )}
           </div>
