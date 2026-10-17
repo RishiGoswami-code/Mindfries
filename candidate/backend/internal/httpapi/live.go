@@ -70,6 +70,11 @@ func (s *Server) handleLiveInterviewStart(w http.ResponseWriter, r *http.Request
 		writeError(w, http.StatusConflict, "this session is no longer active ("+sess.Status+")")
 		return
 	}
+	if !s.cfg.InterviewEnabled {
+		// Hard cost guarantee: no live interview when disabled.
+		notConfigured(w, "the interview")
+		return
+	}
 	if !s.orc.Live.Configured() {
 		notConfigured(w, "the live voice interviewer")
 		return
@@ -134,6 +139,10 @@ func (b *browserCall) end(kind, reason string) {
 
 // handleLiveInterviewCall is the call itself.
 func (s *Server) handleLiveInterviewCall(w http.ResponseWriter, r *http.Request) {
+	if !s.cfg.InterviewEnabled {
+		writeError(w, http.StatusServiceUnavailable, "the interview is disabled for this assessment")
+		return
+	}
 	upgrader := websocket.Upgrader{
 		ReadBufferSize:  8192,
 		WriteBufferSize: 8192,

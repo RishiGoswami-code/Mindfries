@@ -236,6 +236,11 @@ func (s *Server) handleInterview(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusConflict, "this session is no longer active ("+sess.Status+")")
 		return
 	}
+	if !s.cfg.InterviewEnabled {
+		// Hard cost guarantee: refuse before any interview model call.
+		writeError(w, http.StatusServiceUnavailable, "the interview is disabled for this assessment")
+		return
+	}
 
 	var body struct {
 		Answer string `json:"answer"`
