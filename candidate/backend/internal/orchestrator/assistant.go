@@ -25,6 +25,12 @@ const (
 	minOfferedLineChars = 16
 	// Bounds what one reply can add to the trail.
 	maxOfferedLines = 40
+
+	// How many of the most recent assistant turns are sent back to the model
+	// on each new message. The full exchange is always recorded as evidence;
+	// this only caps what is re-sent, which is where assistant cost grows —
+	// older turns rarely change the answer to the question being asked.
+	assistantHistoryWindow = 8
 )
 
 // ErrAssistantLimit is returned once a session has sent as many messages as
@@ -107,6 +113,17 @@ func (o *Orchestrator) AskAssistant(ctx context.Context, sess db.Session, q Assi
 	}
 	if asked >= cfg.MaxMessages {
 		return "", ErrAssistantLimit
+	}
+	// ponytail: only the most recent turns are sent to the model — re-paying
+	// for the whole transcript on every message is the main way assistant
+	// cost grows. The full history stays recorded as evidence (above and
+	// below); start the window on a candidate turn so the model still sees a
+	// clean user→assistant sequence.
+	if len(chat) > assistantHistoryWindow {
+		chat = chat[len(chat)-assistantHistoryWindow:]
+		if len(chat) > 0 && chat[0].Role == "assistant" {
+			chat = chat[1:]
+		}
 	}
 
 	reply, err := o.Agents.Assist(ctx, llm.AssistContext{
