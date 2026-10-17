@@ -170,6 +170,14 @@ func (o *Orchestrator) Evaluate(ctx context.Context, sessionID string) error {
 		forReport = append(forReport, "Flagged moments (prompts to look, not findings):\n"+text)
 	}
 
+	// What the camera showed, from a sample of the webcam stills — this is what
+	// catches a phone held up to the screen, which leaves no tab, paste or
+	// keypress for the live flags to see.
+	if text := o.cameraObservations(ctx, events, sess.StartedAt); text != "" {
+		evidence = append(evidence, db.EvidenceItem{Category: "camera_observations", Observation: text})
+		forReport = append(forReport, "What the camera showed (prompts to look, not findings):\n"+text)
+	}
+
 	// The command record is the candidate's own shell reporting on itself;
 	// when it was changed, the report says so before anyone relies on it.
 	if text := commandRecordNote(events); text != "" {

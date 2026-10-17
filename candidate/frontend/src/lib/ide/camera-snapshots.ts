@@ -17,7 +17,7 @@
  */
 
 /** How often a still is taken. */
-export const SNAPSHOT_INTERVAL_MS = 30_000;
+export const SNAPSHOT_INTERVAL_MS = 15_000;
 /** The first one, shortly after the camera comes on — so even a short session has one. */
 const FIRST_SNAPSHOT_MS = 5_000;
 

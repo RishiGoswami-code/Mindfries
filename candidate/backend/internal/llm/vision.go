@@ -41,3 +41,36 @@ func (a *Agents) DescribeStill(ctx context.Context, img ImagePart, taskContext s
 		{Role: "user", Content: prompt, Images: []ImagePart{img}},
 	}, proctorDescriberTokens)
 }
+
+// cameraCheckTokens bounds the reply: "OK", or one short sentence.
+const cameraCheckTokens = 150
+
+// cameraCheckPrompt asks the model to report only what a reviewer should look
+// at on a webcam still — a phone, a second person, an absent or turned-away
+// candidate — and to answer "OK" otherwise, so a session of ordinary frames
+// costs little and produces no noise.
+const cameraCheckPrompt = `This is a webcam still from a proctored coding assessment, for a human reviewer.
+Report ONLY if something is notable: a phone or other device held up or being looked at, a second person in frame, the candidate absent or their face not visible, or the candidate clearly turned away from the screen.
+If the candidate is simply present and facing the screen, reply with exactly "OK" and nothing else.
+Otherwise describe what you see in one short factual sentence. Do not judge whether it is cheating.`
+
+// CheckCameraStill reports what is notable on a webcam still — a phone, a
+// second person, an absent or turned-away candidate — or "" when nothing is
+// (the model answered "OK"). A description for a reviewer, never a verdict, and
+// Gemini-only (images ride on the message; OpenRouter stays text-only).
+func (a *Agents) CheckCameraStill(ctx context.Context, img ImagePart) (string, error) {
+	if strings.TrimSpace(img.Data) == "" {
+		return "", errors.New("llm: no image to check")
+	}
+	out, err := a.quickProse(withAgent(ctx, "proctor_camera"), a.models.Report, []ChatMessage{
+		{Role: "user", Content: cameraCheckPrompt, Images: []ImagePart{img}},
+	}, cameraCheckTokens)
+	if err != nil {
+		return "", err
+	}
+	out = strings.TrimSpace(out)
+	if out == "" || strings.EqualFold(out, "OK") || strings.EqualFold(out, "OK.") || strings.HasPrefix(strings.ToUpper(out), "OK ") {
+		return "", nil
+	}
+	return out, nil
+}
