@@ -78,7 +78,10 @@ const SAME_KIND_GAP_MS = 30_000;
 /** An absence shorter than this is a glance, not a moment. */
 const AWAY_MS = 3_000;
 /** A paste this large from outside is flagged (smaller ones are still recorded as pastes). */
-const LARGE_PASTE_CHARS = 200;
+// An external paste worth a flag: anything multi-line, or a single line of
+// real length. The old 200-char floor let small snippets through — a one-line
+// fix copied from a chat is exactly what a reviewer most wants to see.
+const EXTERNAL_PASTE_MIN_CHARS = 40;
 
 /**
  * Starts watching the page. `raise` is called for each flagged moment.
@@ -127,8 +130,11 @@ export function watchActivity(raise: (flag: Flag) => void, sessionId: string): (
   };
   const onPaste = (e: ClipboardEvent) => {
     const text = normalize(e.clipboardData?.getData("text/plain") ?? "");
-    if (text.length >= LARGE_PASTE_CHARS && text !== lastCopied) {
-      flag({ kind: "external_paste", detail: { chars: text.length, lines: text.split("\n").length } });
+    const lines = text ? text.split("\n").length : 0;
+    // Flag any paste that came from outside the workspace (not an internal
+    // move) and is plausibly code — multi-line, or one line of real length.
+    if (text !== lastCopied && (lines > 1 || text.length >= EXTERNAL_PASTE_MIN_CHARS)) {
+      flag({ kind: "external_paste", detail: { chars: text.length, lines } });
     }
   };
 
