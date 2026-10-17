@@ -65,6 +65,13 @@ type Config struct {
 	GeminiAPIKey    string
 	GeminiLiveModel string
 
+	// SupabaseURL and SupabaseServiceKey let the backend read the proctoring
+	// stills (the proctor-snapshots bucket) so the vision describer can
+	// caption them. Empty means captions are skipped — the flags still show
+	// their stills to the reviewer, just without an auto-description.
+	SupabaseURL        string
+	SupabaseServiceKey string
+
 	// DaytonaAPIKey / DaytonaBaseURL — sandbox orchestration. Empty means
 	// session start still records a real row, but sandbox provisioning
 	// reports itself as not wired up rather than pretending a workspace
@@ -135,6 +142,8 @@ func Load() (Config, error) {
 		OpenRouterBaseURL:      getenv("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1"),
 		GeminiAPIKey:           os.Getenv("GEMINI_API_KEY"),
 		GeminiLiveModel:        os.Getenv("GEMINI_LIVE_MODEL"),
+		SupabaseURL:            strings.TrimRight(os.Getenv("SUPABASE_URL"), "/"),
+		SupabaseServiceKey:     os.Getenv("SUPABASE_SERVICE_ROLE_KEY"),
 		DaytonaAPIKey:          os.Getenv("DAYTONA_API_KEY"),
 		DaytonaBaseURL:         getenv("DAYTONA_BASE_URL", "https://app.daytona.io/api"),
 		SandboxNetwork:         strings.ToLower(getenv("SANDBOX_NETWORK", "open")),
