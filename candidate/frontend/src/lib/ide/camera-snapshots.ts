@@ -21,8 +21,9 @@ export const SNAPSHOT_INTERVAL_MS = 30_000;
 /** The first one, shortly after the camera comes on — so even a short session has one. */
 const FIRST_SNAPSHOT_MS = 5_000;
 
-// Small on purpose: enough to see who is in frame, not a portrait.
-const WIDTH = 320;
+// Enough to resolve a face, a second person, or a phone held up — detection
+// and the vision describer need more than a thumbnail. Still not a portrait.
+const WIDTH = 640;
 const JPEG_QUALITY = 0.6;
 
 export interface SnapshotSink {
