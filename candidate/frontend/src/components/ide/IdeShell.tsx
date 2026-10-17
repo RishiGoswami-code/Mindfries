@@ -484,6 +484,12 @@ export function IdeShell({ sessionId, candidateName, taskBrief, starterFiles, as
   // candidate now. Without one (no tracked session for this workspace),
   // it falls back to the original local-only confirmation screen.
   const [submitting, setSubmitting] = useState(false);
+  // ponytail: interview DISABLED for the pilot — candidates are judged on
+  // their dev-steps/telemetry + chat assistant, not the interview. This skips
+  // the whole interviewer_live/voice path (the dominant Gemini cost); the
+  // backend interview endpoints are simply never called, so nothing runs or
+  // bills in the background. Flip to true to restore the interview.
+  const INTERVIEW_ENABLED = false;
   // The follow-up interview (PRD §1.6: workspace → interview → submit) comes
   // after the candidate confirms they're finished, and only for a real
   // session — there's nothing to ask about a scratch workspace. Confirming
@@ -492,7 +498,7 @@ export function IdeShell({ sessionId, candidateName, taskBrief, starterFiles, as
   // A session resumed after its interview began opens on the interview:
   // the work is frozen (the backend refuses further changes), so showing the
   // editor again would only invite edits that go nowhere.
-  const [interviewing, setInterviewing] = useState(() => !!sessionId && !!serverWorkspace?.frozen);
+  const [interviewing, setInterviewing] = useState(() => INTERVIEW_ENABLED && !!sessionId && !!serverWorkspace?.frozen);
   // The interview has been held (or couldn't be) — all that remains is the submit itself.
   const [interviewed, setInterviewed] = useState(false);
   // The session's clock has run out. Working time is over: the interview
@@ -581,7 +587,9 @@ export function IdeShell({ sessionId, candidateName, taskBrief, starterFiles, as
     void sandboxFlushRef.current();
     setTimeUp(true);
     setSubmitting(false);
-    setInterviewing(true);
+    if (INTERVIEW_ENABLED) setInterviewing(true);
+    // ponytail: interview off → the backend auto-submits on timeout; no
+    // interview is opened and nothing is billed.
   };
   const submitNow = () => {
     if (!sessionId) return;
@@ -1178,8 +1186,9 @@ export function IdeShell({ sessionId, candidateName, taskBrief, starterFiles, as
               setSubmitted(true);
               return;
             }
-            if (interviewed) {
-              // Already interviewed — this is a retry of a submit that failed.
+            if (interviewed || !INTERVIEW_ENABLED) {
+              // Already interviewed, or the interview is disabled for this
+              // pilot — submit directly instead of opening the interviewer.
               submitNow();
               return;
             }
@@ -1193,7 +1202,7 @@ export function IdeShell({ sessionId, candidateName, taskBrief, starterFiles, as
             });
           }}
           timeUp={timeUp || interviewed}
-          beforeInterview={!interviewed}
+          beforeInterview={INTERVIEW_ENABLED && !interviewed}
         />
       )}
       <ProctorGate theme={theme} camera={camera} screen={proctored ? screen : null} />

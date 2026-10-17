@@ -89,6 +89,12 @@ type Config struct {
 	// candidate/frontend to be able to send mail; with it off, whoever
 	// registers an invited address can take that invitation.
 	RequireVerifiedEmail bool
+
+	// InterviewEnabled gates the follow-up interview (turn-based and live
+	// voice). Set DISABLE_INTERVIEW=true to turn it off: the interview
+	// handlers then refuse before any model call, so no interview is ever
+	// billed — a hard cost guarantee that does not depend on the frontend.
+	InterviewEnabled bool
 }
 
 func getenv(key, fallback string) string {
@@ -134,6 +140,7 @@ func Load() (Config, error) {
 		SandboxNetwork:         strings.ToLower(getenv("SANDBOX_NETWORK", "open")),
 		SandboxMaxLive:         9,
 		RequireVerifiedEmail:   strings.EqualFold(os.Getenv("REQUIRE_VERIFIED_EMAIL"), "true"),
+		InterviewEnabled:       !strings.EqualFold(os.Getenv("DISABLE_INTERVIEW"), "true"),
 	}
 	if v := os.Getenv("SANDBOX_MAX_LIVE"); v != "" {
 		n, err := strconv.Atoi(v)
