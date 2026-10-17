@@ -19,7 +19,7 @@ export function DashboardTopBar({
   search?: boolean;
 }) {
   return (
-    <div className="flex items-center gap-4">
+    <div className="flex items-center gap-4 print:hidden">
       {search && <SearchBox className="flex-1 lg:max-w-[834px]" />}
 
       <div className="ml-auto flex shrink-0 items-center gap-5">

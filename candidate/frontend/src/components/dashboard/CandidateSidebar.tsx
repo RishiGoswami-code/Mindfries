@@ -45,7 +45,7 @@ export function CandidateSidebar() {
 
   return (
     <>
-      <aside className="sticky top-0 hidden h-dvh w-[256px] shrink-0 flex-col border-r border-white/70 bg-white/45 px-6 pt-7 pb-6 backdrop-blur-xl lg:flex">
+      <aside className="sticky top-0 hidden h-dvh print:!hidden w-[256px] shrink-0 flex-col border-r border-white/70 bg-white/45 px-6 pt-7 pb-6 backdrop-blur-xl lg:flex">
         <Link href="/dashboard" className="flex items-center gap-3 px-2">
           <BrandMark />
           <span className={clsx(display.className, "text-[27px] leading-none font-medium tracking-tight text-[#1B1840]")}>
@@ -89,7 +89,7 @@ export function CandidateSidebar() {
       </aside>
 
       {/* Narrow screens: the same sections as a strip across the top. */}
-      <div className="sticky top-0 z-30 border-b border-white/70 bg-white/70 backdrop-blur-xl lg:hidden">
+      <div className="sticky top-0 z-30 border-b border-white/70 bg-white/70 backdrop-blur-xl lg:hidden print:hidden">
         <div className="flex items-center gap-2.5 px-4 pt-3">
           <BrandMark size={26} />
           <span className={clsx(display.className, "text-[21px] leading-none font-medium tracking-tight text-[#1B1840]")}>

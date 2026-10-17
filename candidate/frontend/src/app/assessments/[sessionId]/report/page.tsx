@@ -1,9 +1,38 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
-import { DashboardNav } from "@/components/dashboard/DashboardNav";
+import clsx from "clsx";
+import {
+  ArrowLeft,
+  ArrowRight,
+  Bot,
+  ChevronRight,
+  Clock,
+  Code2,
+  ExternalLink,
+  FileText,
+  Flag,
+  Folder,
+  Lightbulb,
+  ListChecks,
+  MessageSquare,
+  Play,
+  SquareTerminal,
+  UserRound,
+  Workflow,
+  type LucideIcon,
+} from "lucide-react";
+import { CandidateShell } from "@/components/dashboard/CandidateShell";
 import { ReportAutoRefresh } from "@/components/assessments/ReportAutoRefresh";
-import { BackendAuthError, BackendError, getSession, getSessionReport, sessionEventsOrUndefined, type ReportView } from "@/lib/backend/client";
+import { DownloadButton } from "@/components/report/DownloadButton";
+import { DiffView, FlagList, Observations, Panel, Pill, TestResults, Timeline } from "@/components/report/Parts";
+import { LocalTime } from "@/components/jobs/LocalTime";
+import { BackendAuthError, BackendError, getSession, getSessionReport, sessionEventsOrUndefined, type EvidenceItemView, type ReportView } from "@/lib/backend/client";
 import { currentCandidate } from "@/lib/auth/users";
+import { getProfile } from "@/lib/profile/actions";
+import { loadReportActivity, type ReportActivity } from "@/lib/report/data";
+import { clock, shortTimeline } from "@/lib/report/trail";
+import { display } from "@/lib/dashboard/fonts";
 
 export const metadata: Metadata = {
   title: "Evidence report · Mindfries",
@@ -14,47 +43,36 @@ export const metadata: Metadata = {
 // and the next while evaluation is running.
 export const dynamic = "force-dynamic";
 
-const RECOMMENDATION_LABEL: Record<string, string> = {
-  strong_hire: "Strong hire",
-  hire: "Hire",
-  lean_no: "Leaning no",
-  no_hire: "No hire",
+const RECOMMENDATION: Record<string, { label: string; tone: "good" | "warn" | "bad" }> = {
+  strong_hire: { label: "Strong hire", tone: "good" },
+  hire: { label: "Hire", tone: "good" },
+  lean_no: { label: "Leaning no", tone: "warn" },
+  no_hire: { label: "No hire", tone: "bad" },
 };
 
-const RECOMMENDATION_TONE: Record<string, string> = {
-  strong_hire: "bg-[#1A9E6B]/10 text-[#0F6B49] border-[#1A9E6B]/30",
-  hire: "bg-[#1A9E6B]/10 text-[#0F6B49] border-[#1A9E6B]/30",
-  lean_no: "bg-[#E3A63B]/10 text-[#8A5E13] border-[#E3A63B]/30",
-  no_hire: "bg-[#a6203c]/10 text-[#a6203c] border-[#a6203c]/30",
+const STATUS_COPY: Record<Exclude<ReportView["status"], "ready">, { title: string; body: string }> = {
+  pending: { title: "Waiting to start", body: "Your submission was received. Evaluation hasn't started yet — this page updates on its own." },
+  generating: { title: "Generating your report", body: "The evaluation agents are reading your session now. This usually takes under a minute." },
+  failed: { title: "Evaluation didn't complete", body: "" },
 };
 
-const CATEGORY_LABEL: Record<string, string> = {
-  code_evaluation: "Code evaluation",
-  reasoning: "Reasoning",
-  workflow: "Workflow",
-  interview: "Interview",
-  ai_usage: "AI assistant usage",
-  integrity: "Integrity",
-  rubric: "Rubric scores",
-  interview_status: "Interview",
-  provenance: "Where the work came from",
-  incomplete: "Missing from this report",
-};
+type Section = "summary" | "code" | "workflow" | "reasoning" | "interview" | "artifacts";
 
-const STATUS_COPY: Record<ReportView["status"], { title: string; body: string }> = {
-  pending: {
-    title: "Waiting to start",
-    body: "Your submission was received. Evaluation hasn't started running yet — this page will update on its own.",
-  },
-  generating: {
-    title: "Generating your report",
-    body: "The Code Evaluation, Reasoning and Workflow agents are reading your session now. This usually takes under a minute.",
-  },
-  ready: { title: "", body: "" }, // rendered separately below
-  failed: {
-    title: "Evaluation didn't complete",
-    body: "",
-  },
+const SECTIONS: Array<{ id: Section; label: string; icon: LucideIcon; blurb: string }> = [
+  { id: "summary", label: "Summary", icon: FileText, blurb: "" },
+  { id: "code", label: "Code evaluation", icon: Code2, blurb: "Changes, diffs and test runs" },
+  { id: "workflow", label: "Workflow", icon: Workflow, blurb: "Timeline and activity" },
+  { id: "reasoning", label: "Reasoning", icon: Lightbulb, blurb: "Understanding and approach" },
+  { id: "interview", label: "Interview", icon: MessageSquare, blurb: "Questions and answers" },
+  { id: "artifacts", label: "Artifacts", icon: Folder, blurb: "Your files as you left them" },
+];
+
+/** Which agents' observations each tab shows. */
+const CATEGORIES: Record<Exclude<Section, "summary" | "artifacts">, string[]> = {
+  code: ["code_evaluation", "provenance", "rubric"],
+  workflow: ["workflow", "activity_flags", "integrity"],
+  reasoning: ["reasoning", "ai_usage"],
+  interview: ["interview", "interview_status"],
 };
 
 async function loadReportData(sessionId: string) {
@@ -68,104 +86,483 @@ async function loadReportData(sessionId: string) {
   }
 }
 
-export default async function SessionReportPage({
-  params,
-}: {
-  params: Promise<{ sessionId: string }>;
-}) {
-  const { sessionId } = await params;
-  const [{ session, report }, viewer] = await Promise.all([loadReportData(sessionId), currentCandidate()]);
+/**
+ * The evidence report for one session: what the evaluation agents observed,
+ * and beside it what the workspace recorded — the files changed, the test
+ * runs, the commands, the moments that were flagged, and when each
+ * happened. Six tabs (?section=), the Summary first.
+ *
+ * The agents' recommendation and observations come from the backend; the
+ * rest is read straight from the session's activity trail
+ * (lib/report/data.ts). Nothing on the page is a number someone typed in.
+ */
+export default async function SessionReportPage({ params, searchParams }: { params: Promise<{ sessionId: string }>; searchParams: Promise<{ section?: string }> }) {
+  const [{ sessionId }, { section: wanted }] = await Promise.all([params, searchParams]);
+  const section: Section = SECTIONS.some((s) => s.id === wanted) ? (wanted as Section) : "summary";
 
+  const [{ session, report }, viewer, profile] = await Promise.all([loadReportData(sessionId), currentCandidate(), getProfile()]);
+  const activity = viewer ? await loadReportActivity(sessionId, viewer.id, session.startedAt) : null;
   const isTerminal = report.status === "ready" || report.status === "failed";
+  const evidence = report.status === "ready" ? (report.evidence ?? []) : [];
+  const href = (s: Section) => `/assessments/${encodeURIComponent(sessionId)}/report${s === "summary" ? "" : `?section=${s}`}`;
 
   return (
-    <div className="min-h-full flex-1 bg-[#F6FAFD]">
-      <DashboardNav sessionName={viewer?.name} />
+    <CandidateShell sessionName={viewer?.name} profile={profile}>
       {!isTerminal && <ReportAutoRefresh live={await sessionEventsOrUndefined(sessionId)} />}
 
-      <main className="mx-auto max-w-3xl px-5 py-8 sm:px-8">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-widest text-[#4A7FA7]">Evidence report</p>
-          <h1 className="mt-1.5 text-[26px] leading-tight font-semibold tracking-tight text-[#0A1931]">
-            Session {session.startedAt.slice(0, 10)}
-          </h1>
-          <p className="mt-1 text-sm text-[#4A7FA7]">
-            {session.durationMin} min assessment · session {sessionId.slice(0, 8)}
+      <header className="mt-6 flex flex-col gap-5 px-1 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0">
+          <Link href="/assessments" className="inline-flex items-center gap-1.5 text-[13.5px] text-[#4C4874] hover:text-[#100E2E] print:hidden">
+            <ArrowLeft size={15} /> All assessments
+          </Link>
+          <p className="mt-3 text-[13px] font-semibold tracking-[0.12em] text-[#6E6A8F] uppercase">Evidence report</p>
+          <h1 className={clsx(display.className, "mt-1 text-[38px] leading-tight font-semibold tracking-[-0.02em] text-[#100E2E] sm:text-[46px]")}>Session {session.startedAt.slice(0, 10)}</h1>
+          <p className="mt-1.5 flex flex-wrap gap-x-2.5 text-[15px] text-[#6E6A8F]">
+            <span>{session.durationMin} min assessment</span>
+            <span aria-hidden>·</span>
+            <span>Session {sessionId.slice(0, 8)}</span>
+            {activity?.trail.lastAt && (
+              <>
+                <span aria-hidden>·</span>
+                <span>
+                  Last activity <LocalTime iso={activity.trail.lastAt} />
+                </span>
+              </>
+            )}
           </p>
         </div>
+        <DownloadButton />
+      </header>
 
-        <div className="mt-8">
-          {report.status !== "ready" && (
-            <div className="rounded-2xl border border-[#B3CFE5] bg-white p-6">
-              <div className="flex items-center gap-3">
-                {!isTerminal && (
-                  <span className="h-2.5 w-2.5 shrink-0 animate-pulse rounded-full bg-[#4A7FA7]" aria-hidden />
-                )}
-                <h2 className="text-[15px] font-semibold text-[#0A1931]">
-                  {report.status === "failed" ? STATUS_COPY.failed.title : STATUS_COPY[report.status].title}
-                </h2>
+      <nav className="mt-6 flex gap-1 overflow-x-auto rounded-[20px] border border-white/90 bg-white/70 px-2 shadow-[0_10px_30px_-24px_rgba(76,58,160,0.45)] backdrop-blur [scrollbar-width:none] print:hidden" aria-label="Report sections">
+        {SECTIONS.map(({ id, label, icon: Icon }) => (
+          <Link
+            key={id}
+            href={href(id)}
+            aria-current={section === id ? "page" : undefined}
+            className={clsx(
+              "relative flex shrink-0 items-center gap-2.5 px-4 py-4 text-[15px] transition-colors",
+              section === id ? "font-semibold text-[#4B2BB8] after:absolute after:inset-x-3 after:bottom-0 after:h-[3px] after:rounded-full after:bg-[#5B3BE0]" : "text-[#2A2654] hover:text-[#100E2E]"
+            )}
+          >
+            <Icon size={19} strokeWidth={1.8} />
+            {label}
+          </Link>
+        ))}
+      </nav>
+
+      <div className="mt-5 space-y-5">
+        {activity && !activity.available && (
+          <p className="rounded-2xl border border-[#F3DDBA] bg-[#FFF8EC] px-4 py-3 text-[13.5px] text-[#7A4B07]">
+            The session&apos;s activity couldn&apos;t be read here, so only the evaluation is shown.
+          </p>
+        )}
+
+        {section === "summary" && <Summary report={report} activity={activity} durationMin={session.durationMin} href={href} />}
+        {section === "code" && <CodeSection activity={activity} evidence={evidence} ready={report.status === "ready"} />}
+        {section === "workflow" && <WorkflowSection activity={activity} evidence={evidence} ready={report.status === "ready"} />}
+        {section === "reasoning" && <ReasoningSection activity={activity} evidence={evidence} ready={report.status === "ready"} />}
+        {section === "interview" && <InterviewSection activity={activity} evidence={evidence} ready={report.status === "ready"} />}
+        {section === "artifacts" && <ArtifactsSection activity={activity} />}
+      </div>
+    </CandidateShell>
+  );
+}
+
+function pick(evidence: EvidenceItemView[], section: keyof typeof CATEGORIES) {
+  return evidence.filter((e) => CATEGORIES[section].includes(e.category));
+}
+
+const notReady = "The evaluation hasn't finished, so there are no observations here yet.";
+
+// ── Summary ────────────────────────────────────────────────────────────────
+
+function Summary({ report, activity, durationMin, href }: { report: ReportView; activity: ReportActivity | null; durationMin: number; href: (s: Section) => string }) {
+  const trail = activity?.trail;
+  const top = activity?.diffs[0];
+  const pasteInto = top ? trail?.pastes.filter((p) => p.external && p.target.replace(/^\/+/, "") === top.path && p.chars >= 200) : [];
+  const pastedLines = (pasteInto ?? []).reduce((n, p) => n + p.lines, 0);
+  const lastTests = trail?.lastTests ?? null;
+  const incomplete = report.status === "ready" ? (report.evidence ?? []).filter((e) => e.category === "incomplete") : [];
+
+  const tiles: Array<{ icon: LucideIcon; label: string; value: React.ReactNode; note?: React.ReactNode; tint: string; href?: string }> = [
+    { icon: Clock, label: "Time worked", value: `${trail?.workMinutes ?? 0} min`, note: `of ${durationMin} allowed`, tint: "bg-[#EAF1FE] text-[#2F6BDE]" },
+    {
+      icon: FileText,
+      label: "Files modified",
+      value: activity?.diffs.length ?? trail?.editedPaths.length ?? 0,
+      note: (activity?.diffs.map((d) => d.path) ?? trail?.editedPaths ?? []).slice(0, 2).join(", ") || undefined,
+      tint: "bg-[#EFEAFD] text-[#5B3BE0]",
+    },
+    {
+      icon: Play,
+      label: "Tests",
+      value: lastTests && lastTests.passed !== null ? `${lastTests.passed} / ${lastTests.passed + (lastTests.failed ?? 0)}` : "—",
+      note: lastTests ? <span className={lastTests.failed ? "text-[#9A4B07]" : "text-[#14693a]"}>{lastTests.failed ? `${lastTests.failed} failing` : "passed"}</span> : "none run",
+      tint: "bg-[#E3F7EC] text-[#1A9E6B]",
+    },
+    { icon: SquareTerminal, label: "Terminal commands", value: trail?.terminalCommands ?? 0, tint: "bg-[#EFEAFD] text-[#5B3BE0]" },
+    {
+      icon: Flag,
+      label: "Workspace activity",
+      value: (
+        <span className={clsx("inline-flex items-center gap-2", trail?.flags.length ? "text-[#DC2643]" : "text-[#14693a]")}>
+          {trail?.flags.length ? <Flag size={18} className="fill-current" /> : null}
+          {trail?.flags.length ? `${trail.flags.length} ${trail.flags.length === 1 ? "flag" : "flags"}` : "No flags"}
+        </span>
+      ),
+      tint: "bg-[#EAF1FE] text-[#2F6BDE]",
+      href: href("workflow"),
+    },
+  ];
+
+  return (
+    <>
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,2fr)]">
+        <RecommendationCard report={report} />
+        <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 xl:grid-cols-5">
+          {tiles.map((t) => {
+            const body = (
+              <>
+                <span className={clsx("flex h-10 w-10 items-center justify-center rounded-xl", t.tint)}>
+                  <t.icon size={20} />
+                </span>
+                <p className="mt-4 text-[13.5px] text-[#6E6A8F]">{t.label}</p>
+                <p className="mt-1 text-[22px] font-semibold text-[#100E2E] tabular-nums">{t.value}</p>
+                {t.note && <p className="mt-0.5 truncate text-[13px] text-[#6E6A8F]">{t.note}</p>}
+              </>
+            );
+            const cls = "relative block min-w-0 rounded-[20px] border border-white/90 bg-white/75 p-4 shadow-[0_10px_30px_-24px_rgba(76,58,160,0.45)]";
+            return t.href ? (
+              <Link key={t.label} href={t.href} className={clsx(cls, "hover:bg-white")}>
+                {body}
+                <ChevronRight size={17} className="absolute top-1/2 right-3 text-[#8A86A8]" />
+              </Link>
+            ) : (
+              <div key={t.label} className={cls}>
+                {body}
               </div>
-              <p className="mt-2 text-sm leading-relaxed text-[#4A7FA7]">
-                {report.status === "failed"
-                  ? report.error ?? "No reason was recorded."
-                  : STATUS_COPY[report.status].body}
-              </p>
-              {report.status === "failed" && (
-                <p className="mt-3 text-xs text-[#4A7FA7]">
-                  This is an honest failure, not a fabricated score — nothing here was scored because evaluation
-                  couldn&apos;t run.
-                </p>
-              )}
-            </div>
-          )}
-
-          {report.status === "ready" && (
-            <div className="space-y-6">
-              <div className="rounded-2xl border border-[#B3CFE5] bg-white p-6">
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <h2 className="text-[15px] font-semibold text-[#0A1931]">Recommendation</h2>
-                  {report.recommendation ? (
-                    <span
-                      className={`rounded-full border px-3 py-1 text-xs font-semibold ${RECOMMENDATION_TONE[report.recommendation] ?? "border-[#B3CFE5] text-[#4A7FA7]"}`}
-                    >
-                      {RECOMMENDATION_LABEL[report.recommendation] ?? report.recommendation}
-                    </span>
-                  ) : (
-                    <span className="rounded-full border border-[#B3CFE5] px-3 py-1 text-xs font-medium text-[#4A7FA7]">
-                      Not given
-                    </span>
-                  )}
-                </div>
-                {report.summary && (
-                  <p className="mt-3 text-sm leading-relaxed text-[#1A3D63]">{report.summary}</p>
-                )}
-              </div>
-
-              {report.evidence && report.evidence.length > 0 ? (
-                <div className="space-y-4">
-                  <h2 className="text-[13px] font-semibold uppercase tracking-widest text-[#4A7FA7]">
-                    Evidence, by agent
-                  </h2>
-                  {report.evidence.map((item, i) => (
-                    <div key={i} className="rounded-2xl border border-[#B3CFE5] bg-white p-5">
-                      <p className="text-xs font-semibold uppercase tracking-widest text-[#4A7FA7]">
-                        {CATEGORY_LABEL[item.category] ?? item.category}
-                      </p>
-                      <p className="mt-2 text-sm leading-relaxed whitespace-pre-line text-[#0A1931]">
-                        {item.observation.replace(/ ?\[E\d+\]/g, "")}
-                      </p>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="rounded-2xl border border-[#B3CFE5] bg-white p-6 text-sm text-[#4A7FA7]">
-                  No individual observations were recorded for this session.
-                </div>
-              )}
-            </div>
-          )}
+            );
+          })}
         </div>
-      </main>
+      </div>
+
+      <div className="grid gap-5 xl:grid-cols-[minmax(0,1.45fr)_minmax(0,1fr)]">
+        <div className="min-w-0 space-y-5">
+          <Panel
+            icon={<Code2 size={21} />}
+            title="Code changes"
+            action={
+              top ? (
+                <Link href={href("code")} className="inline-flex items-center gap-1.5 text-[14px] font-medium text-[#5B3BE0] hover:underline print:hidden">
+                  View full diff <ArrowRight size={15} />
+                </Link>
+              ) : undefined
+            }
+          >
+            {!top ? (
+              <p className="text-[14px] text-[#6E6A8F]">
+                {activity?.finalFiles ? "The files you left are the same as the task's." : "No saved copy of your files was recorded, so there's nothing to compare."}
+              </p>
+            ) : (
+              <>
+                <div className="mb-3 flex flex-wrap items-center gap-2">
+                  <span className="mr-1 inline-flex items-center gap-2 text-[15px] font-medium text-[#100E2E]">
+                    <FileText size={17} /> {top.path}
+                  </span>
+                  {pastedLines > 0 && <Pill tone="red">Large external paste detected</Pill>}
+                  <Pill tone="green">+{top.added} lines</Pill>
+                  <Pill tone="red">-{top.removed} lines</Pill>
+                  {(activity?.diffs.length ?? 0) > 1 && <Pill tone="gray">+{activity!.diffs.length - 1} more files</Pill>}
+                </div>
+                <DiffView diff={top} window={14} pasteBadge={pastedLines > 0 ? <Pill tone="green">+{pastedLines} lines pasted</Pill> : undefined} />
+              </>
+            )}
+          </Panel>
+
+          <Panel icon={<ListChecks size={21} />} title="Test results">
+            <TestResults run={lastTests} />
+          </Panel>
+        </div>
+
+        <div className="min-w-0 space-y-5">
+          <Panel icon={<Workflow size={21} />} title="Session timeline">
+            {trail && trail.timeline.length > 0 ? (
+              <>
+                <Timeline items={shortTimeline(trail.timeline).items} />
+                <Link href={href("workflow")} className="mt-2 inline-flex items-center gap-1.5 text-[13.5px] font-medium text-[#5B3BE0] hover:underline print:hidden">
+                  Full timeline <ArrowRight size={14} />
+                </Link>
+              </>
+            ) : (
+              <p className="text-[14px] text-[#6E6A8F]">No activity was recorded for this session.</p>
+            )}
+          </Panel>
+          <Panel
+            icon={<Flag size={20} />}
+            title={
+              <span className="inline-flex items-center gap-2.5">
+                Flags
+                {trail && trail.flags.length > 0 && <span className="flex h-6 min-w-6 items-center justify-center rounded-full bg-[#DC2643] px-1.5 text-[12.5px] font-semibold text-white">{trail.flags.length}</span>}
+              </span>
+            }
+          >
+            <FlagList flags={trail?.flags.slice(0, 4) ?? []} href={href("workflow")} />
+            <p className="mt-2 text-[12.5px] text-[#8A86A8]">A flag is a moment for the hiring team to look at, not a decision.</p>
+          </Panel>
+        </div>
+      </div>
+
+      {incomplete.length > 0 && (
+        <Panel title="Missing from this report">
+          <Observations items={incomplete} empty="" />
+        </Panel>
+      )}
+
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4 print:hidden">
+        {SECTIONS.filter((s) => s.id !== "summary" && s.id !== "artifacts").map((s) => (
+          <Link key={s.id} href={href(s.id)} className="flex items-center gap-3.5 rounded-[20px] border border-white/90 bg-white/75 p-4 shadow-[0_10px_30px_-24px_rgba(76,58,160,0.45)] hover:bg-white">
+            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[#EFEAFD] text-[#5B3BE0]">
+              <s.icon size={21} />
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block text-[15px] font-semibold text-[#100E2E]">{s.label}</span>
+              <span className="block truncate text-[13px] text-[#6E6A8F]">{s.blurb}</span>
+            </span>
+            <ChevronRight size={18} className="text-[#8A86A8]" />
+          </Link>
+        ))}
+      </div>
+    </>
+  );
+}
+
+function RecommendationCard({ report }: { report: ReportView }) {
+  if (report.status !== "ready") {
+    const copy = STATUS_COPY[report.status];
+    return (
+      <div className="rounded-[20px] border border-[#E4E0F2] bg-white/80 p-5">
+        <div className="flex items-center gap-2.5">
+          {report.status !== "failed" && <span className="h-2.5 w-2.5 animate-pulse rounded-full bg-[#5B3BE0]" aria-hidden />}
+          <p className="text-[16px] font-semibold text-[#100E2E]">{copy.title}</p>
+        </div>
+        <p className="mt-2 text-[14px] leading-relaxed text-[#5E5A82]">{report.status === "failed" ? (report.error ?? "No reason was recorded.") : copy.body}</p>
+        {report.status === "failed" && <p className="mt-2 text-[12.5px] text-[#8A86A8]">Nothing was scored, because evaluation couldn&apos;t run. What the workspace recorded is still shown.</p>}
+      </div>
+    );
+  }
+  const rec = report.recommendation ? RECOMMENDATION[report.recommendation] : undefined;
+  const tone = rec?.tone ?? "none";
+  return (
+    <div
+      className={clsx(
+        "rounded-[20px] border p-5",
+        tone === "bad" && "border-[#F7D5DC] bg-[#FDF1F3]",
+        tone === "warn" && "border-[#F3DDBA] bg-[#FFF8EC]",
+        tone === "good" && "border-[#CDEBD9] bg-[#F1FAF4]",
+        tone === "none" && "border-[#E4E0F2] bg-white/80"
+      )}
+    >
+      <div className="flex items-start gap-4">
+        <span
+          className={clsx(
+            "flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-white",
+            tone === "bad" ? "text-[#DC2643]" : tone === "warn" ? "text-[#C26410]" : tone === "good" ? "text-[#1A9E6B]" : "text-[#5B3BE0]"
+          )}
+        >
+          <UserRound size={24} />
+        </span>
+        <div className="min-w-0">
+          <p className="text-[14.5px] font-semibold text-[#100E2E]">Recommendation</p>
+          <p className={clsx("text-[28px] leading-tight font-bold", tone === "bad" ? "text-[#DC2643]" : tone === "warn" ? "text-[#B45309]" : tone === "good" ? "text-[#15803D]" : "text-[#4C4874]")}>
+            {rec?.label ?? "Not given"}
+          </p>
+        </div>
+      </div>
+      {report.summary && (
+        <div className="mt-4 rounded-2xl bg-white/80 px-4 py-3">
+          <p className="text-[14px] font-semibold text-[#100E2E]">Key reason</p>
+          <p className={clsx("mt-1 line-clamp-5 text-[14px] leading-relaxed", tone === "bad" ? "text-[#8F1D33]" : "text-[#4C4874]")}>{report.summary.replace(/ ?\[E\d+\]/g, "")}</p>
+        </div>
+      )}
+      <p className="mt-3 text-[12px] text-[#8A86A8]">Written by the evaluation agents from the evidence. The hiring team makes the decision.</p>
+    </div>
+  );
+}
+
+// ── The other tabs ─────────────────────────────────────────────────────────
+
+function CodeSection({ activity, evidence, ready }: { activity: ReportActivity | null; evidence: EvidenceItemView[]; ready: boolean }) {
+  const diffs = activity?.diffs ?? [];
+  const runs = activity?.trail.testRuns ?? [];
+  return (
+    <>
+      <Panel icon={<Code2 size={21} />} title="What the code evaluation found">
+        <Observations items={pick(evidence, "code")} empty={ready ? "The code evaluation recorded no observations." : notReady} />
+      </Panel>
+      <Panel icon={<FileText size={20} />} title={`Files changed (${diffs.length})`}>
+        {diffs.length === 0 ? (
+          <p className="text-[14px] text-[#6E6A8F]">{activity?.finalFiles ? "The files you left are the same as the task's." : "No saved copy of your files was recorded."}</p>
+        ) : (
+          <div className="space-y-6">
+            {diffs.map((d) => (
+              <div key={d.path}>
+                <div className="mb-2 flex flex-wrap items-center gap-2">
+                  <span className="mr-1 font-mono text-[14px] font-medium text-[#100E2E]">{d.path}</span>
+                  {!d.beforeExists && <Pill tone="violet">New file</Pill>}
+                  {!d.afterExists && <Pill tone="gray">Deleted</Pill>}
+                  <Pill tone="green">+{d.added}</Pill>
+                  <Pill tone="red">-{d.removed}</Pill>
+                </div>
+                <div className="max-h-[560px] overflow-auto rounded-2xl">
+                  <DiffView diff={d} />
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </Panel>
+      <Panel icon={<Play size={20} />} title={`Test runs (${runs.length})`}>
+        {runs.length === 0 ? (
+          <p className="text-[14px] text-[#6E6A8F]">No test runs were recorded.</p>
+        ) : (
+          <ul className="divide-y divide-[#F0EEF7]">
+            {runs.map((r) => (
+              <li key={r.id} className="flex flex-wrap items-center gap-x-4 gap-y-1 py-3">
+                <span className="w-14 font-mono text-[13px] text-[#6E6A8F]">{clock(r.offset)}</span>
+                <code className="min-w-0 flex-1 truncate font-mono text-[13px] text-[#1B1840]">{r.command}</code>
+                {r.passed === null ? <Pill tone="gray">exit {r.exitCode}</Pill> : <Pill tone={r.failed ? "amber" : "green"}>{r.passed} passed · {r.failed} failed</Pill>}
+                {r.failing.length > 0 && <p className="w-full pl-[72px] text-[12.5px] text-[#9A4B07]">Failing: {r.failing.join(", ")}</p>}
+              </li>
+            ))}
+          </ul>
+        )}
+      </Panel>
+    </>
+  );
+}
+
+function WorkflowSection({ activity, evidence, ready }: { activity: ReportActivity | null; evidence: EvidenceItemView[]; ready: boolean }) {
+  const trail = activity?.trail;
+  return (
+    <div className="grid gap-5 xl:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)]">
+      <div className="min-w-0 space-y-5">
+        <Panel icon={<Workflow size={21} />} title="How you worked">
+          <Observations items={pick(evidence, "workflow")} empty={ready ? "The workflow evaluation recorded no observations." : notReady} />
+        </Panel>
+        <Panel icon={<Clock size={20} />} title="Full timeline">
+          {trail && trail.timeline.length > 0 ? <Timeline items={trail.timeline} /> : <p className="text-[14px] text-[#6E6A8F]">No activity was recorded.</p>}
+        </Panel>
+      </div>
+      <div className="min-w-0 space-y-5">
+        <Panel icon={<Flag size={20} />} title={`Flags (${trail?.flags.length ?? 0})`}>
+          <FlagList flags={trail?.flags ?? []} />
+          <p className="mt-2 text-[12.5px] text-[#8A86A8]">Each was recorded with a camera and screen still for the hiring team. A flag is a moment to look at, not a decision.</p>
+        </Panel>
+        <Panel icon={<SquareTerminal size={20} />} title="At a glance">
+          <dl className="grid grid-cols-2 gap-3 text-[14px]">
+            {[
+              ["Terminal commands", trail?.terminalCommands ?? 0],
+              ["Test runs", trail?.testRuns.length ?? 0],
+              ["Pastes", trail?.pastes.length ?? 0],
+              ["Time away", `${trail?.awayMinutes ?? 0} min`],
+              ["Questions to the assistant", trail?.assistant.filter((t) => t.role === "candidate").length ?? 0],
+              ["Files edited", trail?.editedPaths.length ?? 0],
+            ].map(([k, v]) => (
+              <div key={String(k)} className="rounded-xl bg-[#FAF9FE] px-3 py-2.5">
+                <dt className="text-[12.5px] text-[#6E6A8F]">{k}</dt>
+                <dd className="text-[17px] font-semibold text-[#100E2E] tabular-nums">{v}</dd>
+              </div>
+            ))}
+          </dl>
+        </Panel>
+      </div>
+    </div>
+  );
+}
+
+function Conversation({ turns, you, them }: { turns: Array<{ id: number; offset: number; role: "candidate" | "other"; text: string }>; you: string; them: string }) {
+  return (
+    <ol className="space-y-3">
+      {turns.map((t) => (
+        <li key={t.id} className={clsx("max-w-[88%] rounded-2xl px-4 py-3", t.role === "candidate" ? "ml-auto bg-[#EFEAFD]" : "bg-[#F6F5FA]")}>
+          <p className="text-[12px] text-[#6E6A8F]">
+            {t.role === "candidate" ? you : them} · {clock(t.offset)}
+          </p>
+          <p className="mt-1 text-[14px] leading-relaxed whitespace-pre-line text-[#1B1840]">{t.text}</p>
+        </li>
+      ))}
+    </ol>
+  );
+}
+
+function ReasoningSection({ activity, evidence, ready }: { activity: ReportActivity | null; evidence: EvidenceItemView[]; ready: boolean }) {
+  const turns = activity?.trail.assistant ?? [];
+  return (
+    <>
+      <Panel icon={<Lightbulb size={21} />} title="Understanding and approach">
+        <Observations items={pick(evidence, "reasoning")} empty={ready ? "The reasoning evaluation recorded no observations." : notReady} />
+      </Panel>
+      <Panel icon={<Bot size={21} />} title={`Conversation with the workspace assistant (${turns.filter((t) => t.role === "candidate").length} questions)`}>
+        {turns.length === 0 ? <p className="text-[14px] text-[#6E6A8F]">You didn&apos;t use the assistant in this session.</p> : <Conversation turns={turns} you="You" them="Assistant" />}
+      </Panel>
+    </>
+  );
+}
+
+function InterviewSection({ activity, evidence, ready }: { activity: ReportActivity | null; evidence: EvidenceItemView[]; ready: boolean }) {
+  const turns = activity?.trail.interview ?? [];
+  return (
+    <>
+      <Panel icon={<MessageSquare size={21} />} title="What the interview showed">
+        <Observations items={pick(evidence, "interview")} empty={ready ? "The interview evaluation recorded no observations." : notReady} />
+      </Panel>
+      <Panel icon={<UserRound size={21} />} title="Transcript">
+        {turns.length === 0 ? <p className="text-[14px] text-[#6E6A8F]">No interview was recorded for this session.</p> : <Conversation turns={turns} you="You" them="Interviewer" />}
+      </Panel>
+    </>
+  );
+}
+
+function ArtifactsSection({ activity }: { activity: ReportActivity | null }) {
+  const files = activity?.finalFiles ? Object.entries(activity.finalFiles).sort(([a], [b]) => a.localeCompare(b)) : [];
+  const m = activity?.trail.media;
+  return (
+    <div className="grid gap-5 xl:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">
+      <Panel icon={<Folder size={20} />} title={`Your files (${files.length})`}>
+        {files.length === 0 ? (
+          <p className="text-[14px] text-[#6E6A8F]">No saved copy of your files was recorded.</p>
+        ) : (
+          <>
+            {activity?.finalAt && (
+              <p className="mb-3 text-[13px] text-[#6E6A8F]">
+                As saved <LocalTime iso={activity.finalAt} />.
+              </p>
+            )}
+            <div className="space-y-2">
+              {files.map(([path, text]) => (
+                <details key={path} className="group rounded-2xl border border-[#ECE9F6] bg-white">
+                  <summary className="flex cursor-pointer list-none items-center gap-2.5 px-4 py-3 text-[14px] font-medium text-[#100E2E]">
+                    <ChevronRight size={16} className="text-[#8A86A8] transition-transform group-open:rotate-90" />
+                    <span className="min-w-0 flex-1 truncate font-mono">{path.replace(/^\/+/, "")}</span>
+                    <span className="text-[12.5px] font-normal text-[#8A86A8]">{String(text).split("\n").length} lines</span>
+                  </summary>
+                  <pre className="max-h-[480px] overflow-auto border-t border-[#ECE9F6] px-4 py-3 font-mono text-[12.5px] leading-[1.6] text-[#1B1840]">{String(text)}</pre>
+                </details>
+              ))}
+            </div>
+          </>
+        )}
+      </Panel>
+      <Panel icon={<ExternalLink size={19} />} title="Recordings kept">
+        <ul className="space-y-2.5 text-[14px] text-[#2A2654]">
+          <li>{m?.cameraStills ?? 0} camera stills</li>
+          <li>{m?.screenStills ?? 0} screen stills</li>
+          <li>{m?.audioClips ?? 0} microphone clips</li>
+          <li>{m?.interviewRecordings ?? 0} interview answers recorded</li>
+        </ul>
+        <p className="mt-3 text-[12.5px] text-[#8A86A8]">These are kept for the hiring team, as the recording policy you agreed to describes.</p>
+      </Panel>
     </div>
   );
 }
