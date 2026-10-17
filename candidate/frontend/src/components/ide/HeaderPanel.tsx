@@ -67,33 +67,34 @@ export function HeaderPanel({ theme, assessmentName, durationSeconds, onSubmit, 
   return (
     <div
       className={clsx(
-        "flex h-14 shrink-0 items-center justify-between gap-4 rounded-2xl border px-4 shadow-[0_8px_30px_-12px_rgba(0,0,0,0.6)]",
+        // Edge to edge across the top, outside the canvas's padding.
+        "-mx-2 -mt-2 flex h-[64px] shrink-0 items-center justify-between gap-4 border-b px-5",
         palette.border,
-        dark ? "bg-[#0E1431]/90 backdrop-blur" : palette.panelBg,
+        dark ? "bg-[#0B1222]" : palette.panelBg,
         palette.text
       )}
     >
       {/* Left: the logo, then the assessment's name */}
       <div className="flex min-w-0 items-center gap-3">
         {/* eslint-disable-next-line @next/next/no-img-element -- tiny static local SVG */}
-        <img src="/mindfries-logo.svg" alt="" width={26} height={26} />
-        <span className="text-[15px] font-semibold tracking-tight">Mindfries</span>
-        <span className={clsx("h-5 w-px", dark ? "bg-[#232C5E]" : "bg-[#B3CFE5]")} />
-        <span className="truncate text-sm font-medium">{assessmentName}</span>
+        <img src="/mindfries-logo.svg" alt="" width={34} height={34} />
+        <span className="text-[20px] font-bold tracking-tight">Mindfries</span>
+        <span className={clsx("mx-1 h-6 w-px", dark ? "bg-[#1E2A44]" : "bg-[#B3CFE5]")} />
+        <span className={clsx("truncate text-[15px]", palette.textMuted)}>{assessmentName}</span>
       </div>
 
       {/* Right: timer, camera, Submit */}
       <div className="flex shrink-0 items-center gap-2">
         {durationSeconds !== undefined && (
           <div
-            className={clsx("flex h-9 items-center gap-2 rounded-xl border px-3 font-mono text-sm tabular-nums", palette.border, {
-              "bg-[#7C5CFF]/10 text-[#E7EAF6]": !isLow && dark,
+            className={clsx("flex h-10 items-center gap-2 rounded-xl border px-3.5 font-mono text-sm tabular-nums", palette.border, {
+              "bg-[#2F6BFF]/10 text-[#E2E8F0]": !isLow && dark,
               "bg-[#4A7FA7]/10 text-[#0A1931]": !isLow && !dark,
               "border-[#E06C75]/40 bg-[#E06C75]/15 text-[#E06C75]": isLow && !isCritical,
               "border-[#E06C75]/60 bg-[#AD2934]/20 text-[#E06C75] animate-pulse": isCritical,
             })}
           >
-            {isLow ? <AlertTriangle size={15} /> : <Clock size={15} className={dark ? "text-[#A78BFA]" : "text-[#4A7FA7]"} />}
+            {isLow ? <AlertTriangle size={15} /> : <Clock size={15} className={dark ? "text-[#60A5FA]" : "text-[#4A7FA7]"} />}
             <span>{formatted}</span>
           </div>
         )}
@@ -102,7 +103,7 @@ export function HeaderPanel({ theme, assessmentName, durationSeconds, onSubmit, 
           <span
             role="status"
             title={cameraLive ? "Camera on — recording for this session" : "Camera off"}
-            className={clsx("flex h-9 w-9 items-center justify-center rounded-xl border", palette.border, cameraLive ? palette.textMuted : "text-[#E06C75]")}
+            className={clsx("flex h-10 w-10 items-center justify-center rounded-xl border", palette.border, cameraLive ? palette.textMuted : "text-[#E06C75]")}
           >
             {cameraLive ? <Video size={16} /> : <VideoOff size={16} />}
           </span>
@@ -112,7 +113,7 @@ export function HeaderPanel({ theme, assessmentName, durationSeconds, onSubmit, 
           type="button"
           onClick={onSubmit}
           className={clsx(
-            "flex h-9 items-center gap-2 rounded-xl px-5 text-sm font-semibold transition",
+            "flex h-10 items-center gap-2 rounded-xl px-5 text-[14.5px] font-semibold transition",
             dark ? PRIMARY_BUTTON : "text-white hover:opacity-90"
           )}
           style={dark ? undefined : { backgroundColor: STATUS_BAR_BG }}

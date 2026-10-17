@@ -80,13 +80,27 @@ directly from a non-React callback.
 
 ## Layout model: floating rounded cards, not flush VS Code panels
 
-The task panels (Problems, Output, Debug Console, Terminal, Tests, Changes,
-Ports — `BottomPanel.tsx`) are a drawer under the editor, collapsed to its
-tab bar by default; `IdeShell` owns its open state and height. The camera
-card sits beside the drawer and is the same mounted `<video>` open or
-closed (`CameraPanel`'s `compact` only changes the layout). Panels inside
-the drawer stay mounted while it is closed — keep it that way, or terminal
-sessions lose their scrollback.
+Files on the left; the editor in the middle with a row under it — the
+Terminal card (`BottomPanel.tsx`: Terminal, Output, Debug Console, Problems,
+Changes, Ports) and the Tests card (`TestsPanel.tsx`); Mindfries AI on the
+right with the camera under it. `IdeShell` owns the row's height (the camera
+under the assistant follows it). The header and status bar run edge to edge.
+
+Terminal, Tests and Mindfries AI each have a cross that tucks the card away;
+a closed card leaves a chip on the right edge of the screen (`EdgeChips` in
+`IdeShell.tsx`) that opens it again. With the assistant closed, the camera
+joins the bottom row. The Terminal card is hidden with `display: none`, never
+unmounted, while closed — keep it that way, or terminal sessions lose their
+scrollback. The camera has no cross: proctoring needs it on screen.
+
+Two editor tabs aren't files (`TASK_TAB`, `PREVIEW_TAB` in
+`lib/ide/changes.ts`): TASK.md, the task brief rendered read-only and pinned
+at the top of the Files tree, and the live preview of a web project, which
+opens beside the code instead of beside the terminal. Neither is part of the
+project — never in `files`, so never saved, synced to a sandbox, committed
+or diffed in the report. `fileOfTab()` returns null for them; anything that
+filters open tabs by "is this path in the files" must keep them
+(`isVirtualTab`), or they vanish on restore.
 
 `IdeShell.tsx` renders Explorer / Editor+Breadcrumbs / Terminal / status bar as
 independent `rounded-xl border overflow-hidden` cards on a `palette.panelBg`

@@ -27,20 +27,20 @@ export function StatusBar({ activePath, dirtyCount, diagnostics, theme, onToggle
       // Dark: quiet, in the chrome's own colours, so it doesn't compete with
       // the editor. Light: the brand-blue bar it has always been.
       className={clsx(
-        "flex h-[24px] shrink-0 items-center justify-between px-3 text-xs",
-        theme === "dark" ? "bg-[#0E1431] text-[#9AA3C7]" : "text-white"
+        "flex h-10 shrink-0 items-center justify-between px-5 text-[13px]",
+        theme === "dark" ? "bg-[#0B1222] text-[#94A3B8]" : "text-white"
       )}
       style={theme === "dark" ? undefined : { backgroundColor: STATUS_BAR_BG }}
     >
-      <div className="flex items-center gap-3">
-        <span className="flex items-center gap-1">
-          <GitBranch size={13} />
+      <div className="flex items-center gap-4">
+        <span className="flex items-center gap-1.5">
+          <GitBranch size={15} />
           main
         </span>
         <span className="flex items-center gap-1" title={`${errors} errors, ${warnings} warnings`}>
-          <AlertCircle size={13} />
+          <AlertCircle size={15} />
           {errors}
-          <AlertTriangle size={13} className="ml-1" />
+          <AlertTriangle size={15} className="ml-1" />
           {warnings}
         </span>
         {dirtyCount > 0 && (
@@ -49,19 +49,19 @@ export function StatusBar({ activePath, dirtyCount, diagnostics, theme, onToggle
           </span>
         )}
       </div>
-      <div className="flex items-center gap-3">
-        {language && <span>{language}</span>}
+      <div className="flex items-center gap-5">
         <span>Spaces: 2</span>
         <span>UTF-8</span>
         <span>LF</span>
-        <Bell size={13} />
+        {language && <span>{language}</span>}
+        <Bell size={15} />
         <button
           type="button"
           title={fullscreen.active ? "Exit fullscreen" : "Enter fullscreen"}
           onClick={fullscreen.toggle}
           className="flex items-center hover:opacity-80"
         >
-          {fullscreen.active ? <Minimize2 size={13} /> : <Maximize2 size={13} />}
+          {fullscreen.active ? <Minimize2 size={15} /> : <Maximize2 size={15} />}
         </button>
         <button
           type="button"
@@ -69,7 +69,7 @@ export function StatusBar({ activePath, dirtyCount, diagnostics, theme, onToggle
           onClick={onToggleTheme}
           className="flex items-center hover:opacity-80"
         >
-          {theme === "dark" ? <Moon size={13} /> : <Sun size={13} />}
+          {theme === "dark" ? <Moon size={15} /> : <Sun size={15} />}
         </button>
       </div>
     </div>

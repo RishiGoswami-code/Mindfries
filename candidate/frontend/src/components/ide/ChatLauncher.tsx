@@ -46,7 +46,7 @@ export function ChatLauncher({
       <span
         className={clsx(
           "absolute -right-0.5 -bottom-0.5 h-2.5 w-2.5 rounded-full border-2",
-          theme === "dark" ? "border-[#0E1431] bg-[#8B6CFF]" : "border-[#F6FAFD] bg-[#4A7FA7]"
+          theme === "dark" ? "border-[#0F172A] bg-[#3B82F6]" : "border-[#F6FAFD] bg-[#4A7FA7]"
         )}
       />
     </button>

@@ -13,14 +13,15 @@ const ThemeContext = createContext<ThemeContextValue | null>(null);
 
 const STORAGE_KEY = "mindfries-ide-theme";
 
-function readStoredOrSystemTheme(): IdeTheme {
+function readStoredTheme(): IdeTheme {
   try {
     const stored = window.localStorage.getItem(STORAGE_KEY);
     if (stored === "dark" || stored === "light") return stored;
   } catch {
-    // localStorage unavailable (private mode, etc.) — fall through to system preference
+    // localStorage unavailable (private mode, etc.) — fall through to the default
   }
-  return window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
+  // The workspace is designed dark; light is there for whoever switches to it.
+  return "dark";
 }
 
 export function IdeThemeProvider({ children }: { children: ReactNode }) {
@@ -33,7 +34,7 @@ export function IdeThemeProvider({ children }: { children: ReactNode }) {
     // only happen after mount: both are unavailable during SSR, and using
     // them synchronously in render would produce a server/client mismatch.
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    setTheme(readStoredOrSystemTheme());
+    setTheme(readStoredTheme());
 
     // IdeShell itself only covers h-dvh of viewport height — anything a
     // fraction of a pixel taller (rounding, a mobile URL bar collapsing)
@@ -49,7 +50,7 @@ export function IdeThemeProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
-    const bg = theme === "dark" ? "#1A3D63" : "#F6FAFD";
+    const bg = theme === "dark" ? "#0A101E" : "#F6FAFD";
     document.body.style.backgroundColor = bg;
     document.documentElement.style.backgroundColor = bg;
   }, [theme]);

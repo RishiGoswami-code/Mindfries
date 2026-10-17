@@ -23,8 +23,18 @@ export interface FileChange {
 /** Tabs that show a diff rather than a file are opened under this prefix. */
 export const DIFF_PREFIX = "diff:";
 export const isDiffTab = (path: string | null | undefined): path is string => !!path && path.startsWith(DIFF_PREFIX);
-/** The file a tab is about: itself, or the file a diff tab compares. */
-export const fileOfTab = (path: string | null): string | null => (isDiffTab(path) ? path.slice(DIFF_PREFIX.length) : path);
+/**
+ * Two tabs that aren't files in the project: the task brief, shown as
+ * TASK.md and rendered, and the live preview of a web project. Neither is
+ * part of the candidate's work — they're never written to the files, the
+ * sandbox or git — so nothing that reads the project sees them.
+ */
+export const TASK_TAB = "task:TASK.md";
+export const PREVIEW_TAB = "preview:app";
+export const isVirtualTab = (path: string | null | undefined): boolean => path === TASK_TAB || path === PREVIEW_TAB;
+
+/** The file a tab is about: itself, the file a diff tab compares, or none for the task and preview tabs. */
+export const fileOfTab = (path: string | null): string | null => (isVirtualTab(path) ? null : isDiffTab(path) ? path.slice(DIFF_PREFIX.length) : path);
 
 const isTooling = (path: string) => /(^|\/)(node_modules|\.git|__pycache__)\//.test(path);
 const lines = (text: string) => (text === "" ? 0 : text.replace(/\n$/, "").split("\n").length);

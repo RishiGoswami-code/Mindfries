@@ -35,12 +35,12 @@ export function CameraPanel({ theme, stream, compact = false }: { theme: IdeThem
   // <video> is the same element either way, so the feed never restarts.
   return (
     <div className={clsx("flex h-full min-h-0", compact ? "flex-row items-center gap-3 px-3" : "flex-col")}>
-      <div className={clsx("flex shrink-0 items-center gap-2 text-[13px]", compact ? "flex-1" : "h-11 px-3")}>
-        <Video size={15} className={dark ? "text-[#A78BFA]" : palette.accent} />
-        <span className={clsx("font-medium", palette.text)}>Camera</span>
+      <div className={clsx("flex shrink-0 items-center gap-2 text-[13px]", compact ? "flex-1" : "h-12 px-4")}>
+        <Video size={17} className={dark ? "text-[#60A5FA]" : palette.accent} />
+        <span className={clsx("text-[14.5px] font-semibold", palette.text)}>Camera</span>
         {/* A steady, always-present indicator: no ambiguity about whether
             the session is being watched. */}
-        <span className={clsx("ml-auto flex items-center gap-1.5", dark ? "text-[#E7EAF6]" : "text-[#c0304c]")}>
+        <span className={clsx("ml-auto flex items-center gap-1.5", dark ? "text-[#F87182]" : "text-[#c0304c]")}>
           <span className="h-2 w-2 rounded-full bg-[#F0566A] shadow-[0_0_8px_rgba(240,86,106,0.8)]" />
           Recording
         </span>
@@ -49,7 +49,7 @@ export function CameraPanel({ theme, stream, compact = false }: { theme: IdeThem
       <div
         className={clsx(
           "overflow-hidden bg-black",
-          compact ? "h-8 w-14 shrink-0 rounded-md" : "mx-2 mb-2 min-h-0 flex-1 rounded-xl"
+          compact ? "h-8 w-14 shrink-0 rounded-md" : "mx-3 mb-3 min-h-0 flex-1 rounded-xl"
         )}
       >
         {/* Landscape, letterboxed rather than cropped. */}
