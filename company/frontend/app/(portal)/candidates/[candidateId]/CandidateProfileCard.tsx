@@ -4,6 +4,19 @@ import type { CandidateProfile } from "@/lib/candidate-profile";
 
 const n = (count: number, one: string, many = `${one}s`) => `${count} ${count === 1 ? one : many}`;
 
+/** How a part the candidate hid is named in the note that says so. */
+const HIDDEN_LABEL: Record<CandidateProfile["hidden"][number], string> = {
+  summary: "headline and summary",
+  location: "location",
+  photo: "photo",
+  code: "GitHub and GitLab",
+  linkedin: "LinkedIn",
+  portfolio: "portfolio",
+  resume: "resume",
+  preferences: "job preferences",
+  documents: "documents",
+};
+
 const KIND_LABEL = { certificate: "Certificate", report: "Project report", other: "Document" } as const;
 const kb = (bytes: number) => (bytes < 1024 * 1024 ? `${Math.round(bytes / 1024)} KB` : `${(bytes / (1024 * 1024)).toFixed(1)} MB`);
 /** The currency code came from the candidate's side; a malformed one makes Intl throw, so fall back to plain digits. */
@@ -40,6 +53,10 @@ export function CandidateProfileCard({ profile }: { profile: CandidateProfile | 
     profile.noticePeriod ? `Notice: ${profile.noticePeriod}` : "",
   ].filter(Boolean);
   const wroteNothing = !profile.headline && !profile.bio && facts.length === 0;
+  const keptPrivate = [
+    ...profile.hidden.map((f) => HIDDEN_LABEL[f]),
+    ...(profile.hiddenProjects > 0 ? [n(profile.hiddenProjects, "project")] : []),
+  ];
 
   return (
     <div className="hair-card divide-y divide-hair">
@@ -48,8 +65,13 @@ export function CandidateProfileCard({ profile }: { profile: CandidateProfile | 
           <div className="eyebrow">Profile</div>
           <Pill tone={profile.emailVerifiedAt ? "green" : "gray"}>{profile.emailVerifiedAt ? "Email confirmed" : "Email not confirmed"}</Pill>
         </div>
+        {keptPrivate.length > 0 && (
+          <p className="mt-2 text-xs text-faint">The candidate keeps some of their profile private: {keptPrivate.join(", ")}.</p>
+        )}
         {wroteNothing ? (
-          <p className="mt-2 text-sm text-dim">The candidate hasn&apos;t filled in their profile.</p>
+          <p className="mt-2 text-sm text-dim">
+            {profile.hidden.includes("summary") ? "The candidate keeps their headline and summary private." : "The candidate hasn’t filled in their profile."}
+          </p>
         ) : (
           <>
             {profile.headline && <div className="mt-2 text-base font-bold">{profile.headline}</div>}

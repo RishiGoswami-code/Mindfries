@@ -5,6 +5,7 @@ import { ForbiddenError, requireCompanyPermission } from "@/lib/auth/company-use
 import { getApplicationForCompany } from "@/lib/db";
 import { closeInterview, recordApplicationEmail, rescheduleInterview, scheduleInterview, type InterviewInput } from "@/lib/hiring";
 import { mailerReady, sendMail } from "@/lib/mailer";
+import { candidateWantsEmail, type CandidateEmailKind } from "@/lib/candidate-settings";
 
 /**
  * The hiring team's side of an application on the candidate page:
@@ -14,7 +15,9 @@ import { mailerReady, sendMail } from "@/lib/mailer";
  * Email is the only messaging: it goes from Mindfries' address with the
  * sender's own address as reply-to, so the candidate's answer lands in the
  * sender's inbox. Each one is recorded (application_emails) whether or not
- * it could be sent, so both sides see what was said.
+ * it could be sent, so both sides see what was said. A candidate who turned
+ * that kind of email off in their Settings isn't emailed; it is still
+ * recorded, and they read it in their Applications.
  */
 
 export type HiringState = { error: string | null; notice: string | null };
@@ -58,6 +61,7 @@ function formatWhen(iso: string, timeZone: string): string {
  * either way. Returns what happened, in words for the form.
  */
 async function emailCandidate(opts: {
+  kind: CandidateEmailKind;
   companyId: string;
   companyName: string;
   senderEmail: string;
@@ -71,6 +75,8 @@ async function emailCandidate(opts: {
   let error: string | null = null;
   if (!mailerReady()) {
     error = "Email isn't set up on this portal";
+  } else if (!(await candidateWantsEmail(opts.to, opts.kind))) {
+    error = "they've turned these emails off";
   } else {
     try {
       await sendMail({
@@ -127,7 +133,7 @@ export async function scheduleInterviewAction(applicationId: string, _prev: Hiri
     if (!application) return { error: "Candidate not found.", notice: null };
     await scheduleInterview(session.companyId, applicationId, read.input);
     const mail = interviewMail("scheduled", session.companyName, application.roleTitle, read.input, read.timeZone);
-    const sent = await emailCandidate({ ...session, senderEmail: session.email, senderName: session.name, applicationId, to: application.candidateEmail, ...mail });
+    const sent = await emailCandidate({ kind: "interviews", ...session, senderEmail: session.email, senderName: session.name, applicationId, to: application.candidateEmail, ...mail });
     refresh(applicationId, application.jobRoleId);
     return { error: null, notice: `Scheduled. ${sent}` };
   } catch (e) {
@@ -149,7 +155,7 @@ export async function rescheduleInterviewAction(applicationId: string, interview
     if (!application) return { error: "Candidate not found.", notice: null };
     await rescheduleInterview(session.companyId, interviewId, read.input);
     const mail = interviewMail("moved", session.companyName, application.roleTitle, read.input, read.timeZone);
-    const sent = await emailCandidate({ ...session, senderEmail: session.email, senderName: session.name, applicationId, to: application.candidateEmail, ...mail });
+    const sent = await emailCandidate({ kind: "interviews", ...session, senderEmail: session.email, senderName: session.name, applicationId, to: application.candidateEmail, ...mail });
     refresh(applicationId, application.jobRoleId);
     return { error: null, notice: `Moved. ${sent}` };
   } catch (e) {
@@ -165,6 +171,7 @@ export async function closeInterviewAction(applicationId: string, interviewId: s
   const interview = await closeInterview(session.companyId, interviewId, status);
   if (status === "cancelled") {
     await emailCandidate({
+      kind: "interviews",
       ...session,
       senderEmail: session.email,
       senderName: session.name,
@@ -191,7 +198,7 @@ export async function sendEmailAction(applicationId: string, _prev: HiringState,
   try {
     const application = await getApplicationForCompany(session.companyId, applicationId);
     if (!application) return { error: "Candidate not found.", notice: null };
-    const sent = await emailCandidate({ ...session, senderEmail: session.email, senderName: session.name, applicationId, to: application.candidateEmail, subject, body });
+    const sent = await emailCandidate({ kind: "messages", ...session, senderEmail: session.email, senderName: session.name, applicationId, to: application.candidateEmail, subject, body });
     refresh(applicationId, application.jobRoleId);
     return { error: null, notice: sent };
   } catch (e) {

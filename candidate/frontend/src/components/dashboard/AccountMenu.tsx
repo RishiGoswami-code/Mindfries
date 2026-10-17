@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import Link from "next/link";
-import { ChevronDown, LogOut, ShieldCheck, User } from "lucide-react";
+import { ChevronDown, LogOut, Settings, ShieldCheck, User } from "lucide-react";
 import { useDismissablePanel } from "@/lib/useDismissablePanel";
 import { signOut as endSession, signOutEverywhere } from "@/app/login/actions";
 import { PoliciesModal } from "./PoliciesModal";
@@ -141,6 +141,14 @@ export function AccountMenu({ sessionName, profile, appearance = "default" }: Ac
                 >
                   <User size={15} className="text-[#4A7FA7]" />
                   View profile
+                </Link>
+                <Link
+                  href="/settings"
+                  onClick={close}
+                  className="flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-[13px] font-medium text-[#0A1931] transition-colors hover:bg-[#B3CFE5]/20"
+                >
+                  <Settings size={15} className="text-[#4A7FA7]" />
+                  Settings
                 </Link>
                 <button
                   type="button"

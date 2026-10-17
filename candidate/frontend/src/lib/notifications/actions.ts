@@ -2,7 +2,8 @@
 
 import { db } from "../supabase";
 import { currentCandidate } from "../auth/users";
-import { deriveNotifications, type DerivedNotification, type InvitationFact, type ReportFact } from "./derive";
+import { ownedBy } from "../jobs/data";
+import { deriveNotifications, type DerivedNotification, type HiringFacts, type InvitationFact, type ReportFact } from "./derive";
 
 // The bell's server side: read the candidate's records, derive what is
 // worth telling them (derive.ts), and remember what they've read or
@@ -53,9 +54,56 @@ export async function loadNotifications(): Promise<BellItem[]> {
     (state.data ?? []).map((r: any) => [r.key as string, { read: !!r.read_at, dismissed: !!r.dismissed_at }]),
   );
 
-  return deriveNotifications(invitationFacts, reportFacts, Date.now())
+  const hiring = await loadHiringFacts(candidate);
+
+  return deriveNotifications(invitationFacts, reportFacts, Date.now(), hiring)
     .filter((n) => !marks.get(n.id)?.dismissed)
     .map((n) => ({ ...n, read: !!marks.get(n.id)?.read }));
+}
+
+/**
+ * Applications, interviews and hiring-team messages (migration 0025). A
+ * database without 0025 has none of these, and the rest of the feed still
+ * loads.
+ */
+async function loadHiringFacts(candidate: { id: string; email: string }): Promise<HiringFacts> {
+  const none: HiringFacts = { applications: [], interviews: [], messages: [] };
+  const c = db();
+  if (!c) return none;
+  const { data: apps, error } = await c
+    .from("candidate_applications")
+    .select("id, stage, stage_changed_at, job_roles(title, companies(name))")
+    .or(ownedBy(candidate));
+  if (error || !apps?.length) return none;
+
+  const about = new Map<string, { role: string; company: string }>(
+    (apps as any[]).map((a) => [a.id as string, { role: a.job_roles?.title || "a role", company: a.job_roles?.companies?.name || "A company" }]),
+  );
+  const ids = [...about.keys()];
+  const [interviews, emails] = await Promise.all([
+    c.from("application_interviews").select("id, application_id, title, starts_at, status, updated_at").in("application_id", ids),
+    c.from("application_emails").select("id, application_id, subject, sent_at").in("application_id", ids).order("sent_at", { ascending: false }).limit(50),
+  ]);
+
+  return {
+    applications: (apps as any[]).map((a) => ({ id: a.id, ...about.get(a.id)!, stage: a.stage, stageChangedAt: a.stage_changed_at ?? null })),
+    interviews: ((interviews.data ?? []) as any[]).map((i) => ({
+      id: i.id,
+      applicationId: i.application_id,
+      title: i.title,
+      ...about.get(i.application_id)!,
+      startsAt: i.starts_at,
+      status: i.status,
+      updatedAt: i.updated_at,
+    })),
+    messages: ((emails.data ?? []) as any[]).map((m) => ({
+      id: m.id,
+      applicationId: m.application_id,
+      subject: m.subject,
+      company: about.get(m.application_id)!.company,
+      sentAt: m.sent_at,
+    })),
+  };
 }
 
 const validKey = (key: string) => typeof key === "string" && /^[a-z-]+:[0-9a-f-]{36}$/i.test(key);

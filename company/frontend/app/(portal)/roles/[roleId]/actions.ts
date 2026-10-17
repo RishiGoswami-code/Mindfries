@@ -8,6 +8,7 @@ import { EMPLOYMENT_TYPES, WORK_MODES, inviteApplicant, setJobPosting } from "@/
 import { inviteLink } from "@/lib/invite-link";
 import { invitationMail } from "@/lib/invitation-mail";
 import { mailerReady, sendMail } from "@/lib/mailer";
+import { candidateWantsEmail } from "@/lib/candidate-settings";
 
 const text = (v: unknown, max: number) => (typeof v === "string" ? v.slice(0, max).trim() : "");
 const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
@@ -59,6 +60,8 @@ export async function inviteCandidate(roleId: string, _prev: InviteCandidateStat
     const portal = process.env.CANDIDATE_PORTAL_URL?.replace(/\/+$/, "");
     if (!mailerReady() || !portal || !link) {
       notice = `Invited — their own task is being prepared. No email was sent (${!mailerReady() ? "email isn't set up on this portal" : "CANDIDATE_PORTAL_URL isn't set, so there is no link"})${link ? "; send them the link below" : `; tell ${email} to sign in to the candidate portal with that address`}.`;
+    } else if (!(await candidateWantsEmail(email, "invitations"))) {
+      notice = "Invited — their own task is being prepared. No email was sent: they've turned invitation emails off, and it shows on their dashboard.";
     } else {
       const role = await getJobRole(companyId, roleId);
       try {
@@ -296,6 +299,8 @@ export async function inviteApplicantToAssessment(roleId: string, applicationId:
     const portal = process.env.CANDIDATE_PORTAL_URL?.replace(/\/+$/, "");
     if (!mailerReady() || !portal || !link) {
       notice = `Invited — their own task is being prepared. No email was sent (${!mailerReady() ? "email isn't set up on this portal" : "CANDIDATE_PORTAL_URL isn't set"}); it shows on their dashboard.`;
+    } else if (!(await candidateWantsEmail(application.candidateEmail, "invitations"))) {
+      notice = "Invited — their own task is being prepared. No email was sent: they've turned invitation emails off, and it shows on their dashboard.";
     } else {
       try {
         await sendMail({

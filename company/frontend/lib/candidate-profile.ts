@@ -1,5 +1,6 @@
 import "server-only";
 import { db } from "./supabase";
+import { settingsFor, settingsForMany, type CandidateSettings, type HiddenField } from "./candidate-settings";
 
 // The candidate's own profile, as the hiring team sees it beside the report:
 // what they wrote about themselves, their resume and what was read from it,
@@ -17,6 +18,11 @@ import { db } from "./supabase";
 // pattern match over their resume, and the accounts are what GitHub, GitLab
 // or LinkedIn said — through the candidate's own read-only sign-in when they
 // connected one (verified), or public data about a username they typed.
+//
+// The candidate decides how much of this a hiring team sees (their Settings,
+// lib/candidate-settings.ts): a part they've hidden is left out here, before
+// it reaches any page, and `hidden` says which so the page can say so rather
+// than look empty.
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -105,6 +111,10 @@ export interface CandidateProfile {
   jobPreferences: ProfileJobPreferences | null;
   /** Supporting documents they added (candidate_documents, 0024). Empty when none, or not in this database. */
   documents: ProfileDocument[];
+  /** Parts the candidate has chosen not to show hiring teams. They are already left out above. */
+  hidden: HiddenField[];
+  /** How many projects from their linked accounts they chose not to show. */
+  hiddenProjects: number;
 }
 
 export interface ProfileJobPreferences {
@@ -226,20 +236,24 @@ export async function listProfileBadges(emails: string[]): Promise<Record<string
   if (!c || wanted.length === 0) return {};
   const { data: users } = await c.from("candidate_users").select("id, email").in("email", wanted).eq("status", "active");
   if (!users?.length) return {};
-  const { data: rows } = await c
-    .from("candidate_knowledge")
-    .select("candidate_id, source, handle, verified, payload, fetched_at")
-    .in("candidate_id", users.map((u: any) => u.id));
+  const [{ data: rows }, settings] = await Promise.all([
+    c
+      .from("candidate_knowledge")
+      .select("candidate_id, source, handle, verified, payload, fetched_at")
+      .in("candidate_id", users.map((u: any) => u.id)),
+    settingsForMany(users.map((u: any) => u.id as string)),
+  ]);
   const out: Record<string, ProfileBadge> = {};
   for (const u of users as any[]) {
+    const s = settings.get(u.id);
     const mine = (rows ?? []).filter((r: any) => r.candidate_id === u.id);
-    const code = mine.filter((r: any) => r.source !== "linkedin").map(toCodeAccount).filter((a): a is ProfileCodeAccount => a !== null);
-    const li = mine.find((r: any) => r.source === "linkedin");
+    const code = s?.hidden.has("code") ? [] : mine.filter((r: any) => r.source !== "linkedin").map(toCodeAccount).filter((a): a is ProfileCodeAccount => a !== null);
+    const li = s?.hidden.has("linkedin") ? undefined : mine.find((r: any) => r.source === "linkedin");
     const linkedin = li ? toLinkedIn(li) : null;
     const languages = new Map<string, number>();
     for (const a of code) for (const l of a.languages) languages.set(l.name, (languages.get(l.name) ?? 0) + l.projects);
     out[String(u.email).toLowerCase()] = {
-      avatarUrl: pictureOf(code, linkedin),
+      avatarUrl: s?.hidden.has("photo") ? null : pictureOf(code, linkedin),
       accounts: [
         ...code.map((a) => ({ platform: a.source, verified: a.verified, projects: a.projectCount + a.privateProjects })),
         ...(linkedin ? [{ platform: "linkedin" as const, verified: true, projects: null }] : []),
@@ -268,34 +282,46 @@ export async function getCandidateProfile(candidateEmail: string): Promise<Candi
   if (!row) return null;
   const r = row as any;
 
+  const settings = await settingsFor(r.id);
+  const hides = (f: HiddenField) => settings.hidden.has(f);
+
   const [{ data: knowledge }, signed] = await Promise.all([
     c.from("candidate_knowledge").select("source, handle, verified, payload, fetched_at").eq("candidate_id", r.id).order("source"),
-    r.resume_path ? c.storage.from("resumes").createSignedUrl(r.resume_path, 3600) : Promise.resolve(null),
+    r.resume_path && !hides("resume") ? c.storage.from("resumes").createSignedUrl(r.resume_path, 3600) : Promise.resolve(null),
   ]);
 
-  const codeAccounts = (knowledge ?? [])
-    .filter((k: any) => k.source === "github" || k.source === "gitlab")
-    .map(toCodeAccount)
-    .filter((a): a is ProfileCodeAccount => a !== null);
-  const li = (knowledge ?? []).find((k: any) => k.source === "linkedin");
+  const shown = withoutHidden(
+    (knowledge ?? [])
+      .filter((k: any) => k.source === "github" || k.source === "gitlab")
+      .map(toCodeAccount)
+      .filter((a): a is ProfileCodeAccount => a !== null),
+    settings,
+  );
+  const codeAccounts = hides("code") ? [] : shown.accounts;
+  const li = hides("linkedin") ? undefined : (knowledge ?? []).find((k: any) => k.source === "linkedin");
   const linkedin = li ? toLinkedIn(li) : null;
 
   const parsed = r.resume_parsed as { skills?: string[]; years?: { from: number; to: number } } | null;
   // Read apart from the profile row: they depend on migration 0024, and a
   // select naming a column that isn't there fails the whole query.
-  const [jobPreferences, documents] = await Promise.all([readJobPreferences(c, r.id), readDocuments(c, r.id)]);
+  const [jobPreferences, documents] = await Promise.all([
+    hides("preferences") ? null : readJobPreferences(c, r.id),
+    hides("documents") ? [] : readDocuments(c, r.id),
+  ]);
+
+  const linkHidden: Record<ProfileLink["platform"], boolean> = { github: hides("code"), gitlab: hides("code"), linkedin: hides("linkedin"), portfolio: hides("portfolio") };
 
   return {
     name: r.name ?? "",
     emailVerifiedAt: r.email_verified_at ?? null,
-    headline: r.role ?? "",
-    location: r.location ?? "",
-    bio: r.bio ?? "",
-    noticePeriod: r.notice_period ?? "",
-    openTo: r.open_to ?? [],
+    headline: hides("summary") ? "" : (r.role ?? ""),
+    location: hides("location") ? "" : (r.location ?? ""),
+    bio: hides("summary") ? "" : (r.bio ?? ""),
+    noticePeriod: hides("summary") ? "" : (r.notice_period ?? ""),
+    openTo: hides("summary") ? [] : (r.open_to ?? []),
     updatedAt: r.profile_updated_at ?? null,
-    links: toLinks(r.links),
-    resume: r.resume_path
+    links: toLinks(r.links).filter((l) => !linkHidden[l.platform]),
+    resume: r.resume_path && !hides("resume")
       ? {
           url: signed?.data?.signedUrl ?? null,
           // Stored as "<candidate id>/<timestamp>-<name>".
@@ -305,12 +331,27 @@ export async function getCandidateProfile(candidateEmail: string): Promise<Candi
           readable: !!parsed,
         }
       : null,
-    codeAccounts,
-    linkedin,
-    avatarUrl: pictureOf(codeAccounts, linkedin),
+    codeAccounts: hides("photo") ? codeAccounts.map((a) => ({ ...a, avatarUrl: null })) : codeAccounts,
+    linkedin: linkedin && hides("photo") ? { ...linkedin, pictureUrl: null } : linkedin,
+    avatarUrl: hides("photo") ? null : pictureOf(codeAccounts, linkedin),
     jobPreferences,
     documents,
+    hidden: [...settings.hidden],
+    hiddenProjects: hides("code") ? 0 : shown.hiddenProjects,
   };
+}
+
+/** Leaves out the projects the candidate chose not to show, and counts them. */
+function withoutHidden(accounts: ProfileCodeAccount[], settings: CandidateSettings): { accounts: ProfileCodeAccount[]; hiddenProjects: number } {
+  // Compared the way toCodeAccount wrote each project's address.
+  const hidden = new Set([...settings.hiddenProjects].map(safeUrl).filter(Boolean));
+  let hiddenProjects = 0;
+  const kept = accounts.map((a) => {
+    const projects = a.projects.filter((p) => !hidden.has(p.url));
+    hiddenProjects += a.projects.length - projects.length;
+    return { ...a, projects, projectCount: Math.max(0, a.projectCount - (a.projects.length - projects.length)) };
+  });
+  return { accounts: kept, hiddenProjects };
 }
 
 const strings = (v: unknown, max = 8): string[] =>

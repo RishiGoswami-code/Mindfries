@@ -51,7 +51,7 @@ const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? o
  * "View as others see" (PreviewModeProvider) is a real toggle: it hides
  * every edit affordance, and the cards a hiring team wouldn't see at all.
  */
-export default async function ProfilePage({ searchParams }: { searchParams: Promise<{ connect?: string; result?: string }> }) {
+export default async function ProfilePage({ searchParams }: { searchParams: Promise<{ connect?: string; result?: string; open?: string }> }) {
   const query = await searchParams;
   const [session, profile, assessments] = await Promise.all([currentCandidate(), getProfile(), listAssessmentsOrUndefined()]);
   const [resumeUrl, resumeFile, knowledge, verifiable, preferences, documents] = await Promise.all([
@@ -98,13 +98,16 @@ export default async function ProfilePage({ searchParams }: { searchParams: Prom
 
   // Coming back from a Composio sign-in: open Linked accounts so its result is in view.
   const returningFromConnect = !!(query.connect && query.result);
+  // ?open=<section> opens that window — how Settings links straight to one.
+  const OPENABLE = ["resume", "linked", "projects", "evidence", "preferences"] as const;
+  const opened = OPENABLE.find((id) => id === query.open) ?? null;
   const totalProjects = summary.publicProjects + summary.privateProjects;
   const active = activeLabel(summary.lastActiveAt);
 
   return (
     <CandidateShell sessionName={session?.name} profile={profile}>
       <PreviewModeProvider>
-        <ProfileSections initial={returningFromConnect ? "linked" : null}>
+        <ProfileSections initial={returningFromConnect ? "linked" : opened}>
           <div className="mt-6 space-y-5">
             <ProfileCard
               id="completion"
