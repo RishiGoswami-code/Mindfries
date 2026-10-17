@@ -119,9 +119,10 @@ type geminiResponse struct {
 		BlockReason string `json:"blockReason"`
 	} `json:"promptFeedback,omitempty"`
 	UsageMetadata *struct {
-		PromptTokenCount     int `json:"promptTokenCount"`
-		CandidatesTokenCount int `json:"candidatesTokenCount"`
-		ThoughtsTokenCount   int `json:"thoughtsTokenCount"`
+		PromptTokenCount        int `json:"promptTokenCount"`
+		CandidatesTokenCount    int `json:"candidatesTokenCount"`
+		ThoughtsTokenCount      int `json:"thoughtsTokenCount"`
+		CachedContentTokenCount int `json:"cachedContentTokenCount"`
 	} `json:"usageMetadata,omitempty"`
 	Error *struct {
 		Code    int    `json:"code"`
@@ -224,6 +225,7 @@ func (c *GeminiClient) report(ctx context.Context, model string, r geminiRespons
 		Agent: agent, SessionID: sessionID, Model: model,
 		PromptTokens:     r.UsageMetadata.PromptTokenCount,
 		CompletionTokens: r.UsageMetadata.CandidatesTokenCount + r.UsageMetadata.ThoughtsTokenCount,
+		CachedTokens:     r.UsageMetadata.CachedContentTokenCount,
 	})
 }
 
