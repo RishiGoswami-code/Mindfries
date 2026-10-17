@@ -1,4 +1,3 @@
-import { BarChart3 } from "lucide-react";
 import type { Assessment } from "@/lib/dashboard/data";
 
 /**
@@ -21,23 +20,19 @@ export function EvidenceSummary({ items = [] }: { items?: Assessment[] }) {
   ];
 
   return (
-    <section className="rounded-2xl bg-[#F9CDE2] p-5 shadow-[0_10px_24px_-14px_rgba(10,25,49,0.35)]">
-      <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#0A1931]/10 text-[#0A1931]">
-        <BarChart3 size={17} />
-      </span>
-      <h2 className="mt-3 text-sm font-semibold text-[#0A1931]">Your evidence, so far</h2>
-      <p className="mt-1.5 text-[13px] leading-relaxed text-[#0A1931]/70">
+    <div>
+      <p className="text-[13px] leading-relaxed text-[#5E5A82]">
         Companies don&apos;t see a score — they see how you worked. This is what that adds up to.
       </p>
 
-      <dl className="mt-4 grid grid-cols-3 gap-3 border-t border-[#0A1931]/10 pt-4">
+      <dl className="mt-4 grid grid-cols-3 gap-3 border-t border-[#ECE9F6] pt-4">
         {rows.map((row) => (
           <div key={row.label}>
-            <dd className="text-2xl leading-none font-semibold tabular-nums text-[#0A1931]">{row.value}</dd>
-            <dt className="mt-1.5 text-[11px] leading-snug text-[#0A1931]/70">{row.label}</dt>
+            <dd className="text-2xl leading-none font-semibold tabular-nums text-[#100E2E]">{row.value}</dd>
+            <dt className="mt-1.5 text-[11.5px] leading-snug text-[#6E6A8F]">{row.label}</dt>
           </div>
         ))}
       </dl>
-    </section>
+    </div>
   );
 }

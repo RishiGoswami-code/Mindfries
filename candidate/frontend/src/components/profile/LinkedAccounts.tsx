@@ -56,10 +56,9 @@ export function LinkedAccounts({
   const visible = preview ? PLATFORM_ORDER.filter((id) => links[id]) : PLATFORM_ORDER;
 
   return (
-    <section className="rounded-2xl border border-[#B3CFE5] bg-white p-6">
-      <h2 className="text-sm font-semibold text-[#0A1931]">Linked accounts</h2>
+    <div>
       {!preview && (
-        <p className="mt-1 text-[12px] leading-relaxed text-[#4A7FA7]">
+        <p className="text-[12px] leading-relaxed text-[#4A7FA7]">
           A GitHub or GitLab username is looked up when you add it, and the account&apos;s public projects are
           read. LinkedIn and a portfolio are stored as you enter them — there&apos;s no public way to check those two.
           {verifiable.length > 0 &&
@@ -82,7 +81,7 @@ export function LinkedAccounts({
       {preview && connectedCount === 0 ? (
         <p className="mt-3 text-[13px] text-[#4A7FA7]">No accounts linked yet.</p>
       ) : (
-        <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="mt-4 grid gap-3 sm:grid-cols-2">
           {visible.map((id) => (
             <PlatformTile
               key={id}
@@ -113,7 +112,7 @@ export function LinkedAccounts({
           ))}
         </div>
       )}
-    </section>
+    </div>
   );
 }
 

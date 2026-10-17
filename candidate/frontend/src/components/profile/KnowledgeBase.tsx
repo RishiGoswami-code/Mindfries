@@ -28,13 +28,12 @@ export function KnowledgeBase({ items }: { items: StoredKnowledge[] }) {
   if (items.length === 0) {
     if (preview) return null;
     return (
-      <section className="rounded-2xl border border-dashed border-[#B3CFE5] bg-white p-6">
-        <h2 className="text-sm font-semibold text-[#0A1931]">Projects, languages and activity</h2>
-        <p className="mt-1 text-[12.5px] leading-relaxed text-[#4A7FA7]">
-          Link a GitHub or GitLab account above and what it shows publicly — your own projects, the languages
+      <div>
+        <p className="text-[12.5px] leading-relaxed text-[#4A7FA7]">
+          Link a GitHub or GitLab account under Linked accounts and what it shows publicly — your own projects, the languages
           they&apos;re in, how recently you&apos;ve been active — appears here and beside your reports.
         </p>
-      </section>
+      </div>
     );
   }
 
@@ -52,10 +51,9 @@ export function KnowledgeBase({ items }: { items: StoredKnowledge[] }) {
   }
 
   return (
-    <section className="rounded-2xl border border-[#B3CFE5] bg-white p-6">
-      <h2 className="text-sm font-semibold text-[#0A1931]">Projects, languages and activity</h2>
-      <p className="mt-1 text-[12px] leading-relaxed text-[#4A7FA7]">
-        Public information from the accounts linked above. An account you signed in to is marked as yours; one
+    <div>
+      <p className="text-[12px] leading-relaxed text-[#4A7FA7]">
+        Public information from your linked accounts. An account you signed in to is marked as yours; one
         linked only by username shows the account exists, not that it is yours, and hiring teams are told which.
       </p>
       {notice && <p className="mt-2 text-[12px] text-[#a6203c]">{notice}</p>}
@@ -136,6 +134,6 @@ export function KnowledgeBase({ items }: { items: StoredKnowledge[] }) {
           </div>
         ))}
       </div>
-    </section>
+    </div>
   );
 }

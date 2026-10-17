@@ -29,32 +29,40 @@ export function ProfileStrength({ profile, hasResume }: { profile: CandidateProf
   const pct = Math.round((done / items.length) * 100);
 
   return (
-    <section className="rounded-2xl border border-[#B3CFE5] bg-white p-5">
+    <section className="rounded-[20px] border border-white/90 bg-white/70 p-6 shadow-[0_10px_30px_-24px_rgba(76,58,160,0.45)] backdrop-blur">
       <div className="flex items-baseline justify-between gap-3">
-        <h2 className="text-sm font-semibold text-[#0A1931]">Profile strength</h2>
-        <span className="text-sm font-semibold tabular-nums text-[#1A3D63]">{pct}% complete</span>
+        <h2 className="text-[20px] font-semibold text-[#100E2E]">Profile strength</h2>
+        <span className="text-[20px] text-[#6E6A8F]">
+          <span className="font-semibold tabular-nums text-[#5B3BE0]">{pct}%</span> complete
+        </span>
       </div>
-      <p className="mt-0.5 text-[12px] text-[#4A7FA7]">Complete these sections to make your profile stronger.</p>
 
-      <div className="mt-2.5 h-2 overflow-hidden rounded-full bg-[#B3CFE5]/40">
+      <div
+        className="mt-5 h-2 overflow-hidden rounded-full bg-[#E9E6F6]"
+        role="progressbar"
+        aria-valuenow={pct}
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-label="Profile strength"
+      >
         <div
-          className="h-full rounded-full bg-[#1A3D63] transition-[width] duration-300"
+          className="h-full rounded-full bg-gradient-to-r from-[#5B3BE0] to-[#7C5CFC] transition-[width] duration-300"
           style={{ width: `${pct}%` }}
         />
       </div>
 
-      <ul className="mt-4 flex flex-wrap gap-x-5 gap-y-2">
+      <ul className="mt-5 flex flex-wrap gap-x-12 gap-y-3">
         {items.map((item) => (
-          <li key={item.label} className="flex items-center gap-1.5 text-[12.5px]">
+          <li key={item.label} className="flex items-center gap-3 text-[15px]">
             <span
               className={clsx(
-                "flex h-4 w-4 shrink-0 items-center justify-center rounded-full",
-                item.done ? "bg-[#1A9E6B] text-white" : "border border-[#B3CFE5] bg-white"
+                "flex h-[26px] w-[26px] shrink-0 items-center justify-center rounded-full",
+                item.done ? "bg-[#5B3BE0] text-white" : "border-2 border-[#D4CEEA] bg-white"
               )}
             >
-              {item.done && <Check size={10} strokeWidth={3} />}
+              {item.done && <Check size={14} strokeWidth={3} />}
             </span>
-            <span className={item.done ? "text-[#0A1931]" : "text-[#4A7FA7]"}>{item.label}</span>
+            <span className="text-[#1B1840]">{item.label}</span>
           </li>
         ))}
       </ul>

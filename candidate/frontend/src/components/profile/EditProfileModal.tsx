@@ -86,10 +86,14 @@ export function EditProfileModal({ savedIdentity }: { savedIdentity: FormState }
 
   return (
     <>
-      <Button tone="ghost" size="sm" onClick={openModal} className="border border-[#B3CFE5]">
-        <Pencil size={13} />
+      <button
+        type="button"
+        onClick={openModal}
+        className="inline-flex h-[48px] items-center gap-3 rounded-2xl border border-white/90 bg-white/80 px-5 text-[15px] font-semibold text-[#1F1B4D] shadow-[0_8px_22px_-14px_rgba(76,58,160,0.5)] transition-colors hover:bg-white"
+      >
+        <Pencil size={18} strokeWidth={1.9} className="text-[#5B3BE0]" />
         Edit profile
-      </Button>
+      </button>
 
       {open && (
         <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-[#0A1931]/45 p-4 py-10 backdrop-blur-[2px]" onClick={() => setOpen(false)}>

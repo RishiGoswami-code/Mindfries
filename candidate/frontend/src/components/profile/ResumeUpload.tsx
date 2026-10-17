@@ -1,6 +1,6 @@
 "use client";
 
-import { FileText, Paperclip, Trash2 } from "lucide-react";
+import { Paperclip, Trash2 } from "lucide-react";
 import { ACCEPTED_EXT, ACCEPTED_MIME, formatBytes, MAX_RESUME_BYTES } from "@/lib/profile/useResumeUploader";
 import { fillProfileFromResume, uploadResume, removeResume } from "@/lib/profile/actions";
 import type { ResumeFields } from "@/lib/profile/resume-fields";
@@ -15,10 +15,8 @@ import { useState, useRef } from "react";
  * read (a .doc, a scan with no text in it) is still uploaded; the card says
  * that nothing could be read from it rather than showing nothing.
  *
- * Flat, not tilted: this card and its two neighbours borrow StickyNote's
- * colours, not the tilt-and-tape treatment — that motif is reserved for the
- * dashboard's wall of things happening to you (see StickyNote's own doc
- * comment), and a profile's sidebar reads as reference material, not mail.
+ * Rendered inside the profile page's Resume tile (ProfileTile), which
+ * supplies the frame and the heading.
  */
 export function ResumeUpload({
   resumePath,
@@ -107,16 +105,11 @@ export function ResumeUpload({
   }
 
   return (
-    <section className="rounded-2xl bg-[#FDF09B] p-5 shadow-[0_10px_24px_-14px_rgba(10,25,49,0.35)]">
-      <div className="flex items-start gap-3">
-        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#0A1931]/10 text-[#0A1931]">
-          <FileText size={17} />
-        </span>
-        <div className="min-w-0 flex-1">
-          <h2 className="text-sm font-semibold text-[#0A1931]">Resume</h2>
-
+    <div>
+      <div>
+        <div className="min-w-0">
           {resumePath && fileName ? (
-            <div className="mt-2 flex items-center gap-2 rounded-xl bg-white/60 px-3 py-2">
+            <div className="flex items-center gap-2 rounded-xl bg-[#F6F4FC] px-3 py-2">
               <Paperclip size={14} className="shrink-0 text-[#0A1931]/60" />
               <div className="min-w-0 flex-1">
                 {resumeUrl ? (
@@ -220,6 +213,6 @@ export function ResumeUpload({
           )}
         </div>
       </div>
-    </section>
+    </div>
   );
 }
