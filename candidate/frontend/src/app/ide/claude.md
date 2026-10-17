@@ -80,20 +80,22 @@ directly from a non-React callback.
 
 ## Layout model: floating rounded cards, not flush VS Code panels
 
-Files on the left; the editor in the middle with a row under it — the
-Terminal card (`BottomPanel.tsx`: Terminal, Output, Debug Console, Problems,
-Changes, Ports); Mindfries AI on the
-right with the camera under it. `IdeShell` owns the row's height (the camera
-under the assistant follows it). The header and status bar run edge to edge.
+Files on the left; the editor in the middle with the Terminal card under
+it (`BottomPanel.tsx`: Terminal, Output, Debug Console, Problems, Changes,
+Ports); Mindfries AI on the right with the camera under it. The terminal and
+the camera each have a height of their own (`IdeShell`'s `terminal` and
+`cameraPane`) — dragging one never moves the other. The header and status
+bar run edge to edge.
 
-Terminal and Mindfries AI each have a cross that tucks the card away; a
-closed card leaves a chip floating over the camera picture (`ClosedChips` in
-`IdeShell.tsx`) that opens it again. Tests are run from the terminal; the
-runs are still read into results (`lib/ide/test-results.ts`) for telemetry
-and the assistant, there's just no card showing them. With the assistant closed, the camera
-joins the bottom row. The Terminal card is hidden with `display: none`, never
-unmounted, while closed — keep it that way, or terminal sessions lose their
-scrollback. The camera has no cross: proctoring needs it on screen.
+Terminal, Mindfries AI and the camera each have a cross. A closed card
+leaves a chip (`ClosedChips` in `IdeShell.tsx`) that opens it again: on the
+camera picture, or in the bottom-right corner when the camera itself is
+closed. The Terminal card is hidden with `display: none`, never unmounted,
+while closed — keep it that way, or terminal sessions lose their
+scrollback. Closing the camera hides only its picture: the stream belongs
+to `useProctorCamera` and keeps recording. Tests are run from the terminal;
+the runs are still read into results (`lib/ide/test-results.ts`) for
+telemetry and the assistant, there's just no card showing them.
 
 Two editor tabs aren't files (`TASK_TAB`, `PREVIEW_TAB` in
 `lib/ide/changes.ts`): TASK.md, the task brief rendered read-only and pinned

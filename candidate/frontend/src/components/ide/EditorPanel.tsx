@@ -131,7 +131,7 @@ export function EditorPanel({
         {activePath === TASK_TAB ? (
           // The brief, as a page to read. It isn't a file in the project, so
           // there is nothing to edit or save.
-          <div className="h-full overflow-y-auto">
+          <div className="h-full overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             <article className={clsx("mx-auto max-w-3xl px-8 py-8 text-[14.5px] leading-relaxed", palette.text, "[&_code]:rounded [&_code]:px-1 [&_code]:py-0.5 [&_h1]:mb-3 [&_h1]:text-[26px] [&_h1]:font-bold [&_h2]:mt-6 [&_h2]:mb-2 [&_h2]:text-[19px] [&_h2]:font-semibold [&_h3]:mt-4 [&_h3]:font-semibold [&_li]:my-1 [&_p]:my-2", dark ? "[&_code]:bg-[#16213A]" : "[&_code]:bg-[#B3CFE5]/40")}>
               <p className={clsx("mb-5 text-[12px] tracking-wide uppercase", palette.textMuted)}>TASK.md · read-only</p>
               <TinyMarkdown text={taskMarkdown} />

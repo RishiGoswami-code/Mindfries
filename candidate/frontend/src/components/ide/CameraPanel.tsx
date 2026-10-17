@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, type ReactNode } from "react";
 import clsx from "clsx";
-import { Video } from "lucide-react";
+import { Video, X } from "lucide-react";
 import { idePalette } from "@/lib/ide/palette";
 import type { IdeTheme } from "@/lib/ide/theme";
 
@@ -18,7 +18,20 @@ import type { IdeTheme } from "@/lib/ide/theme";
  * displays it, so the feed survives layout changes and can't be detached by
  * re-rendering.
  */
-export function CameraPanel({ theme, stream, compact = false, overlay }: { theme: IdeTheme; stream: MediaStream | null; compact?: boolean; overlay?: ReactNode }) {
+export function CameraPanel({
+  theme,
+  stream,
+  compact = false,
+  overlay,
+  onClose,
+}: {
+  theme: IdeTheme;
+  stream: MediaStream | null;
+  compact?: boolean;
+  overlay?: ReactNode;
+  /** Hides the picture. The camera itself stays on and keeps recording. */
+  onClose?: () => void;
+}) {
   const palette = idePalette(theme);
   const videoRef = useRef<HTMLVideoElement>(null);
   const dark = theme === "dark";
@@ -44,6 +57,17 @@ export function CameraPanel({ theme, stream, compact = false, overlay }: { theme
           <span className="h-2 w-2 rounded-full bg-[#F0566A] shadow-[0_0_8px_rgba(240,86,106,0.8)]" />
           Recording
         </span>
+        {onClose && (
+          <button
+            type="button"
+            onClick={onClose}
+            title="Hide the camera picture (it keeps recording)"
+            aria-label="Hide the camera picture"
+            className={clsx("-mr-1.5 flex h-7 w-7 items-center justify-center rounded-lg", palette.textMuted, palette.hover)}
+          >
+            <X size={15} />
+          </button>
+        )}
       </div>
 
       <div
