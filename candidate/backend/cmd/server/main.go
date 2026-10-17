@@ -19,6 +19,7 @@ import (
 	"github.com/mindfries/candidate-backend/internal/llm"
 	"github.com/mindfries/candidate-backend/internal/orchestrator"
 	"github.com/mindfries/candidate-backend/internal/sandbox"
+	"github.com/mindfries/candidate-backend/internal/storage"
 	"github.com/mindfries/candidate-backend/internal/verify"
 	"github.com/mindfries/candidate-backend/internal/ws"
 )
@@ -58,6 +59,7 @@ func main() {
 	sandboxClient := sandbox.New(cfg.DaytonaAPIKey, cfg.DaytonaBaseURL)
 	hub := ws.NewHub(cfg.AllowedOrigins)
 	orc := orchestrator.New(database, agents, sandboxClient, hub)
+	orc.Stills = storage.New(cfg.SupabaseURL, cfg.SupabaseServiceKey)
 	orc.Live = llm.NewLiveClient(cfg.GeminiAPIKey, cfg.GeminiLiveModel)
 	orc.SandboxNetwork, orc.SandboxMaxLive = cfg.SandboxNetwork, cfg.SandboxMaxLive
 	orc.RequireVerifiedEmail = cfg.RequireVerifiedEmail

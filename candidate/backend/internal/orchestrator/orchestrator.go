@@ -19,6 +19,7 @@ import (
 	"github.com/mindfries/candidate-backend/internal/db"
 	"github.com/mindfries/candidate-backend/internal/llm"
 	"github.com/mindfries/candidate-backend/internal/sandbox"
+	"github.com/mindfries/candidate-backend/internal/storage"
 	"github.com/mindfries/candidate-backend/internal/verify"
 	"github.com/mindfries/candidate-backend/internal/ws"
 )
@@ -32,6 +33,10 @@ type Orchestrator struct {
 	Agents  *llm.Agents
 	Sandbox *sandbox.Client
 	Hub     *ws.Hub
+	// Stills reads proctoring screenshots from Supabase Storage so the report
+	// can describe what each flagged moment showed. Nil/unconfigured simply
+	// omits captions; the flags still show their stills to the reviewer.
+	Stills *storage.Client
 	// Live is the interviewer's live voice line. Nil or unconfigured means
 	// interviews are held turn by turn through Agents.
 	Live *llm.LiveClient

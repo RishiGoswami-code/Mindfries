@@ -165,7 +165,7 @@ func (o *Orchestrator) Evaluate(ctx context.Context, sessionID string) error {
 
 	// Moments the candidate's browser flagged live (issue #120), as facts
 	// with their times — for a person to look at, beside their evidence.
-	if text := activityFlagsNote(events, sess.StartedAt); text != "" {
+	if text := o.describedFlagsNote(ctx, events, sess.StartedAt, briefOf(tc)); text != "" {
 		evidence = append(evidence, db.EvidenceItem{Category: "activity_flags", Observation: text})
 		forReport = append(forReport, "Flagged moments (prompts to look, not findings):\n"+text)
 	}
