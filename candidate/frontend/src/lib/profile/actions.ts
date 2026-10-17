@@ -4,11 +4,11 @@ import { db } from "@/lib/supabase";
 import { currentCandidate } from "@/lib/auth/users";
 import { revalidatePath } from "next/cache";
 import { MAX_RESUME_TEXT, parseResumeText, type ResumeFields } from "./resume-fields";
-import { AccountNotFound, dropKnowledge, dropLinkedIn, isKnowledgeSource, readAccount, storeKnowledge } from "./knowledge";
+import { dropKnowledge, dropLinkedIn, isKnowledgeSource, storeKnowledge } from "./knowledge";
 import { statsOf } from "./knowledge-shape";
 import { readThroughConnection } from "./knowledge-connection";
 import { endConnection } from "../composio";
-import { PLATFORMS, type LinkPlatform } from "./links";
+import { PLATFORMS } from "./links";
 import { NOTICE_PERIODS, OPEN_TO_OPTIONS } from "./data";
 
 // The edit form limits what can be typed, but a server action is a public
@@ -19,8 +19,6 @@ const MAX_HEADLINE = 120;
 const MAX_LOCATION = 120;
 const MAX_BIO = 500;
 const line = (v: unknown, max: number) => (typeof v === "string" ? v.replace(/\s+/g, " ").trim().slice(0, max) : "");
-
-const isPlatform = (p: string): p is LinkPlatform => Object.hasOwn(PLATFORMS, p);
 
 /** A linked account's knowledge base can be re-read this often, per account. */
 const REFRESH_EVERY_MS = 10 * 60_000;
@@ -96,60 +94,29 @@ export async function saveIdentity(form: { name: string; role: string; location:
 }
 
 /**
- * Links an account. The value is normalised here as well as on the page — a
- * server action is a public endpoint — and a GitHub or GitLab username is
- * read from the platform before it is saved: an account that doesn't exist
- * is refused, and one that does has its public projects, languages and
- * activity kept (lib/profile/knowledge.ts). If the platform simply doesn't
- * answer, the link is still saved, without that.
+ * Saves the candidate's portfolio link — the one link that is typed in.
+ * GitHub, GitLab and LinkedIn are only ever linked by signing in to them
+ * (app/api/connect, lib/composio.ts), so a typed username can't stand in
+ * for an account the candidate hasn't shown is theirs. The value is
+ * normalised here as well as on the page: a server action is a public
+ * endpoint.
  */
 export async function saveLink(platform: string, rawValue: string) {
   const session = await currentCandidate();
   if (!session) return { error: "Not signed in" };
-  if (!isPlatform(platform)) return { error: "Unknown platform." };
+  if (platform !== "portfolio") return { error: "Connect this account by signing in to it." };
 
-  const normalised = PLATFORMS[platform].normalize(String(rawValue).slice(0, 500));
+  const normalised = PLATFORMS.portfolio.normalize(String(rawValue).slice(0, 500));
   if (!normalised.ok) return { error: normalised.error };
-  const value = normalised.value;
 
   const c = db();
   if (!c) return { error: "Database not connected" };
 
   const { data } = await c.from("candidate_users").select("links").eq("id", session.id).single();
-  const currentLinks = data?.links || {};
-  // A sign-in showed one particular account is theirs. Typing a username
-  // keeps that only if it is the same account; a LinkedIn sign-in confirms
-  // a name rather than an address, so it stands whatever address is typed.
-  const was = currentLinks[platform]?.verified as { at: string; as: string } | undefined;
-  const verified = was && (platform === "linkedin" || was.as.toLowerCase() === value.toLowerCase()) ? was : undefined;
-  // The connection is to the account that was signed in to. If the link now
-  // names a different account, the connection has nothing to do with it and
-  // is ended rather than left behind.
-  const connectionId = currentLinks[platform]?.connectionId as string | undefined;
-  if (connectionId && !verified) await endConnection(connectionId);
-  const kept = verified && connectionId ? { connectionId, ...(currentLinks[platform]?.profile ? { profile: currentLinks[platform].profile } : {}) } : {};
-
-  let stats: ReturnType<typeof statsOf> | undefined;
-  if (isKnowledgeSource(platform)) {
-    try {
-      const knowledge = verified && connectionId ? await readThroughConnection(platform, session.id, connectionId, value) : await readAccount(platform, value);
-      await storeKnowledge(session.id, knowledge, !!verified);
-      stats = statsOf(knowledge);
-    } catch (e) {
-      if (e instanceof AccountNotFound) return { error: e.message };
-      // The platform didn't answer. A real username shouldn't be refused
-      // for that; whatever an earlier link left behind no longer applies.
-      await dropKnowledge(session.id, platform);
-    }
-  }
-
   const { error } = await c
     .from("candidate_users")
-    .update({
-      links: { ...currentLinks, [platform]: { value, savedAt: new Date().toISOString(), ...(stats ? { stats } : {}), ...(verified ? { verified } : {}), ...kept } },
-    })
+    .update({ links: { ...(data?.links || {}), portfolio: { value: normalised.value, savedAt: new Date().toISOString() } } })
     .eq("id", session.id);
-
   if (error) return { error: error.message };
 
   revalidatePath("/profile");
@@ -184,11 +151,16 @@ export async function refreshKnowledge(platform: string) {
   try {
     // A refresh re-reads the same account, so it stays verified if it was —
     // and a connected account is re-read through its connection.
+    // Only an account the candidate signed in to is read, and only through
+    // that connection. One linked by username before sign-in was the only
+    // way has to be connected first.
     const verifiedAs = links[platform]?.verified?.as;
-    const stillVerified = typeof verifiedAs === "string" && verifiedAs.toLowerCase() === value.toLowerCase();
     const connectionId = links[platform]?.connectionId;
-    const knowledge = stillVerified && typeof connectionId === "string" ? await readThroughConnection(platform, session.id, connectionId, value) : await readAccount(platform, value);
-    await storeKnowledge(session.id, knowledge, stillVerified);
+    if (typeof verifiedAs !== "string" || verifiedAs.toLowerCase() !== value.toLowerCase() || typeof connectionId !== "string") {
+      return { error: "Connect this account by signing in to it, then it can be refreshed." };
+    }
+    const knowledge = await readThroughConnection(platform, session.id, connectionId, value);
+    await storeKnowledge(session.id, knowledge, true);
     await c
       .from("candidate_users")
       .update({ links: { ...links, [platform]: { ...links[platform], stats: statsOf(knowledge) } } })

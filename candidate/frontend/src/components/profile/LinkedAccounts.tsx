@@ -11,23 +11,18 @@ import { usePreviewMode } from "./PreviewMode";
  * GitHub, GitLab, LinkedIn and a portfolio link — the platforms that say
  * something about a candidate beyond what's typed into a form.
  *
- * A GitHub or GitLab username is read from that platform's public API by
- * the server when it is saved (lib/profile/actions.ts → knowledge.ts) — a
- * username with no account behind it is refused, and what's shown afterwards
- * (avatar, name, public repo count) came from the platform itself. That
- * shows the account exists, so the tile says "Account found"; it does not
- * show the account is the candidate's, so it does not say "Verified".
- * LinkedIn and a portfolio have no such API to read, so those two are
- * stored exactly as entered and marked "Linked".
+ * GitHub, GitLab and LinkedIn are connected only by signing in to them:
+ * Connect goes straight to the platform's own sign-in, hosted by Composio
+ * (app/api/connect, lib/composio.ts), which grants read access and shows
+ * the account is the candidate's. Nothing is typed. What the tile shows
+ * afterwards was read through that connection.
  *
- * "Verified — yours" is a different claim, made only after the candidate
- * signed in to the account (app/api/connect, lib/composio.ts). For LinkedIn
- * that sign-in yields a name, not a profile address, so the tile says who
- * signed in rather than calling the typed address verified.
+ * The portfolio is the exception — any website, with nothing to sign in
+ * to — so it is the one link typed in, stored as entered and marked
+ * "Linked".
  *
- * A grid of tiles, not a list of rows: each platform is its own square, so
- * "Connect" reads as an action on that specific card rather than a row item
- * in a form.
+ * An account linked by username before sign-in existed still shows, marked
+ * unconfirmed, with a way to connect it properly.
  */
 const CONNECT_RESULT: Record<string, string> = {
   verified: "is confirmed as yours.",
@@ -40,12 +35,12 @@ const CONNECT_RESULT: Record<string, string> = {
 
 export function LinkedAccounts({
   links,
-  verifiable = [],
+  verifiable,
   connectResult,
 }: {
   links: Partial<Record<LinkPlatform, StoredLink>>;
-  /** The platforms that can be signed in to, to prove an account is yours (lib/composio.ts). */
-  verifiable?: string[];
+  /** The platforms whose sign-in is set up (lib/composio.ts). One that isn't says so instead of offering Connect. */
+  verifiable: string[];
   /** What a sign-in that just returned did: which platform, and how it ended. */
   connectResult?: { platform: string; result: string };
 }) {
@@ -60,12 +55,10 @@ export function LinkedAccounts({
       <h2 className="text-sm font-semibold text-[#0A1931]">Linked accounts</h2>
       {!preview && (
         <p className="mt-1 text-[12px] leading-relaxed text-[#4A7FA7]">
-          {verifiable.length > 0
-            ? `Connect signs you in to ${verifiable.map((id) => PLATFORMS[id as LinkPlatform]?.label ?? id).join(", ")} on the platform itself. It shows hiring teams the account is yours and lets us read it for your profile: your projects, the languages they are in and your recent activity; from LinkedIn, your name, headline and picture. The access is read-only — nothing is ever posted or changed — and it ends when you remove the account here.`
-            : "A GitHub or GitLab username is looked up when you add it, and the account's public projects are read."}
-          {" "}
-          {verifiable.length < 3 && "Where sign-in isn't available, an account is stored as you enter it. "}
-          A portfolio is stored as you enter it.
+          Connect signs you in to GitHub, GitLab or LinkedIn on the platform itself. It shows hiring teams the account is
+          yours and lets us read it for your profile: your projects, the languages they are in and your recent activity;
+          from LinkedIn, your name, headline and picture. The access is read-only — nothing is ever posted or changed — and
+          it ends when you remove the account here. A portfolio is stored as you enter it.
         </p>
       )}
       {connectResult && PLATFORMS[connectResult.platform as LinkPlatform] && CONNECT_RESULT[connectResult.result] && (
@@ -195,14 +188,8 @@ function PlatformTile({
                 <span className="inline-flex shrink-0 items-center gap-0.5 text-[10.5px] font-semibold text-[#1A9E6B]" title={`Signed in as ${link.verified.as}`}>
                   <BadgeCheck size={11} /> {id === "linkedin" ? `Signed in as ${link.verified.as}` : "Verified — yours"}
                 </span>
-              ) : platform.live ? (
-                link.stats ? (
-                  <span className="inline-flex shrink-0 items-center gap-0.5 text-[10.5px] font-semibold text-[#1A9E6B]">
-                    <BadgeCheck size={11} /> Account found
-                  </span>
-                ) : (
-                  <span className="shrink-0 text-[10.5px] text-[#4A7FA7]">not looked up yet</span>
-                )
+              ) : id !== "portfolio" ? (
+                <span className="shrink-0 text-[10.5px] font-semibold text-[#b7791f]">Not confirmed — connect to verify</span>
               ) : (
                 <span className="shrink-0 text-[10.5px] text-[#4A7FA7]">Linked</span>
               )}
@@ -227,10 +214,10 @@ function PlatformTile({
               View <ExternalLink size={11} />
             </a>
           )}
-          {!preview && canVerify && !link.verified && (
+          {!preview && canVerify && !link.verified && id !== "portfolio" && (
             // A plain link: it leaves this site for the platform's sign-in.
             <a href={`/api/connect/${id}/start`} className="text-[12px] font-medium text-[#1A3D63] underline underline-offset-2 hover:text-[#0A1931]">
-              Confirm it&apos;s yours
+              Connect
             </a>
           )}
           {!preview && (
@@ -250,8 +237,8 @@ function PlatformTile({
     );
   }
 
-  // ── Not connected, entering a value ───────────────────────────────────
-  if (isOpen) {
+  // ── Not connected, entering a value (the portfolio only) ──────────────
+  if (isOpen && id === "portfolio") {
     return (
       <div className="rounded-xl border border-[#4A7FA7] bg-[#F6FAFD] p-3.5">
         <div className="flex items-center gap-2.5">
@@ -287,7 +274,7 @@ function PlatformTile({
           className="btn-wipe mt-2 w-full px-3 py-1.5 text-[12.5px] font-semibold disabled:opacity-50"
           style={{ "--btn-bg": "#1A3D63", "--btn-fg": "#F6FAFD", "--btn-fill": "#4A7FA7", "--btn-fg-hover": "#FFFFFF" } as React.CSSProperties}
         >
-          {pending ? <Loader2 size={13} className="mx-auto animate-spin" /> : platform.live ? "Look up and save" : "Save"}
+          {pending ? <Loader2 size={13} className="mx-auto animate-spin" /> : "Save"}
         </button>
         {error && <p className="mt-1.5 text-[12px] text-[#c0304c]">{error}</p>}
       </div>
@@ -302,7 +289,16 @@ function PlatformTile({
         <p className="text-[13.5px] font-medium text-[#0A1931]">{platform.label}</p>
       </div>
       <p className="mt-2 text-[11.5px] leading-relaxed text-[#4A7FA7]">{platform.pitch}</p>
-      {canVerify ? (
+      {id === "portfolio" ? (
+        <button
+          type="button"
+          onClick={onOpen}
+          className="btn-wipe mt-2.5 px-3 py-1.5 text-[12px] font-semibold"
+          style={{ "--btn-bg": "#1A3D63", "--btn-fg": "#F6FAFD", "--btn-fill": "#4A7FA7", "--btn-fg-hover": "#FFFFFF" } as React.CSSProperties}
+        >
+          Add link
+        </button>
+      ) : canVerify ? (
         // A plain link: Connect leaves this site for the platform's own
         // sign-in (through Composio), which grants read access only.
         <a
@@ -313,14 +309,7 @@ function PlatformTile({
           Connect
         </a>
       ) : (
-        <button
-          type="button"
-          onClick={onOpen}
-          className="btn-wipe mt-2.5 px-3 py-1.5 text-[12px] font-semibold"
-          style={{ "--btn-bg": "#1A3D63", "--btn-fg": "#F6FAFD", "--btn-fill": "#4A7FA7", "--btn-fg-hover": "#FFFFFF" } as React.CSSProperties}
-        >
-          Connect
-        </button>
+        <p className="mt-2.5 text-[11.5px] text-[#4A7FA7]">Sign-in for {platform.label} isn&apos;t available right now — try again later.</p>
       )}
     </div>
   );
