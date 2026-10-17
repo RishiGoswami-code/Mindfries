@@ -1,9 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { ShieldCheck, Eye, Clock, ArrowRight, ChevronDown, ChevronUp } from "lucide-react";
+import { ShieldCheck, Eye, Clock, ArrowRight, ChevronDown, ChevronUp, Wrench } from "lucide-react";
 import { Button } from "@/components/ui/Button";
-import { HOW_EVIDENCE_IS_USED, RECORDED_SIGNALS, RETENTION, WHAT_IS_RECORDED } from "@/lib/policies";
+import { HOW_EVIDENCE_IS_USED, RECORDED_SIGNALS, RETENTION, TOOL_RULES, WHAT_IS_RECORDED } from "@/lib/policies";
 
 interface ConsentStepProps {
   onContinue: () => void;
@@ -92,6 +92,38 @@ export function ConsentStep({ onContinue }: ConsentStepProps) {
         </div>
       </div>
 
+      {/* Card: what may be used */}
+      <div className="rounded-2xl border border-[#B3CFE5] bg-white p-5">
+        <div className="flex items-start gap-3">
+          <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[#B3CFE5]/40">
+            <Wrench size={16} className="text-[#1A3D63]" />
+          </div>
+          <div className="min-w-0">
+            <h2 className="text-sm font-semibold text-[#0A1931]">{TOOL_RULES.title}</h2>
+            <p className="mt-1 text-xs leading-relaxed text-[#4A7FA7]">{TOOL_RULES.body}</p>
+            <div className="mt-3 grid gap-3 sm:grid-cols-2">
+              <div>
+                <p className="text-xs font-semibold text-[#14693a]">Allowed</p>
+                <ul className="mt-1 list-disc space-y-0.5 pl-4 text-xs text-[#1A3D63]">
+                  {TOOL_RULES.allowed.map((t) => (
+                    <li key={t.key}>{t.label}</li>
+                  ))}
+                </ul>
+              </div>
+              <div>
+                <p className="text-xs font-semibold text-[#a6203c]">Not allowed</p>
+                <ul className="mt-1 list-disc space-y-0.5 pl-4 text-xs text-[#1A3D63]">
+                  {TOOL_RULES.notAllowed.map((t) => (
+                    <li key={t.key}>{t.label}</li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+            <p className="mt-3 text-xs leading-relaxed text-[#4A7FA7]">{TOOL_RULES.note}</p>
+          </div>
+        </div>
+      </div>
+
       {/* Agreement */}
       <label className="flex cursor-pointer items-start gap-3 rounded-2xl border border-[#B3CFE5] bg-white p-4 transition-colors hover:bg-[#F6FAFD]">
         <input
@@ -102,7 +134,8 @@ export function ConsentStep({ onContinue }: ConsentStepProps) {
           className="mt-0.5 h-4 w-4 cursor-pointer accent-[#1A3D63]"
         />
         <span className="text-xs leading-relaxed text-[#0A1931]">
-          I understand that my camera, code activity, and workspace behaviour will be recorded during this session,
+          I understand that my camera, my screen, sound from my microphone, my code activity and my workspace
+          behaviour will be recorded during this session as described above, I agree to the rules on what I may use,
           and I agree to proceed on this basis.
         </span>
       </label>
