@@ -35,9 +35,11 @@ export default async function OverviewPage() {
   }
 
   const openRoles = roles.filter((r) => r.status === "open");
+  const newApplicants = applications.filter((a) => a.stage === "applied");
   const inProgress = applications.filter((a) => a.stage === "invited" || a.stage === "in_progress");
-  // A candidate who declined never took the assessment, so they aren't "completed".
-  const completed = applications.filter((a) => a.stage !== "invited" && a.stage !== "in_progress" && a.stage !== "declined");
+  // Counted by the submission itself: an applicant who was rejected, or a
+  // candidate who declined, never took the assessment.
+  const completed = applications.filter((a) => a.completedAt !== null);
   const readyForReview = applications.filter((a) => a.stage === "completed");
   const asOf = getAsOf();
   const createdAtDates = applications.map((a) => a.createdAt);
@@ -48,8 +50,9 @@ export default async function OverviewPage() {
         Active roles, candidates in your pipeline, and what needs your review.
       </PageHeader>
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
         <StatCard label="Active Roles" value={openRoles.length} />
+        <StatCard label="New Applicants" value={newApplicants.length} hint="Applied from the job board, waiting for your answer" />
         <StatCard label="Candidates in Progress" value={inProgress.length} />
         <StatCard label="Completed Assessments" value={completed.length} />
         <StatCard label="Ready for Review" value={readyForReview.length} hint="Completed but not yet shortlisted or rejected" />
@@ -64,7 +67,7 @@ export default async function OverviewPage() {
       ) : (
         <>
           <div className="grid gap-4 lg:grid-cols-5">
-            <Panel title="Candidates invited" subtitle="Per week, last 12 weeks." className="lg:col-span-3">
+            <Panel title="New candidates" subtitle="Invited or applied, per week, last 12 weeks." className="lg:col-span-3">
               <TrendChart createdAtDates={createdAtDates} asOf={asOf} />
             </Panel>
             <Panel title="Due dates" className="lg:col-span-2">
@@ -73,7 +76,7 @@ export default async function OverviewPage() {
           </div>
 
           <div className="grid gap-4 lg:grid-cols-5">
-            <Panel title="Invite activity" subtitle="Last 13 weeks." className="lg:col-span-2">
+            <Panel title="Candidate activity" subtitle="Invited or applied, last 13 weeks." className="lg:col-span-2">
               <ActivityHeatmap createdAtDates={createdAtDates} asOf={asOf} />
             </Panel>
             <Panel title="Recent activity" className="lg:col-span-3">

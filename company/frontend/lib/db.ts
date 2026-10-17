@@ -123,6 +123,16 @@ function toJobRole(r: any): JobRole {
     // Absent before migration 0022 has run.
     assessmentBrief: r.assessment_brief ?? "",
     taskVariant: TASK_VARIANTS.includes(r.task_variant) ? r.task_variant : "bug_fix",
+    // Absent before migration 0025 has run: an unlisted role with an empty posting.
+    posting: {
+      listed: r.listed === true,
+      selfAssessment: r.self_assessment === true,
+      description: r.description ?? "",
+      location: r.location ?? "",
+      workMode: ["remote", "hybrid", "onsite"].includes(r.work_mode) ? r.work_mode : null,
+      employmentType: ["full_time", "part_time", "contract", "internship"].includes(r.employment_type) ? r.employment_type : null,
+      publishedAt: r.published_at ?? null,
+    },
   };
 }
 
@@ -273,12 +283,16 @@ export async function setJobRoleAssistant(companyId: string, roleId: string, con
 }
 
 const EMPTY_STAGE_COUNTS: StageCounts = {
+  applied: 0,
   invited: 0,
   in_progress: 0,
   completed: 0,
   shortlisted: 0,
   rejected: 0,
+  interviewing: 0,
+  offered: 0,
   hired: 0,
+  withdrawn: 0,
   declined: 0,
 };
 
@@ -309,7 +323,24 @@ function toApplication(r: any): CandidateApplication {
     completedAt: r.completed_at ?? null,
     createdAt: r.created_at,
     invite: null,
+    // Absent before migration 0025 has run: every application then came from an invitation.
+    source: r.source === "applied" ? "applied" : "invited",
+    coverNote: r.cover_note ?? null,
   };
+}
+
+/**
+ * Updates applications' stage and, from migration 0025 on, when it changed
+ * (the candidate's timeline dates each step by it). Without 0025 the column
+ * isn't there, so the stage is written alone rather than failing.
+ */
+async function writeStage(
+  apply: (patch: Record<string, unknown>) => PromiseLike<{ error: { code?: string } | null }>,
+  stage: ApplicationStage,
+): Promise<void> {
+  let { error } = await apply({ stage, stage_changed_at: new Date().toISOString() });
+  if (error && (error.code === "PGRST204" || error.code === "42703")) ({ error } = await apply({ stage }));
+  if (error) throw error;
 }
 
 /** Fills in each application's invitation — its link and whether its task exists yet. */
@@ -474,8 +505,7 @@ export async function setApplicationStage(companyId: string, applicationId: stri
   if (!c) throw new Error("Supabase not configured");
   const existing = await getApplicationForCompany(companyId, applicationId);
   if (!existing) throw new Error("Candidate not found");
-  const { error } = await c.from("candidate_applications").update({ stage }).eq("id", applicationId);
-  if (error) throw error;
+  await writeStage((patch) => c.from("candidate_applications").update(patch).eq("id", applicationId), stage);
 }
 
 /**
@@ -495,12 +525,7 @@ export async function bulkSetApplicationStage(
   if (applicationIds.length === 0) return;
   const role = await getJobRole(companyId, roleId);
   if (!role) throw new Error("Role not found");
-  const { error } = await c
-    .from("candidate_applications")
-    .update({ stage })
-    .eq("job_role_id", roleId)
-    .in("id", applicationIds);
-  if (error) throw error;
+  await writeStage((patch) => c.from("candidate_applications").update(patch).eq("job_role_id", roleId).in("id", applicationIds), stage);
 }
 
 /** One candidate's detail page — scoped through job_roles so one company can never open another's candidate by id. */

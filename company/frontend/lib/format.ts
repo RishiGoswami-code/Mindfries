@@ -3,22 +3,30 @@ import type { ApplicationStage, CompanyRole, RoleStatus } from "./types";
 export type Tone = "violet" | "coral" | "green" | "amber" | "gray";
 
 export const stageLabel: Record<ApplicationStage, string> = {
+  applied: "Applied",
   invited: "Invited",
   in_progress: "In Progress",
   completed: "Completed",
   shortlisted: "Shortlisted",
   rejected: "Rejected",
+  interviewing: "Interviewing",
+  offered: "Offered",
   hired: "Hired",
+  withdrawn: "Withdrawn",
   declined: "Declined",
 };
 
 export const stageTone: Record<ApplicationStage, Tone> = {
+  applied: "violet",
   invited: "gray",
   in_progress: "violet",
   completed: "amber",
   shortlisted: "green",
   rejected: "coral",
+  interviewing: "violet",
+  offered: "green",
   hired: "green",
+  withdrawn: "gray",
   declined: "gray",
 };
 
