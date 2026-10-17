@@ -145,8 +145,8 @@ const (
 
 	// A paste this large is unlikely to be a variable name or a line moved
 	// from elsewhere in the file.
-	largePasteChars = 200
-	largePasteLines = 5
+	largePasteChars = 50
+	largePasteLines = 2
 	// An absence worth reporting, and how soon after one a paste counts as
 	// following it.
 	notableAbsence  = 60 * time.Second
