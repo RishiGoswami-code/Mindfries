@@ -251,7 +251,8 @@ export async function recordApplicationEmail(input: {
     .from("company_users")
     .select("id")
     .eq("company_id", input.companyId)
-    .ilike("email", input.senderEmail)
+    // Exact, not ilike: _ and % would be wildcards. Session emails are lower-cased.
+    .eq("email", input.senderEmail.toLowerCase())
     .maybeSingle();
   const { error } = await c.from("application_emails").insert({
     application_id: input.applicationId,
