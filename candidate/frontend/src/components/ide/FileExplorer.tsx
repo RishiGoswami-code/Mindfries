@@ -7,7 +7,9 @@ import {
   Folder,
   FolderOpen,
   FilePlus,
+  Files,
   FolderPlus,
+  Pin,
   LogOut,
   Pencil,
   Trash2,
@@ -34,6 +36,10 @@ interface FileExplorerProps {
   onRename: (path: string, newName: string) => void;
   onDelete: (path: string) => void;
   onEndSession: () => void;
+  /** Opens the task brief (TASK.md), pinned above the project's files. */
+  onOpenTask: () => void;
+  /** Whether the TASK.md tab is the one showing. */
+  taskActive: boolean;
 }
 
 export function FileExplorer({
@@ -46,9 +52,12 @@ export function FileExplorer({
   onRename,
   onDelete,
   onEndSession,
+  onOpenTask,
+  taskActive,
 }: FileExplorerProps) {
   const palette = idePalette(theme);
-  const [expanded, setExpanded] = useState<Set<string>>(() => new Set(["src", "tests"]));
+  // Top-level folders start open, so the project's shape is visible at once.
+  const [expanded, setExpanded] = useState<Set<string>>(() => new Set(["src", "tests", ...tree.filter((n) => n.type === "folder").map((n) => n.path)]));
   const [draft, setDraft] = useState<NewEntryDraft | null>(null);
   const [renaming, setRenaming] = useState<string | null>(null);
 
@@ -82,15 +91,14 @@ export function FileExplorer({
     <div className={clsx("flex h-full min-h-0 flex-col text-sm select-none", palette.panelBg, palette.text)}>
       <div
         className={clsx(
-          "flex items-center justify-between border-b px-3 py-2 text-xs font-semibold tracking-wide uppercase",
+          "flex h-12 items-center justify-between border-b px-3",
           palette.border,
           palette.textMuted
         )}
       >
-        <span className="flex items-center gap-1.5">
-          {/* eslint-disable-next-line @next/next/no-img-element -- tiny static local SVG, no optimization needed */}
-          <img src="/mindfries-logo.svg" alt="" width={22} height={22} />
-          Mindfries
+        <span className={clsx("flex items-center gap-2 text-[14.5px] font-semibold", palette.text)}>
+          <Files size={17} className={theme === "dark" ? "text-[#60A5FA]" : palette.accent} />
+          Files
         </span>
         <div className="flex items-center gap-1">
           <button
@@ -112,6 +120,21 @@ export function FileExplorer({
         </div>
       </div>
       <div className="flex-1 overflow-auto py-1">
+        {/* The task brief, pinned: it reads like a file in the project but
+            isn't one — it's never saved, sent to the sandbox or seen by git. */}
+        <button
+          type="button"
+          onClick={onOpenTask}
+          title="The task, read-only (not part of your project)"
+          className={clsx(
+            "mx-1.5 mb-1 flex w-[calc(100%-12px)] items-center gap-2 rounded-lg px-2 py-1.5 text-left text-[13.5px]",
+            taskActive ? palette.active : palette.hover
+          )}
+        >
+          <FileTypeIcon name="TASK.md" size={15} />
+          <span className="min-w-0 flex-1 truncate font-medium">TASK.md</span>
+          <Pin size={12} className={palette.textMuted} />
+        </button>
         <TreeLevel
           nodes={tree}
           depth={0}

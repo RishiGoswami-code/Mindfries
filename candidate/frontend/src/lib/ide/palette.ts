@@ -4,7 +4,7 @@ import type { IdeTheme } from "./theme";
  * Mindfries brand palette (five swatches, darkest to lightest):
  *   NAVY_950 #0A1931 · NAVY_800 #1A3D63 · BLUE_600 #4A7FA7 · BLUE_200 #B3CFE5 · WHITE_50 #F6FAFD
  * The light theme uses these five; the dark theme (below) is a deeper navy
- * with indigo and violet. Every class below uses a hex value literally (never built
+ * with a clear blue accent. Every class below uses a hex value literally (never built
  * via string interpolation — Tailwind's static scanner can't resolve an
  * interpolated arbitrary-value class, only a complete literal one).
  */
@@ -18,27 +18,27 @@ export const WHITE_50 = "#F6FAFD";
 export function idePalette(theme: IdeTheme) {
   return theme === "dark"
     ? {
-        // Dark: a deep-navy workspace with an indigo wash behind the cards,
-        // thin blue borders and violet for whatever is selected or active.
-        appBg: "bg-[#0B1027]",
-        panelBg: "bg-[#0E1431]",
-        // The canvas the cards float on: a subtle indigo gradient, a step
-        // lighter at the edges, so the gaps read as gaps.
-        canvas: "bg-[linear-gradient(135deg,#0A0E26_0%,#10173D_55%,#1A1550_100%)]",
-        border: "border-[#232C5E]",
-        text: "text-[#E7EAF6]",
-        textMuted: "text-[#9AA3C7]",
-        accent: "text-[#A78BFA]",
-        hover: "hover:bg-[#7C5CFF]/10",
-        active: "bg-[#7C5CFF]/25",
-        tabActiveBg: "bg-[#161D45]",
-        tabInactiveBg: "bg-[#0B1027]",
-        activityBarBg: "bg-[#0E1431]",
-        activityIcon: "text-[#9AA3C7]",
-        activityIconActive: "text-[#E7EAF6]",
-        breadcrumbBg: "bg-[#0B1027]",
-        breadcrumbText: "text-[#9AA3C7]",
-        breadcrumbTextActive: "text-[#E7EAF6]",
+        // Dark: a deep-navy workspace, slate-blue borders and a clear blue
+        // for whatever is selected or active.
+        appBg: "bg-[#0B1222]",
+        panelBg: "bg-[#0F172A]",
+        // The canvas the cards float on: a step darker than the cards, so
+        // the gaps read as gaps.
+        canvas: "bg-[#0A101E]",
+        border: "border-[#1E2A44]",
+        text: "text-[#E2E8F0]",
+        textMuted: "text-[#94A3B8]",
+        accent: "text-[#60A5FA]",
+        hover: "hover:bg-[#2F6BFF]/10",
+        active: "bg-[#2F6BFF]/25",
+        tabActiveBg: "bg-[#16213A]",
+        tabInactiveBg: "bg-[#0B1222]",
+        activityBarBg: "bg-[#0F172A]",
+        activityIcon: "text-[#94A3B8]",
+        activityIconActive: "text-[#E2E8F0]",
+        breadcrumbBg: "bg-[#0B1222]",
+        breadcrumbText: "text-[#94A3B8]",
+        breadcrumbTextActive: "text-[#E2E8F0]",
       }
     : {
         appBg: "bg-[#F6FAFD]",
@@ -64,8 +64,8 @@ export function idePalette(theme: IdeTheme) {
 /** Mindfries brand blue — used for the status bar, replacing VS Code's default blue. */
 export const STATUS_BAR_BG = BLUE_600;
 
-/** The primary action (Submit): a violet gradient, the one loud thing in the chrome. */
-export const PRIMARY_BUTTON = "bg-gradient-to-r from-[#7C5CFF] to-[#A06BFF] text-white shadow-[0_6px_20px_-6px_rgba(124,92,255,0.7)] hover:brightness-110";
+/** The primary action (Submit, Run Tests): a solid blue, the one loud thing in the chrome. */
+export const PRIMARY_BUTTON = "bg-[#2F6BFF] text-white shadow-[0_6px_20px_-6px_rgba(47,107,255,0.7)] hover:bg-[#3B78FF]";
 
 /** The editor's own dark theme, matched to the chrome (registered in EditorPanel). */
 export const MONACO_DARK = {
@@ -80,20 +80,20 @@ export const MONACO_DARK = {
     { token: "keyword.md", foreground: "82AAFF" },
   ],
   colors: {
-    "editor.background": "#0B1027",
-    "editor.foreground": "#E7EAF6",
-    "editorLineNumber.foreground": "#4A537D",
-    "editorLineNumber.activeForeground": "#C4B5FD",
-    "editor.lineHighlightBackground": "#141B40",
+    "editor.background": "#0B1222",
+    "editor.foreground": "#E2E8F0",
+    "editorLineNumber.foreground": "#4A5677",
+    "editorLineNumber.activeForeground": "#93C5FD",
+    "editor.lineHighlightBackground": "#142038",
     "editor.lineHighlightBorder": "#00000000",
-    "editor.selectionBackground": "#7C5CFF55",
-    "editorCursor.foreground": "#A78BFA",
-    "editorGutter.background": "#0B1027",
-    "editorIndentGuide.background1": "#1C2450",
-    "minimap.background": "#0B1027",
-    "scrollbarSlider.background": "#7C5CFF22",
-    "scrollbarSlider.hoverBackground": "#7C5CFF44",
-    "editorWidget.background": "#10173D",
-    "editorWidget.border": "#232C5E",
+    "editor.selectionBackground": "#2F6BFF55",
+    "editorCursor.foreground": "#60A5FA",
+    "editorGutter.background": "#0B1222",
+    "editorIndentGuide.background1": "#1C2741",
+    "minimap.background": "#0B1222",
+    "scrollbarSlider.background": "#2F6BFF22",
+    "scrollbarSlider.hoverBackground": "#2F6BFF44",
+    "editorWidget.background": "#111A2E",
+    "editorWidget.border": "#1E2A44",
   },
 };

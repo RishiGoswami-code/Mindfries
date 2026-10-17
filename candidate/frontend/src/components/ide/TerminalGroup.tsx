@@ -10,8 +10,6 @@ import type { PreviewController } from "@/lib/ide/shell/types";
 import { TerminalPanel } from "./TerminalPanel";
 import { useSandbox } from "@/lib/ide/sandbox/context";
 import { endSandboxTerminal } from "@/lib/ide/sandbox/terminal";
-import { PreviewPanel } from "./PreviewPanel";
-import { useResizable } from "@/lib/ide/use-resizable";
 
 interface Session {
   id: number;
@@ -29,22 +27,16 @@ export function TerminalGroup({
   theme,
   vfs,
   preview,
-  previewState,
-  onClosePreview,
 }: {
   theme: IdeTheme;
   vfs: VfsBridge;
   preview: PreviewController;
-  previewState: { html: string; title: string; root: string; watching: boolean } | null;
-  onClosePreview: () => void;
 }) {
   const palette = idePalette(theme);
   const nextId = useRef(1);
   const sandboxSessionId = useSandbox()?.sessionId;
   const [sessions, setSessions] = useState<Session[]>(() => [{ id: 1, name: "1: Terminal" }]);
   const [activeId, setActiveId] = useState<number | null>(1);
-  // The preview sits beside the terminals, so it's sized by width.
-  const previewPane = useResizable({ initial: 460, min: 240, max: 900, axis: "horizontal", invert: true });
 
   const addTerminal = () => {
     nextId.current += 1;
@@ -148,28 +140,6 @@ export function TerminalGroup({
           ))
         )}
         </div>
-
-        {previewState && (
-          <>
-            <div
-              onMouseDown={previewPane.startDrag}
-              className={clsx(
-                "flex w-1 shrink-0 cursor-col-resize items-center justify-center border-l",
-                palette.border,
-                palette.hover
-              )}
-            />
-            <div style={{ width: previewPane.size }} className="min-h-0 shrink-0">
-              <PreviewPanel
-                theme={theme}
-                html={previewState.html}
-                title={previewState.title}
-                watching={previewState.watching}
-                onClose={onClosePreview}
-              />
-            </div>
-          </>
-        )}
 
       </div>
     </div>

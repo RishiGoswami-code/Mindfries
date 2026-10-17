@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import clsx from "clsx";
-import { Sparkles, X } from "lucide-react";
+import { X } from "lucide-react";
 import { idePalette } from "@/lib/ide/palette";
 import type { IdeTheme } from "@/lib/ide/theme";
 import { terminalLog } from "@/lib/ide/terminal-log";
@@ -215,13 +215,14 @@ export function ChatPanel({ theme, sessionId, activePath, activeContent, getFile
     <div className={clsx("flex h-full min-h-0 flex-col", palette.appBg)}>
       <div
         className={clsx(
-          "flex h-8 shrink-0 items-center justify-between border-b px-2 text-xs",
+          "flex h-12 shrink-0 items-center justify-between border-b px-4 text-[13px]",
           palette.border,
           palette.panelBg
         )}
       >
-        <span className={clsx("flex items-center gap-1.5", palette.text)}>
-          <Sparkles size={13} className={palette.accent} />
+        <span className={clsx("flex items-center gap-2 text-[14.5px] font-semibold", palette.text)}>
+          {/* eslint-disable-next-line @next/next/no-img-element -- tiny static local SVG */}
+          <img src="/mindfries-logo.svg" alt="" width={22} height={22} />
           Mindfries AI
         </span>
         <span className="flex items-center gap-2">
@@ -230,8 +231,8 @@ export function ChatPanel({ theme, sessionId, activePath, activeContent, getFile
               {left} left
             </span>
           )}
-          <button type="button" title="Close" onClick={onClose} className={clsx("rounded-md p-1", palette.hover)}>
-            <X size={13} />
+          <button type="button" title="Close the assistant" aria-label="Close the assistant" onClick={onClose} className={clsx("flex h-8 w-8 items-center justify-center rounded-lg", palette.textMuted, palette.hover)}>
+            <X size={16} />
           </button>
         </span>
       </div>

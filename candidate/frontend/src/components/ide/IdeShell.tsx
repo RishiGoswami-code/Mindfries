@@ -1,25 +1,25 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, useTransition } from "react";
 import clsx from "clsx";
-import { GripVertical } from "lucide-react";
+import { Bot, FlaskConical, GripVertical, SquareTerminal, type LucideIcon } from "lucide-react";
 import { CameraPanel } from "./CameraPanel";
 import { FileExplorer } from "./FileExplorer";
 import { Breadcrumbs } from "./Breadcrumbs";
 import { EditorPanel } from "./EditorPanel";
 import { BottomPanel } from "./BottomPanel";
+import { TestsPanel } from "./TestsPanel";
 import { StatusBar } from "./StatusBar";
 import { PackageCleanupGuard } from "./PackageCleanupGuard";
 import { ChatPanel } from "./ChatPanel";
 import { ProctorGate } from "./ProctorGate";
-import { ChatLauncher } from "./ChatLauncher";
 import { EndSessionDialog, SessionEnded } from "./EndSession";
 import { InterviewDialog } from "./InterviewDialog";
 import { HeaderPanel, SubmitConfirmDialog } from "./HeaderPanel";
-import { TaskDescriptionPanel, SCRATCH_MARKDOWN, NO_BRIEF_MARKDOWN } from "./TaskDescriptionPanel";
+import { SCRATCH_MARKDOWN, NO_BRIEF_MARKDOWN } from "./TaskDescriptionPanel";
 import { useIdeTheme, type IdeTheme } from "@/lib/ide/theme";
 import { idePalette } from "@/lib/ide/palette";
-import { initialTree, initialFiles, DEFAULT_OPEN_PATH } from "@/lib/ide/mock-project";
+import { initialTree, initialFiles } from "@/lib/ide/mock-project";
 import { buildInitialWorkspace } from "@/lib/ide/seed-workspace";
 import { SandboxContext } from "@/lib/ide/sandbox/context";
 import { useSandboxSync } from "@/lib/ide/sandbox/use-sandbox-sync";
@@ -47,7 +47,7 @@ import { watchProvenance } from "@/lib/ide/provenance";
 import { terminalLog } from "@/lib/ide/terminal-log";
 import { isTestCommand, parseTestRun, testResults } from "@/lib/ide/test-results";
 import { lineChange } from "@/lib/ide/line-change";
-import { DIFF_PREFIX, fileOfTab, isDiffTab, workspaceChanges } from "@/lib/ide/changes";
+import { DIFF_PREFIX, fileOfTab, isDiffTab, isVirtualTab, PREVIEW_TAB, TASK_TAB, workspaceChanges } from "@/lib/ide/changes";
 import { startCameraSnapshots } from "@/lib/ide/camera-snapshots";
 import { setGitScope } from "@/lib/ide/git/idb";
 import { startSnapshotUpload } from "@/app/ide/interview-actions";
@@ -135,8 +135,9 @@ export function IdeShell({ sessionId, candidateName, taskBrief, starterFiles, as
   const [tree, setTree] = useState<TreeNode[]>(seeded.tree);
   const [files, setFiles] = useState<FileContents>(seeded.files);
   const [savedFiles, setSavedFiles] = useState<FileContents>(seeded.files);
-  const [openPaths, setOpenPaths] = useState<string[]>(DEFAULT_OPEN_PATH ? [DEFAULT_OPEN_PATH] : []);
-  const [activePath, setActivePath] = useState<string | null>(DEFAULT_OPEN_PATH);
+  // The task brief (TASK.md) is the first tab: it's what a candidate reads first.
+  const [openPaths, setOpenPaths] = useState<string[]>([TASK_TAB]);
+  const [activePath, setActivePath] = useState<string | null>(TASK_TAB);
 
   // The file the active tab is about. A diff tab is "about" the file it
   // compares, so everything that asks what the candidate is looking at —
@@ -221,6 +222,10 @@ export function IdeShell({ sessionId, candidateName, taskBrief, starterFiles, as
   // Which file the candidate is looking at, as it changes — the order they
   // read a codebase in says a lot about how they went looking.
   useEffect(() => {
+    if (sessionId && activePath === TASK_TAB) {
+      const timeout = setTimeout(() => telemetryRef.current?.record("file_open", { path: "TASK.md", view: "task" }), 1500);
+      return () => clearTimeout(timeout);
+    }
     if (!sessionId || !activeFile) return;
     const diff = isDiffTab(activePath);
     // A file flicked past on the way to another isn't one that was read.
@@ -269,23 +274,25 @@ export function IdeShell({ sessionId, candidateName, taskBrief, starterFiles, as
       setTree(saved.tree);
       setFiles(saved.files);
       setSavedFiles(saved.savedFiles);
-      setOpenPaths(saved.openPaths);
-      setActivePath(saved.activePath);
+      // A preview doesn't survive a reload; with no tabs at all, the task opens.
+      const tabs = saved.openPaths.filter((p) => p !== PREVIEW_TAB);
+      setOpenPaths(tabs.length > 0 ? tabs : [TASK_TAB]);
+      setActivePath(tabs.length === 0 || saved.activePath === PREVIEW_TAB || !saved.activePath ? (tabs[0] ?? TASK_TAB) : saved.activePath);
     } else if (source === "server" && serverWorkspace) {
       const restoredFromServer = buildInitialWorkspace(serverWorkspace.files);
       setTree(restoredFromServer.tree);
       setFiles(restoredFromServer.files);
       setSavedFiles(restoredFromServer.files);
       // Keep the tabs the candidate had open here, where they still exist.
-      const stillThere = (saved?.openPaths ?? []).filter((p) => p in restoredFromServer.files);
+      const stillThere = (saved?.openPaths ?? [TASK_TAB]).filter((p) => p === TASK_TAB || p in restoredFromServer.files);
       setOpenPaths(stillThere);
-      setActivePath(saved?.activePath && saved.activePath in restoredFromServer.files ? saved.activePath : (stillThere[0] ?? null));
+      setActivePath(saved?.activePath && (saved.activePath === TASK_TAB || saved.activePath in restoredFromServer.files) ? saved.activePath : (stillThere[0] ?? null));
     } else if (storageId) {
       // A session (or practice run) opening for the first time starts from its task's own
       // files, with nothing carried over — the mock project's default tab
       // doesn't exist in it.
-      setOpenPaths((paths) => paths.filter((p) => p in seeded.files));
-      setActivePath((path) => (path && path in seeded.files ? path : null));
+      setOpenPaths((paths) => paths.filter((p) => isVirtualTab(p) || p in seeded.files));
+      setActivePath((path) => (path && (isVirtualTab(path) || path in seeded.files) ? path : null));
     }
     setRestored(true);
     /* eslint-enable react-hooks/set-state-in-effect */
@@ -333,16 +340,18 @@ export function IdeShell({ sessionId, candidateName, taskBrief, starterFiles, as
   }, [dirtyPaths, files]);
 
   const sidebar = useResizable({ initial: 240, min: 160, max: 480, axis: "horizontal" });
-  const terminal = useResizable({ initial: 300, min: 140, max: 600, axis: "vertical", invert: true });
-  // The task drawer (BottomPanel) starts collapsed to its tab bar, leaving
-  // the editor the room; it opens upward when a tab is chosen or dragged.
-  const [drawerOpen, setDrawerOpen] = useState(false);
-  const chatPane = useResizable({ initial: 320, min: 240, max: 560, axis: "horizontal", invert: true });
-  const cameraPane = useResizable({ initial: 300, min: 200, max: 520, axis: "horizontal", invert: true });
-  const [chatOpen, setChatOpen] = useState(false);
-  // Lives here rather than in the Task panel: the Explorer under it is sized
-  // differently depending on whether the brief is open.
-  const [taskCollapsed, setTaskCollapsed] = useState(false);
+  // The height of the bottom row — terminal, tests, and the camera beside them.
+  const terminal = useResizable({ initial: 300, min: 160, max: 620, axis: "vertical", invert: true });
+  const testsPane = useResizable({ initial: 440, min: 300, max: 760, axis: "horizontal", invert: true });
+  const chatPane = useResizable({ initial: 380, min: 280, max: 600, axis: "horizontal", invert: true });
+  const cameraPane = useResizable({ initial: 360, min: 240, max: 560, axis: "horizontal", invert: true });
+  // The three cards a candidate can tuck away. A closed one leaves a chip
+  // on the right edge of the screen that opens it again; a closed terminal
+  // keeps its sessions running.
+  const [chatOpen, setChatOpen] = useState(true);
+  const [terminalOpen, setTerminalOpen] = useState(true);
+  const [testsOpen, setTestsOpen] = useState(true);
+  const lastTestRun = useSyncExternalStore(testResults.subscribe, testResults.getSnapshot, testResults.getSnapshot);
   // The session is camera-proctored: the gate below blocks the workspace
   // until this is live, and re-blocks if the stream ever stops.
   const camera = useProctorCamera(!!sessionId && !practice);
@@ -565,8 +574,8 @@ export function IdeShell({ sessionId, candidateName, taskBrief, starterFiles, as
       setFiles(nextFiles);
       setSavedFiles(saved);
       // A tab on a file that is gone from the disk closes.
-      setOpenPaths((paths) => paths.filter((p) => fileOfTab(p) !== null && (fileOfTab(p) as string) in nextFiles));
-      setActivePath((path) => (path && (fileOfTab(path) ?? path) in nextFiles ? path : null));
+      setOpenPaths((paths) => paths.filter((p) => isVirtualTab(p) || (fileOfTab(p) !== null && (fileOfTab(p) as string) in nextFiles)));
+      setActivePath((path) => (path && (isVirtualTab(path) || (fileOfTab(path) ?? path) in nextFiles) ? path : null));
       if (initial) setRestored(true);
     },
   });
@@ -607,7 +616,8 @@ export function IdeShell({ sessionId, candidateName, taskBrief, starterFiles, as
   };
 
   const closeTab = (path: string) => {
-    const isDirty = files[path] !== savedFiles[path];
+    if (path === PREVIEW_TAB) closePreviewRef.current();
+    const isDirty = !isVirtualTab(path) && files[path] !== savedFiles[path];
     if (isDirty && !window.confirm(`${path} has unsaved changes. Close anyway?`)) {
       return;
     }
@@ -774,6 +784,15 @@ export function IdeShell({ sessionId, candidateName, taskBrief, starterFiles, as
     { html: string; title: string; root: string; watching: boolean } | null
   >(null);
   const previewBuildRef = useRef<PreviewBuild | null>(null);
+  // Opens the preview's tab. Reached through a ref so the preview controller
+  // below can stay one stable object for the life of the workspace.
+  const showPreviewTabRef = useRef<() => void>(() => undefined);
+  useEffect(() => {
+    showPreviewTabRef.current = () => {
+      setOpenPaths((prev) => (prev.includes(PREVIEW_TAB) ? prev : [...prev, PREVIEW_TAB]));
+      setActivePath(PREVIEW_TAB);
+    };
+  }, []);
 
   // Subscribers are the running dev server: it logs each rebuild into the
   // terminal, the way a real one does.
@@ -791,6 +810,8 @@ export function IdeShell({ sessionId, candidateName, taskBrief, starterFiles, as
         releaseBuild(previewBuildRef.current);
         previewBuildRef.current = { objectUrls: build.objectUrls } as PreviewBuild;
         setPreview({ html: build.html, title: build.title, root: build.root, watching: true });
+        // The preview opens where the code does, as a tab of its own.
+        showPreviewTabRef.current();
       },
       // Stopping leaves the panel up — the last build still renders, it just
       // no longer follows edits, which is what killing a dev server does.
@@ -804,6 +825,20 @@ export function IdeShell({ sessionId, candidateName, taskBrief, starterFiles, as
     }),
     []
   );
+
+  // Closing the preview (its tab, or the panel's own button) ends it.
+  // Reached through a ref from closeTab, which is declared before the
+  // preview's state exists.
+  const closePreviewRef = useRef<() => void>(() => undefined);
+  useEffect(() => {
+    closePreviewRef.current = () => {
+      releaseBuild(previewBuildRef.current);
+      previewBuildRef.current = null;
+      setPreview(null);
+      setOpenPaths((prev) => prev.filter((p) => p !== PREVIEW_TAB));
+      setActivePath((current) => (current === PREVIEW_TAB ? TASK_TAB : current));
+    };
+  }, []);
 
   // Keep the preview live: any edit rebuilds the watched project, debounced
   // so a burst of typing produces one rebuild. Depends on the ROOT (not the
@@ -888,6 +923,12 @@ export function IdeShell({ sessionId, candidateName, taskBrief, starterFiles, as
     vfsRemove(path, true);
   };
 
+  // What the TASK.md tab shows.
+  const taskMarkdown = sessionId ? (taskBrief ?? NO_BRIEF_MARKDOWN) : practice && taskBrief ? taskBrief : SCRATCH_MARKDOWN;
+  // The bottom row exists while it has something in it: the terminal, the
+  // tests, or — with the assistant closed — the camera.
+  const bottomRow = terminalOpen || testsOpen || !chatOpen;
+
   // Submission replaces the workspace the same way ending does.
   if (submitted) return <SubmittedScreen theme={theme} />;
 
@@ -918,57 +959,30 @@ export function IdeShell({ sessionId, candidateName, taskBrief, starterFiles, as
           style={{ width: sidebar.size }}
           className={clsx("flex shrink-0 flex-col overflow-hidden rounded-2xl border", palette.border, palette.panelBg, cardShadow)}
         >
-          <TaskDescriptionPanel
+          <FileExplorer
+            tree={tree}
+            activePath={activePath}
             theme={theme}
-            taskMarkdown={sessionId ? (taskBrief ?? NO_BRIEF_MARKDOWN) : practice && taskBrief ? taskBrief : SCRATCH_MARKDOWN}
-            collapsed={taskCollapsed}
-            onToggle={() => setTaskCollapsed((prev) => !prev)}
+            candidateName={candidateName}
+            onOpenFile={openFile}
+            onCreate={createEntry}
+            onRename={renameEntry}
+            onDelete={deleteEntry}
+            onEndSession={() => setEnding(Object.values(loadManifest()))}
+            onOpenTask={() => openFile(TASK_TAB)}
+            taskActive={activePath === TASK_TAB}
           />
-          {/* With the brief open, the Explorer is only as tall as its files
-              and the candidate row, up to half the sidebar — so a near-empty
-              workspace leaves the brief almost the whole column, and a big
-              one scrolls its tree instead of pushing the brief away. With the
-              brief collapsed, the Explorer takes everything below its header.
-              Either way the candidate row, and End session in it, stays on
-              screen. */}
-          <div
-            className={clsx(
-              "flex min-h-0 flex-col overflow-hidden",
-              taskCollapsed ? "flex-1" : "max-h-[50%] shrink-0"
-            )}
-          >
-            <FileExplorer
-              tree={tree}
-              activePath={activePath}
-              theme={theme}
-              candidateName={candidateName}
-              onOpenFile={openFile}
-              onCreate={createEntry}
-              onRename={renameEntry}
-              onDelete={deleteEntry}
-              onEndSession={() => setEnding(Object.values(loadManifest()))}
-            />
-          </div>
         </div>
 
         <div
           onMouseDown={sidebar.startDrag}
-          className={clsx(
-            "-mx-1.5 flex w-1 shrink-0 cursor-col-resize items-center justify-center rounded-full",
-            palette.hover
-          )}
+          className={clsx("-mx-1.5 flex w-1 shrink-0 cursor-col-resize items-center justify-center rounded-full", palette.hover)}
         >
           <GripVertical size={10} className={palette.textMuted} />
         </div>
 
         <div className="flex min-w-0 flex-1 flex-col">
-          <div
-            className={clsx(
-              "relative flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border",
-              palette.border,
-              cardShadow
-            )}
-          >
+          <div className={clsx("relative flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border", palette.border, cardShadow)}>
             <div className="min-h-0 flex-1">
               <EditorPanel
                 theme={theme}
@@ -982,100 +996,120 @@ export function IdeShell({ sessionId, candidateName, taskBrief, starterFiles, as
                 onChange={changeFile}
                 onSave={saveFile}
                 breadcrumbs={<Breadcrumbs path={activeFile} theme={theme} />}
+                taskMarkdown={taskMarkdown}
+                previewState={preview}
               />
             </div>
-            {/* In the editor's bottom-right corner, so it follows the editor
-                as the drawer opens and never covers the drawer or camera. */}
-            <ChatLauncher theme={theme} hidden={chatOpen} onClick={() => setChatOpen(true)} />
           </div>
 
-          {/* The drawer's top edge: drag it up to open the drawer and size
-              it. Collapsed, this is just the gap above the tab bar. */}
-          <div
-            onMouseDown={(e) => {
-              setDrawerOpen(true);
-              terminal.startDrag(e);
-            }}
-            title="Drag to resize the panel"
-            className={clsx("group flex h-2 shrink-0 cursor-row-resize items-center justify-center")}
-          >
-            <span className={clsx("h-[3px] w-10 rounded-full opacity-0 transition-opacity group-hover:opacity-100", theme === "dark" ? "bg-[#7C5CFF]/60" : "bg-[#4A7FA7]/60")} />
-          </div>
-
-          {/* The task drawer, with the camera beside it. Collapsed, both are
-              a slim bar; open, they share the drawer's height. The camera is
-              outside the drawer's tabs so it shows on every one, and is the
-              same mounted element open or closed, so the feed never stops. */}
-          <div
-            style={{ height: drawerOpen ? terminal.size : 44 }}
-            className={clsx("flex shrink-0 gap-2", !terminal.dragging && "transition-[height] duration-200 ease-out")}
-          >
-            <div className={clsx("min-w-0 flex-1 overflow-hidden rounded-2xl border", palette.border, cardShadow)}>
-                {/* The terminal and the Tests panel in here are the two that act
-                    differently on a sandbox; the context is how they know. */}
-                <SandboxContext.Provider value={sandboxContext}>
-                <BottomPanel
-                  theme={theme}
-                  vfs={vfs}
-                  preview={previewController}
-                  open={drawerOpen}
-                  onOpenChange={setDrawerOpen}
-                  diagnostics={diagnostics}
-                  onOpenLocation={(path) => openFile(path)}
-                  changes={changes}
-                  onOpenDiff={(path) => openFile(`${DIFF_PREFIX}${path}`)}
-                  previewState={preview}
-                  onClosePreview={() => {
-                    releaseBuild(previewBuildRef.current);
-                    previewBuildRef.current = null;
-                    setPreview(null);
-                  }}
-                  // Same path Ctrl+C takes: stop watching, keep the last build on
-                  // screen. Closing the panel is a separate, more destructive act.
-                  onStopPreview={() => previewController.stop()}
-                />
-                </SandboxContext.Provider>
-            </div>
-            <div
-              style={{ width: drawerOpen ? cameraPane.size : 220 }}
-              className={clsx("relative shrink-0 overflow-hidden rounded-2xl border", palette.border, palette.panelBg, cardShadow)}
-            >
-              {drawerOpen && (
-                <div onMouseDown={cameraPane.startDrag} title="Drag to resize the camera" className="absolute inset-y-0 left-0 z-10 w-1.5 cursor-col-resize" />
-              )}
-              <CameraPanel theme={theme} stream={camera.stream} compact={!drawerOpen} />
-            </div>
-          </div>
+          {bottomRow && (
+            <>
+              {/* The bottom row's top edge: drag it to size the row (the
+                  camera beside the assistant follows the same height). */}
+              <div onMouseDown={terminal.startDrag} title="Drag to resize" className="group flex h-2 shrink-0 cursor-row-resize items-center justify-center">
+                <span className={clsx("h-[3px] w-10 rounded-full opacity-0 transition-opacity group-hover:opacity-100", theme === "dark" ? "bg-[#3B82F6]/60" : "bg-[#4A7FA7]/60")} />
+              </div>
+              <div style={{ height: terminal.size }} className={clsx("flex shrink-0 gap-2", !terminal.dragging && "transition-[height] duration-200 ease-out")}>
+                {/* Hidden, never unmounted, while tucked away: the terminals
+                    keep their sessions and scrollback. */}
+                <div
+                  style={{ display: terminalOpen ? undefined : "none" }}
+                  className={clsx("min-w-0 flex-1 overflow-hidden rounded-2xl border", palette.border, cardShadow)}
+                >
+                  {/* The terminal and the Tests card are the two that act
+                      differently on a sandbox; the context is how they know. */}
+                  <SandboxContext.Provider value={sandboxContext}>
+                    <BottomPanel
+                      theme={theme}
+                      vfs={vfs}
+                      preview={previewController}
+                      onClose={() => setTerminalOpen(false)}
+                      diagnostics={diagnostics}
+                      onOpenLocation={(path) => openFile(path)}
+                      changes={changes}
+                      onOpenDiff={(path) => openFile(`${DIFF_PREFIX}${path}`)}
+                      previewState={preview}
+                      onFocusPreview={() => openFile(PREVIEW_TAB)}
+                      // Same path Ctrl+C takes: stop watching, keep the last build on
+                      // screen. Closing the preview's tab is a separate, more destructive act.
+                      onStopPreview={() => previewController.stop()}
+                    />
+                  </SandboxContext.Provider>
+                </div>
+                {testsOpen && (
+                  <>
+                    {terminalOpen && <div onMouseDown={testsPane.startDrag} title="Drag to resize" className="-mx-1.5 w-1 shrink-0 cursor-col-resize" />}
+                    <div
+                      style={terminalOpen ? { width: testsPane.size } : undefined}
+                      className={clsx("min-w-0 overflow-hidden rounded-2xl border", terminalOpen ? "shrink-0" : "flex-1", palette.border, palette.panelBg, cardShadow)}
+                    >
+                      <SandboxContext.Provider value={sandboxContext}>
+                        <TestsPanel theme={theme} vfs={vfs} preview={previewController} onClose={() => setTestsOpen(false)} />
+                      </SandboxContext.Provider>
+                    </div>
+                  </>
+                )}
+                {/* With the assistant closed, the camera joins this row. */}
+                {!chatOpen && (
+                  <div
+                    style={terminalOpen || testsOpen ? { width: cameraPane.size } : undefined}
+                    className={clsx("relative overflow-hidden rounded-2xl border", terminalOpen || testsOpen ? "shrink-0" : "flex-1", palette.border, palette.panelBg, cardShadow)}
+                  >
+                    {(terminalOpen || testsOpen) && <div onMouseDown={cameraPane.startDrag} title="Drag to resize the camera" className="absolute inset-y-0 left-0 z-10 w-1.5 cursor-col-resize" />}
+                    <CameraPanel theme={theme} stream={camera.stream} />
+                  </div>
+                )}
+              </div>
+            </>
+          )}
         </div>
 
         {chatOpen && (
           <>
             <div
               onMouseDown={chatPane.startDrag}
-              className={clsx(
-                "flex w-1 shrink-0 cursor-col-resize items-center justify-center rounded-full",
-                palette.hover
-              )}
+              className={clsx("flex w-1 shrink-0 cursor-col-resize items-center justify-center rounded-full", palette.hover)}
             >
               <GripVertical size={10} className={palette.textMuted} />
             </div>
-            <div
-              style={{ width: chatPane.size }}
-              className={clsx("shrink-0 overflow-hidden rounded-2xl border", palette.border, cardShadow)}
-            >
-              <ChatPanel
-                theme={theme}
-                sessionId={sessionId}
-                activePath={activeFile}
-                activeContent={activeFile ? files[activeFile] : undefined}
-                getFiles={currentSnapshot}
-                onCopy={(chars) => telemetryRef.current?.record("assistant_copy", { chars })}
-                onClose={() => setChatOpen(false)}
-              />
+            <div style={{ width: chatPane.size }} className="flex shrink-0 flex-col gap-2">
+              <div className={clsx("min-h-0 flex-1 overflow-hidden rounded-2xl border", palette.border, cardShadow)}>
+                <ChatPanel
+                  theme={theme}
+                  sessionId={sessionId}
+                  activePath={activeFile}
+                  activeContent={activeFile ? files[activeFile] : undefined}
+                  getFiles={currentSnapshot}
+                  onCopy={(chars) => telemetryRef.current?.record("assistant_copy", { chars })}
+                  onClose={() => setChatOpen(false)}
+                />
+              </div>
+              {/* The camera sits under the assistant, as tall as the bottom row. */}
+              <div
+                style={{ height: bottomRow ? terminal.size + 8 : 300 }}
+                className={clsx("shrink-0 overflow-hidden rounded-2xl border", palette.border, palette.panelBg, cardShadow)}
+              >
+                <CameraPanel theme={theme} stream={camera.stream} />
+              </div>
             </div>
           </>
         )}
       </div>
+
+      <EdgeChips
+        theme={theme}
+        chips={[
+          !terminalOpen && { id: "terminal", label: "Terminal", icon: SquareTerminal, onOpen: () => setTerminalOpen(true) },
+          !testsOpen && {
+            id: "tests",
+            label: "Tests",
+            icon: FlaskConical,
+            onOpen: () => setTestsOpen(true),
+            badge: lastTestRun?.parsed ? (lastTestRun.failed > 0 ? { text: String(lastTestRun.failed), bad: true } : { text: "✓", bad: false }) : undefined,
+          },
+          !chatOpen && { id: "chat", label: "Mindfries AI", icon: Bot, onOpen: () => setChatOpen(true) },
+        ]}
+      />
 
       {/* Where the workspace runs, and whether it is reachable — said once,
           plainly, rather than left for the candidate to infer from a
@@ -1124,7 +1158,8 @@ export function IdeShell({ sessionId, candidateName, taskBrief, starterFiles, as
         </div>
       )}
 
-      <div className={clsx("shrink-0 overflow-hidden rounded-xl border", palette.border)}>
+      {/* Edge to edge along the bottom, outside the canvas's padding. */}
+      <div className={clsx("-mx-2 -mb-2 shrink-0 overflow-hidden border-t", palette.border)}>
         <StatusBar
           activePath={activePath}
           dirtyCount={dirtyPaths.size}
@@ -1245,6 +1280,50 @@ function SubmittedScreen({ theme }: { theme: IdeTheme }) {
         </p>
         <p className={clsx("mt-3 text-xs", palette.textMuted)}>You can close this tab now.</p>
       </div>
+    </div>
+  );
+}
+
+interface EdgeChip {
+  id: string;
+  label: string;
+  icon: LucideIcon;
+  onOpen: () => void;
+  badge?: { text: string; bad: boolean };
+}
+
+/**
+ * The cards a candidate has closed, as chips stuck to the right edge of the
+ * screen. Clicking one opens its card again, as it was.
+ */
+function EdgeChips({ theme, chips }: { theme: IdeTheme; chips: Array<EdgeChip | false> }) {
+  const shown = chips.filter((c): c is EdgeChip => !!c);
+  const palette = idePalette(theme);
+  if (shown.length === 0) return null;
+  return (
+    <div className="fixed top-1/2 right-0 z-30 flex -translate-y-1/2 flex-col items-end gap-2" aria-label="Closed panels">
+      {shown.map((chip) => (
+        <button
+          key={chip.id}
+          type="button"
+          onClick={chip.onOpen}
+          title={`Open ${chip.label}`}
+          className={clsx(
+            "flex items-center gap-2 rounded-l-xl border border-r-0 py-2.5 pr-3 pl-3.5 text-[13px] font-medium shadow-[0_10px_30px_-12px_rgba(0,0,0,0.7)] transition-transform hover:-translate-x-1",
+            palette.border,
+            palette.panelBg,
+            palette.text
+          )}
+        >
+          <chip.icon size={16} className={theme === "dark" ? "text-[#60A5FA]" : palette.accent} />
+          {chip.label}
+          {chip.badge && (
+            <span className={clsx("rounded-full px-1.5 text-[10.5px] font-semibold", chip.badge.bad ? "bg-red-500/25 text-red-400" : "bg-emerald-500/20 text-emerald-400")}>
+              {chip.badge.text}
+            </span>
+          )}
+        </button>
+      ))}
     </div>
   );
 }

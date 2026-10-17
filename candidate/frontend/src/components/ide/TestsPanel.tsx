@@ -2,8 +2,8 @@
 
 import { useState, useSyncExternalStore } from "react";
 import clsx from "clsx";
-import { CircleCheck, CircleMinus, CircleX, Play } from "lucide-react";
-import { idePalette } from "@/lib/ide/palette";
+import { CircleCheck, CircleMinus, CircleX, FlaskConical, Play, X } from "lucide-react";
+import { idePalette, PRIMARY_BUTTON } from "@/lib/ide/palette";
 import type { IdeTheme } from "@/lib/ide/theme";
 import type { VfsBridge } from "@/lib/ide/vfs-bridge";
 import type { PreviewController } from "@/lib/ide/shell/types";
@@ -28,8 +28,11 @@ import { runInSandbox } from "@/app/ide/sandbox-actions";
  * Nothing here is computed: every line is read from what the test runner
  * printed (lib/ide/test-results.ts). A run whose output can't be read is
  * shown as its exit code and raw output, never as a pass.
+ *
+ * It is a card of its own beside the terminal; its cross tucks it away
+ * (IdeShell keeps a chip on the screen edge that brings it back).
  */
-export function TestsPanel({ theme, vfs, preview }: { theme: IdeTheme; vfs: VfsBridge; preview: PreviewController }) {
+export function TestsPanel({ theme, vfs, preview, onClose }: { theme: IdeTheme; vfs: VfsBridge; preview: PreviewController; onClose?: () => void }) {
   const palette = idePalette(theme);
   const run = useSyncExternalStore(testResults.subscribe, testResults.getSnapshot, testResults.getSnapshot);
   const [running, setRunning] = useState(false);
@@ -85,43 +88,45 @@ export function TestsPanel({ theme, vfs, preview }: { theme: IdeTheme; vfs: VfsB
 
   return (
     <div className={clsx("flex h-full min-h-0 flex-col text-[13px]", palette.text)}>
-      <div className="flex shrink-0 items-center gap-3 px-4 py-2.5">
+      <div className={clsx("flex h-12 shrink-0 items-center gap-2.5 border-b pr-2 pl-4", palette.border)}>
+        <FlaskConical size={17} className={theme === "dark" ? "text-[#60A5FA]" : palette.accent} />
+        <span className="text-[14.5px] font-semibold">Tests</span>
+        {run?.parsed && !running && total > 0 && (
+          <span className={clsx("text-[12.5px]", run.failed > 0 ? "text-red-400" : "text-emerald-400")}>
+            {run.failed > 0 ? `${run.failed} of ${total} failing` : `${total} passed`}
+          </span>
+        )}
         <button
           type="button"
           onClick={() => void runTests()}
           disabled={running}
-          className={clsx("flex items-center gap-2 rounded-lg px-2.5 py-1.5 font-semibold disabled:opacity-50", palette.hover)}
+          className={clsx("ml-auto flex h-9 items-center gap-2 rounded-lg px-3.5 text-[13.5px] font-semibold disabled:opacity-60", PRIMARY_BUTTON)}
         >
-          <Play size={13} /> {running ? "Running…" : "Run tests"}
+          <Play size={14} className="fill-current" /> {running ? "Running…" : "Run Tests"}
         </button>
+        {onClose && (
+          <button
+            type="button"
+            onClick={onClose}
+            title="Close the tests card"
+            aria-label="Close the tests card"
+            className={clsx("flex h-8 w-8 items-center justify-center rounded-lg", palette.textMuted, palette.hover)}
+          >
+            <X size={16} />
+          </button>
+        )}
+      </div>
+
+      <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
         {run && !running && (
-          <span className={clsx("min-w-0 flex-1 truncate", palette.textMuted)}>
-            {run.parsed ? (
-              <>
-                <span className={run.failed > 0 ? "font-semibold text-red-400" : "font-semibold text-emerald-500"}>
-                  {run.failed > 0 ? `${run.failed} failed` : "All passed"}
-                </span>
-                {" · "}
-                {run.passed} passed
-                {run.skipped > 0 && ` · ${run.skipped} skipped`}
-              </>
-            ) : (
-              <span className={run.exitCode === 0 ? "" : "font-semibold text-red-400"}>exited {run.exitCode}</span>
-            )}
+          <p className={clsx("mb-2 truncate text-[12px]", palette.textMuted)}>
+            {run.parsed ? `${run.passed} passed${run.skipped > 0 ? ` · ${run.skipped} skipped` : ""}` : <span className={run.exitCode === 0 ? "" : "text-red-400"}>exited {run.exitCode}</span>}
             {" · "}
             <span className="font-mono">{run.command}</span>
             {" · "}
             {new Date(run.at).toLocaleTimeString()}
-          </span>
+          </p>
         )}
-        {run?.parsed && !running && total > 0 && (
-          <span className={clsx("ml-auto shrink-0", palette.textMuted)}>
-            {total} {total === 1 ? "test" : "tests"}
-          </span>
-        )}
-      </div>
-
-      <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-3">
         {note && <p className={palette.textMuted}>{note}</p>}
         {!run && !note && (
           <p className={palette.textMuted}>
@@ -144,7 +149,7 @@ export function TestsPanel({ theme, vfs, preview }: { theme: IdeTheme; vfs: VfsB
         {run?.parsed && run.tests.length === 0 && run.failed + run.passed === 0 && (
           <pre className="font-mono whitespace-pre-wrap">{run.tail}</pre>
         )}
-        <ul className="space-y-2">
+        <ul className="space-y-1">
           {[...failing, ...others].map((test, index) => (
             <TestRow
               key={`${test.name}-${index}`}
@@ -160,35 +165,43 @@ export function TestsPanel({ theme, vfs, preview }: { theme: IdeTheme; vfs: VfsB
   );
 }
 
+/** The line a failure ends on, which is usually the one that says what was wrong. */
+function failureLine(detail: string | undefined): string | null {
+  const lines = (detail ?? "").split("\n").map((l) => l.trim()).filter(Boolean);
+  return lines.at(-1) ?? null;
+}
+
 function TestRow({ test, open, onToggle, theme }: { test: TestCase; open: boolean; onToggle: () => void; theme: IdeTheme }) {
   const palette = idePalette(theme);
-  const dark = theme === "dark";
   const failed = test.status === "fail" || test.status === "error";
   const skipped = test.status === "skip";
   const Icon = failed ? CircleX : skipped ? CircleMinus : CircleCheck;
+  const reason = failed ? failureLine(test.detail) : null;
   return (
-    <li
-      className={clsx(
-        "overflow-hidden rounded-lg border border-l-[3px]",
-        dark ? "border-[#232C5E] bg-[#121940]" : "border-[#B3CFE5] bg-white",
-        failed ? "border-l-[#F0566A]" : skipped ? (dark ? "border-l-[#4A537D]" : "border-l-[#B3CFE5]") : "border-l-[#22C55E]"
-      )}
-    >
+    <li className="rounded-lg">
       <button
         type="button"
         onClick={onToggle}
         disabled={!test.detail}
-        className={clsx("flex w-full items-center gap-2.5 px-3 py-2 text-left", test.detail && palette.hover)}
+        title={test.detail ? (open ? "Hide the failure" : "Show the whole failure") : undefined}
+        className={clsx("flex w-full items-start gap-3 rounded-lg px-2 py-2 text-left", test.detail && palette.hover)}
       >
-        <Icon size={15} className={failed ? "text-[#F0566A]" : skipped ? palette.textMuted : "text-[#22C55E]"} />
-        <span className="min-w-0 flex-1 truncate font-mono">{test.name}</span>
-        {test.status === "error" && <span className="text-[#F0566A]">error</span>}
-        {failed && test.status !== "error" && <span className="text-[#F0566A]">failed</span>}
-        {skipped && <span className={palette.textMuted}>skipped</span>}
-        {!failed && !skipped && <span className="text-[#22C55E]">passed</span>}
+        <Icon size={20} className={clsx("mt-px shrink-0", failed ? "fill-[#F0566A] text-[#0F172A]" : skipped ? palette.textMuted : "fill-[#22C55E] text-[#0F172A]")} />
+        <span className="min-w-0 flex-1">
+          <span className="block truncate font-mono text-[13.5px]">{test.name}</span>
+          {reason && !open && <span className={clsx("mt-1 block truncate font-mono text-[12px]", palette.textMuted)}>{reason}</span>}
+        </span>
+        <span
+          className={clsx(
+            "shrink-0 rounded-md px-2 py-0.5 text-[11px] font-semibold tracking-wide",
+            failed ? "bg-[#F0566A]/15 text-[#F87182]" : skipped ? "bg-white/5 text-[#94A3B8]" : "bg-[#22C55E]/15 text-[#4ADE80]"
+          )}
+        >
+          {test.status === "error" ? "ERROR" : failed ? "FAILED" : skipped ? "SKIPPED" : "PASSED"}
+        </span>
       </button>
       {open && test.detail && (
-        <pre className={clsx("mx-3 mb-2.5 overflow-x-auto rounded-md border px-2.5 py-2 font-mono text-xs whitespace-pre-wrap", palette.border)}>
+        <pre className={clsx("mx-2 mb-2 overflow-x-auto rounded-md border px-2.5 py-2 font-mono text-xs whitespace-pre-wrap", palette.border)}>
           {test.detail}
         </pre>
       )}
