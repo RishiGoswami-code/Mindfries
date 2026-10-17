@@ -1,14 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, useTransition } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import clsx from "clsx";
-import { Bot, FlaskConical, GripVertical, SquareTerminal, type LucideIcon } from "lucide-react";
+import { Bot, GripVertical, SquareTerminal, type LucideIcon } from "lucide-react";
 import { CameraPanel } from "./CameraPanel";
 import { FileExplorer } from "./FileExplorer";
 import { Breadcrumbs } from "./Breadcrumbs";
 import { EditorPanel } from "./EditorPanel";
 import { BottomPanel } from "./BottomPanel";
-import { TestsPanel } from "./TestsPanel";
 import { StatusBar } from "./StatusBar";
 import { PackageCleanupGuard } from "./PackageCleanupGuard";
 import { ChatPanel } from "./ChatPanel";
@@ -184,9 +183,8 @@ export function IdeShell({ sessionId, candidateName, taskBrief, starterFiles, as
     );
   }, [sessionId]);
 
-  // Every command that finishes in the terminal (or from the Tests panel):
-  // a test run is read into results for the Tests panel, and — in a real
-  // session — the command, how it exited and how long it took are recorded.
+  // Every command that finishes in the terminal: a test run is read into
+  // results, and — in a real session — the command, how it exited and how long it took are recorded.
   // Its output isn't sent, except a test run's counts: what a candidate ran
   // and whether it worked is the evidence; megabytes of logs aren't.
   useEffect(
@@ -342,16 +340,13 @@ export function IdeShell({ sessionId, candidateName, taskBrief, starterFiles, as
   const sidebar = useResizable({ initial: 240, min: 160, max: 480, axis: "horizontal" });
   // The height of the bottom row — terminal, tests, and the camera beside them.
   const terminal = useResizable({ initial: 300, min: 160, max: 620, axis: "vertical", invert: true });
-  const testsPane = useResizable({ initial: 440, min: 300, max: 760, axis: "horizontal", invert: true });
   const chatPane = useResizable({ initial: 380, min: 280, max: 600, axis: "horizontal", invert: true });
   const cameraPane = useResizable({ initial: 360, min: 240, max: 560, axis: "horizontal", invert: true });
-  // The three cards a candidate can tuck away. A closed one leaves a chip
-  // on the right edge of the screen that opens it again; a closed terminal
-  // keeps its sessions running.
+  // The two cards a candidate can tuck away. A closed one leaves a chip
+  // floating over the camera picture that opens it again; a closed
+  // terminal keeps its sessions running.
   const [chatOpen, setChatOpen] = useState(true);
   const [terminalOpen, setTerminalOpen] = useState(true);
-  const [testsOpen, setTestsOpen] = useState(true);
-  const lastTestRun = useSyncExternalStore(testResults.subscribe, testResults.getSnapshot, testResults.getSnapshot);
   // The session is camera-proctored: the gate below blocks the workspace
   // until this is live, and re-blocks if the stream ever stops.
   const camera = useProctorCamera(!!sessionId && !practice);
@@ -925,9 +920,19 @@ export function IdeShell({ sessionId, candidateName, taskBrief, starterFiles, as
 
   // What the TASK.md tab shows.
   const taskMarkdown = sessionId ? (taskBrief ?? NO_BRIEF_MARKDOWN) : practice && taskBrief ? taskBrief : SCRATCH_MARKDOWN;
-  // The bottom row exists while it has something in it: the terminal, the
-  // tests, or — with the assistant closed — the camera.
-  const bottomRow = terminalOpen || testsOpen || !chatOpen;
+  // The bottom row exists while it has something in it: the terminal, or
+  // — with the assistant closed — the camera.
+  const bottomRow = terminalOpen || !chatOpen;
+  // The chips that reopen closed cards, floating over the camera picture.
+  const closedChips = (
+    <ClosedChips
+      theme={theme}
+      chips={[
+        !terminalOpen && { id: "terminal", label: "Terminal", icon: SquareTerminal, onOpen: () => setTerminalOpen(true) },
+        !chatOpen && { id: "chat", label: "Mindfries AI", icon: Bot, onOpen: () => setChatOpen(true) },
+      ]}
+    />
+  );
 
   // Submission replaces the workspace the same way ending does.
   if (submitted) return <SubmittedScreen theme={theme} />;
@@ -1016,8 +1021,8 @@ export function IdeShell({ sessionId, candidateName, taskBrief, starterFiles, as
                   style={{ display: terminalOpen ? undefined : "none" }}
                   className={clsx("min-w-0 flex-1 overflow-hidden rounded-2xl border", palette.border, cardShadow)}
                 >
-                  {/* The terminal and the Tests card are the two that act
-                      differently on a sandbox; the context is how they know. */}
+                  {/* The terminal acts differently on a sandbox; the context
+                      is how it knows. */}
                   <SandboxContext.Provider value={sandboxContext}>
                     <BottomPanel
                       theme={theme}
@@ -1036,27 +1041,15 @@ export function IdeShell({ sessionId, candidateName, taskBrief, starterFiles, as
                     />
                   </SandboxContext.Provider>
                 </div>
-                {testsOpen && (
-                  <>
-                    {terminalOpen && <div onMouseDown={testsPane.startDrag} title="Drag to resize" className="-mx-1.5 w-1 shrink-0 cursor-col-resize" />}
-                    <div
-                      style={terminalOpen ? { width: testsPane.size } : undefined}
-                      className={clsx("min-w-0 overflow-hidden rounded-2xl border", terminalOpen ? "shrink-0" : "flex-1", palette.border, palette.panelBg, cardShadow)}
-                    >
-                      <SandboxContext.Provider value={sandboxContext}>
-                        <TestsPanel theme={theme} vfs={vfs} preview={previewController} onClose={() => setTestsOpen(false)} />
-                      </SandboxContext.Provider>
-                    </div>
-                  </>
-                )}
                 {/* With the assistant closed, the camera joins this row. */}
                 {!chatOpen && (
                   <div
-                    style={terminalOpen || testsOpen ? { width: cameraPane.size } : undefined}
-                    className={clsx("relative overflow-hidden rounded-2xl border", terminalOpen || testsOpen ? "shrink-0" : "flex-1", palette.border, palette.panelBg, cardShadow)}
+                    style={{ width: cameraPane.size }}
+                    // On its own it keeps its width, at the right, rather than stretching across the row.
+                    className={clsx("relative ml-auto shrink-0 overflow-hidden rounded-2xl border", palette.border, palette.panelBg, cardShadow)}
                   >
-                    {(terminalOpen || testsOpen) && <div onMouseDown={cameraPane.startDrag} title="Drag to resize the camera" className="absolute inset-y-0 left-0 z-10 w-1.5 cursor-col-resize" />}
-                    <CameraPanel theme={theme} stream={camera.stream} />
+                    {terminalOpen && <div onMouseDown={cameraPane.startDrag} title="Drag to resize the camera" className="absolute inset-y-0 left-0 z-10 w-1.5 cursor-col-resize" />}
+                    <CameraPanel theme={theme} stream={camera.stream} overlay={closedChips} />
                   </div>
                 )}
               </div>
@@ -1089,27 +1082,13 @@ export function IdeShell({ sessionId, candidateName, taskBrief, starterFiles, as
                 style={{ height: bottomRow ? terminal.size + 8 : 300 }}
                 className={clsx("shrink-0 overflow-hidden rounded-2xl border", palette.border, palette.panelBg, cardShadow)}
               >
-                <CameraPanel theme={theme} stream={camera.stream} />
+                <CameraPanel theme={theme} stream={camera.stream} overlay={closedChips} />
               </div>
             </div>
           </>
         )}
       </div>
 
-      <EdgeChips
-        theme={theme}
-        chips={[
-          !terminalOpen && { id: "terminal", label: "Terminal", icon: SquareTerminal, onOpen: () => setTerminalOpen(true) },
-          !testsOpen && {
-            id: "tests",
-            label: "Tests",
-            icon: FlaskConical,
-            onOpen: () => setTestsOpen(true),
-            badge: lastTestRun?.parsed ? (lastTestRun.failed > 0 ? { text: String(lastTestRun.failed), bad: true } : { text: "✓", bad: false }) : undefined,
-          },
-          !chatOpen && { id: "chat", label: "Mindfries AI", icon: Bot, onOpen: () => setChatOpen(true) },
-        ]}
-      />
 
       {/* Where the workspace runs, and whether it is reachable — said once,
           plainly, rather than left for the candidate to infer from a
@@ -1293,15 +1272,15 @@ interface EdgeChip {
 }
 
 /**
- * The cards a candidate has closed, as chips stuck to the right edge of the
- * screen. Clicking one opens its card again, as it was.
+ * The cards a candidate has closed, as chips floating over the camera
+ * picture — always in view, never over the code. Clicking one opens its
+ * card again, as it was.
  */
-function EdgeChips({ theme, chips }: { theme: IdeTheme; chips: Array<EdgeChip | false> }) {
+function ClosedChips({ theme, chips }: { theme: IdeTheme; chips: Array<EdgeChip | false> }) {
   const shown = chips.filter((c): c is EdgeChip => !!c);
-  const palette = idePalette(theme);
   if (shown.length === 0) return null;
   return (
-    <div className="fixed top-1/2 right-0 z-30 flex -translate-y-1/2 flex-col items-end gap-2" aria-label="Closed panels">
+    <>
       {shown.map((chip) => (
         <button
           key={chip.id}
@@ -1309,21 +1288,19 @@ function EdgeChips({ theme, chips }: { theme: IdeTheme; chips: Array<EdgeChip | 
           onClick={chip.onOpen}
           title={`Open ${chip.label}`}
           className={clsx(
-            "flex items-center gap-2 rounded-l-xl border border-r-0 py-2.5 pr-3 pl-3.5 text-[13px] font-medium shadow-[0_10px_30px_-12px_rgba(0,0,0,0.7)] transition-transform hover:-translate-x-1",
-            palette.border,
-            palette.panelBg,
-            palette.text
+            "flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[12.5px] font-medium shadow-[0_8px_20px_-8px_rgba(0,0,0,0.8)] backdrop-blur transition-transform hover:-translate-y-px",
+            theme === "dark" ? "border-white/15 bg-[#0F172A]/80 text-[#E2E8F0]" : "border-[#B3CFE5] bg-white/90 text-[#0A1931]"
           )}
         >
-          <chip.icon size={16} className={theme === "dark" ? "text-[#60A5FA]" : palette.accent} />
+          <chip.icon size={14} className={theme === "dark" ? "text-[#60A5FA]" : "text-[#4A7FA7]"} />
           {chip.label}
           {chip.badge && (
-            <span className={clsx("rounded-full px-1.5 text-[10.5px] font-semibold", chip.badge.bad ? "bg-red-500/25 text-red-400" : "bg-emerald-500/20 text-emerald-400")}>
+            <span className={clsx("rounded-full px-1.5 text-[10.5px] font-semibold", chip.badge.bad ? "bg-red-500/30 text-red-300" : "bg-emerald-500/25 text-emerald-300")}>
               {chip.badge.text}
             </span>
           )}
         </button>
       ))}
-    </div>
+    </>
   );
 }

@@ -44,7 +44,7 @@ if (!python) {
   const given = run(PRACTICE_FILES);
   const parsed = parseTestRun("python -m unittest discover -s tests -v", given.out, given.code ?? 1);
   check("as given, the tests fail", given.code !== 0, `exit ${given.code}`);
-  check("the Tests panel can read that run", parsed.parsed && parsed.tests.length === 3, `${parsed.tests.length} tests, ${parsed.failed} failed`);
+  check("the test-results reader can read that run", parsed.parsed && parsed.tests.length === 3, `${parsed.tests.length} tests, ${parsed.failed} failed`);
   check("one test already passes, so the failure is the bug and not a broken project", parsed.passed >= 1 && parsed.failed >= 1);
 
   const fixed = run({ ...PRACTICE_FILES, "/pricing/discount.py": PRACTICE_FILES["/pricing/discount.py"].replace("total * percent\n", "total * percent / 100\n") });

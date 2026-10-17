@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, type ReactNode } from "react";
 import clsx from "clsx";
 import { Video } from "lucide-react";
 import { idePalette } from "@/lib/ide/palette";
@@ -18,7 +18,7 @@ import type { IdeTheme } from "@/lib/ide/theme";
  * displays it, so the feed survives layout changes and can't be detached by
  * re-rendering.
  */
-export function CameraPanel({ theme, stream, compact = false }: { theme: IdeTheme; stream: MediaStream | null; compact?: boolean }) {
+export function CameraPanel({ theme, stream, compact = false, overlay }: { theme: IdeTheme; stream: MediaStream | null; compact?: boolean; overlay?: ReactNode }) {
   const palette = idePalette(theme);
   const videoRef = useRef<HTMLVideoElement>(null);
   const dark = theme === "dark";
@@ -48,12 +48,14 @@ export function CameraPanel({ theme, stream, compact = false }: { theme: IdeThem
 
       <div
         className={clsx(
-          "overflow-hidden bg-black",
+          "relative overflow-hidden bg-black",
           compact ? "h-8 w-14 shrink-0 rounded-md" : "mx-3 mb-3 min-h-0 flex-1 rounded-xl"
         )}
       >
         {/* Landscape, letterboxed rather than cropped. */}
         <video ref={videoRef} muted playsInline className="h-full w-full object-contain" />
+        {/* Floats over the picture: the chips that reopen closed cards. */}
+        {overlay && !compact && <div className="absolute inset-x-2 bottom-2 flex flex-wrap justify-end gap-2">{overlay}</div>}
       </div>
     </div>
   );

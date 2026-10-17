@@ -4,8 +4,8 @@ import type { FileContents } from "./types";
  * The practice run's task: a small Python project with one real bug and a
  * test that catches it — the same shape as a real assessment, so the
  * candidate gets to try the things they will actually use: reading a brief,
- * finding the fault, running the tests from the terminal or the Tests
- * panel, and seeing them go green.
+ * finding the fault, running the tests from the terminal, and seeing them
+ * go green.
  *
  * The practice workspace has no session behind it, so none of what the real
  * workspace records is recorded here (see IdeShell: telemetry, checkpoints
@@ -29,8 +29,6 @@ export const PRACTICE_BRIEF = `# Practice run
 ## Running the tests
 
 In the terminal, type \`python -m unittest discover -s tests -v\`
-
-Or open the **Tests** panel and press Run.
 
 ## Worth trying while you're here
 
