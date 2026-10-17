@@ -88,7 +88,7 @@ export async function getJob(id: string): Promise<JobListing | null> {
  * acb@x.com. Emails are stored lower-cased by both portals; the value is
  * quoted so a + or . in it is read literally.
  */
-function ownedBy(candidate: { id: string; email: string }): string {
+export function ownedBy(candidate: { id: string; email: string }): string {
   const email = candidate.email.toLowerCase().replace(/["\\]/g, "");
   return `candidate_id.eq.${candidate.id},candidate_email.eq."${email}"`;
 }
@@ -99,7 +99,9 @@ const STAGES: Stage[] = ["applied", "invited", "in_progress", "completed", "shor
  * The signed-in candidate's applications: those made from the job board
  * and those that came from an invitation, matched by account or by the
  * email the invitation was sent to. Newest first, each with its assessment,
- * interviews and the emails the hiring team sent.
+ * interviews and the emails the hiring team sent — including ones that
+ * weren't emailed (email not set up, or the candidate turned that kind of
+ * email off), which the company portal tells the sender they'll read here.
  */
 export async function listMyApplications(candidate: { id: string; email: string }): Promise<Read<MyApplication[]>> {
   const c = db();
@@ -125,7 +127,7 @@ export async function listMyApplications(candidate: { id: string; email: string 
 
   const [interviews, emails, assessments, sessions, counts] = await Promise.all([
     c.from("application_interviews").select("*").in("application_id", appIds).order("starts_at", { ascending: true }),
-    c.from("application_emails").select("id, application_id, subject, body, sent_by_name, sent_at").in("application_id", appIds).eq("delivered", true).order("sent_at", { ascending: false }),
+    c.from("application_emails").select("id, application_id, subject, body, sent_by_name, sent_at").in("application_id", appIds).order("sent_at", { ascending: false }),
     assessmentIds.length ? c.from("assessments").select("id, status, task_status").in("id", assessmentIds) : Promise.resolve({ data: [] as any[] }),
     assessmentIds.length
       ? c.from("sessions").select("id, assessment_id, started_at").in("assessment_id", assessmentIds).order("started_at", { ascending: false })
