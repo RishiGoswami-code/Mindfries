@@ -1,28 +1,19 @@
 import Link from "next/link";
 import clsx from "clsx";
-import { ArrowRight, FileText } from "lucide-react";
-import { InvitationAnswer } from "@/components/assessments/InvitationAnswer";
-import { sortByAttention, statusLabels, UNAVAILABLE, type Assessment } from "@/lib/dashboard/data";
+import { FileText } from "lucide-react";
+import { AssessmentRow } from "@/components/assessments/AssessmentItem";
+import { sortByAttention, UNAVAILABLE, type Assessment } from "@/lib/dashboard/data";
 import { display } from "@/lib/dashboard/fonts";
 
 const PREVIEW_COUNT = 3;
-
-const PILL: Record<Assessment["status"], string> = {
-  invited: "bg-[#ECE6FD] text-[#4B2BB8]",
-  "in-progress": "bg-[#FBE3F2] text-[#8A2F6B]",
-  submitted: "bg-[#DDF5EF] text-[#1E5B4F]",
-  closed: "bg-[#EEECF4] text-[#6E6A8F]",
-};
 
 /**
  * The dashboard's preview of the candidate's assessments: the three most
  * worth acting on (sortByAttention), with "View all" when there are more.
  *
  * `items` undefined means the list couldn't be read, which is said plainly
- * (UNAVAILABLE) rather than shown as an empty list. Every row's action is
- * the real one: an unanswered invitation asks Accept / Decline first, then
- * Start opens onboarding; in progress resumes the session; submitted opens
- * its report.
+ * (UNAVAILABLE) rather than shown as an empty list. Rows are the same
+ * AssessmentRow the Assessments page lists, with the same actions.
  */
 export function DashboardAssessments({ items: loaded }: { items?: Assessment[] }) {
   const items = loaded ?? [];
@@ -62,63 +53,5 @@ export function DashboardAssessments({ items: loaded }: { items?: Assessment[] }
         </ul>
       )}
     </section>
-  );
-}
-
-function AssessmentRow({ assessment }: { assessment: Assessment }) {
-  const { status, invitation } = assessment;
-  const unanswered = status === "invited" && !!invitation && !invitation.accepted;
-  const label = invitation?.declined ? "Declined" : status === "invited" && invitation?.accepted ? "Accepted" : statusLabels[status];
-
-  return (
-    <li
-      className={clsx(
-        "flex flex-wrap items-center gap-x-5 gap-y-3 rounded-2xl bg-white/70 px-5 py-4 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.9)]",
-        status === "closed" && "opacity-60"
-      )}
-    >
-      <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-2.5">
-          <span className={clsx("rounded-full px-2.5 py-0.5 text-[11px] font-semibold tracking-wide uppercase", PILL[status])}>{label}</span>
-          <span className="text-[12.5px] text-[#6E6A8F]">{assessment.due}</span>
-        </div>
-        <p className="mt-1.5 truncate text-[16px] font-medium text-[#100E2E]">{assessment.role}</p>
-        <p className="truncate text-[13px] text-[#6E6A8F]">
-          {[assessment.company, assessment.location, ...assessment.tags].filter(Boolean).join(" · ")}
-        </p>
-      </div>
-
-      {unanswered && <InvitationAnswer assessmentId={assessment.id} />}
-
-      {status === "invited" && !unanswered && (
-        <RowLink href={`/onboarding?template=${encodeURIComponent(assessment.id)}`}>Start</RowLink>
-      )}
-
-      {/* The clock is the server's and kept running; resuming picks the session back up. */}
-      {status === "in-progress" && assessment.sessionId && (
-        <RowLink href={`/ide?session=${encodeURIComponent(assessment.sessionId)}`}>Resume</RowLink>
-      )}
-
-      {status === "submitted" && assessment.sessionId && (
-        <RowLink href={`/assessments/${encodeURIComponent(assessment.sessionId)}/report`} subtle>
-          View report
-        </RowLink>
-      )}
-    </li>
-  );
-}
-
-function RowLink({ href, children, subtle = false }: { href: string; children: React.ReactNode; subtle?: boolean }) {
-  return (
-    <Link
-      href={href}
-      className={clsx(
-        "inline-flex shrink-0 items-center gap-1.5 rounded-full px-4 py-2 text-[13px] font-semibold transition-opacity hover:opacity-90",
-        subtle ? "bg-[#EEEBFA] text-[#3D22A8]" : "bg-[#1F1B4D] text-white"
-      )}
-    >
-      {children}
-      <ArrowRight size={14} />
-    </Link>
   );
 }

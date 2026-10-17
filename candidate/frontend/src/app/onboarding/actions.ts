@@ -11,8 +11,9 @@ import { isRedirectError } from "@/lib/isRedirectError";
  * wizard opens. The timer and evidence capture begin from here.
  *
  * templateId comes from the real assessment the candidate picked on the
- * dashboard (threaded through as a query param the whole way — see
- * src/app/dashboard/actions.ts) — never a hardcoded placeholder. The
+ * dashboard (threaded through as a query param the whole way — see the
+ * Start link in components/assessments/AssessmentItem.tsx) — never a
+ * hardcoded placeholder. The
  * candidate's own identity is never passed in either: the backend derives
  * it itself from the signed "mf_candidate" cookie this call forwards, which
  * is also what makes the session it creates belong to this candidate and no

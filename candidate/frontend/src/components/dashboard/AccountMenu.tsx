@@ -56,9 +56,7 @@ export function AccountMenu({ sessionName, profile, appearance = "default" }: Ac
       window.localStorage.removeItem("mf_profile_links");
     }
     // endSession() redirects to /login itself once the cookie is cleared —
-    // Next resolves that redirect through this transition, same pattern
-    // AssessmentWall already uses to call startAssessment from a client
-    // component.
+    // Next resolves that redirect through this transition.
     startTransition(() => {
       void (everywhere ? signOutEverywhere() : endSession());
     });
