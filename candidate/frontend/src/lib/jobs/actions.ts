@@ -178,8 +178,9 @@ const NEXT_STATUS: Record<InterviewResponse, string> = {
  */
 export async function respondToInterview(interviewId: string, response: InterviewResponse, messageRaw: string): Promise<JobResult> {
   const candidate = await currentCandidate();
+  if (!candidate) return { ok: false, error: "Sign in again and retry." };
   const c = db();
-  if (!candidate || !c) return { ok: false, error: "Sign in again and retry." };
+  if (!c) return { ok: false, error: "The database isn't connected." };
   if (!UUID.test(interviewId) || !(response in NEXT_STATUS)) return { ok: false, error: "That interview isn't there any more." };
   const message = String(messageRaw ?? "").trim().slice(0, 1000);
   if (response === "reschedule" && message.length < 3) return { ok: false, error: "Say which days or times would suit you." };
