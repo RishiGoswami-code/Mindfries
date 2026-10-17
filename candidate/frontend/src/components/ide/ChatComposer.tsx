@@ -23,18 +23,10 @@ import type { IdeTheme } from "@/lib/ide/theme";
  * coding-agent behaviour the panel promises this assistant won't have. The
  * row keeps the send key, and the left side says how the box works instead.
  *
- * The chips are kept, but made real and made to fit. The original's "Create
- * an image" and "Analyse data" become questions this assistant is actually
- * for, and pressing one starts the sentence rather than sending it: the
- * candidate still has to finish the question, because their questions are
- * part of what the session records.
+ * There are no suggestion chips: the candidate writes the question, because
+ * their questions are part of what the session records.
  */
 
-const STARTERS = [
-  { label: "Explain an error", text: "Can you help me understand this error: " },
-  { label: "Talk through an approach", text: "I'm thinking of approaching this by " },
-  { label: "What does this do?", text: "What does this code do? " },
-];
 
 const LOOK = {
   dark: {
@@ -93,14 +85,6 @@ export function ChatComposer({
   // Set when a starter fills the box; consumed once the new text is in the DOM.
   const caretToEnd = useRef(false);
 
-  const applyStarter = (text: string) => {
-    caretToEnd.current = true;
-    onDraftChange(text);
-    // Focus now rather than waiting on the effect: if the starter matches
-    // what's already in the box, the draft doesn't change and the effect below
-    // never runs.
-    input.current?.focus();
-  };
 
   // Caret at the end, so the candidate carries on typing the sentence. A
   // layout effect rather than a `requestAnimationFrame`: it runs as soon as
@@ -185,21 +169,6 @@ export function ChatComposer({
         </div>
       </div>
 
-      <div className="flex flex-wrap gap-1 pt-2.5">
-        {STARTERS.map((starter) => (
-          <button
-            key={starter.label}
-            type="button"
-            onClick={() => applyStarter(starter.text)}
-            className={clsx(
-              "rounded-[10px] border-[1.5px] px-2 py-1 text-[10px] transition-colors select-none",
-              look.chip
-            )}
-          >
-            {starter.label}
-          </button>
-        ))}
-      </div>
     </div>
   );
 }

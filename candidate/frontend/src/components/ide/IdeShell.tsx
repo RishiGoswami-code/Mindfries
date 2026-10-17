@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import clsx from "clsx";
-import { Bot, GripVertical, SquareTerminal, type LucideIcon } from "lucide-react";
+import { Bot, GripVertical, SquareTerminal, Video, type LucideIcon } from "lucide-react";
 import { CameraPanel } from "./CameraPanel";
 import { FileExplorer } from "./FileExplorer";
 import { Breadcrumbs } from "./Breadcrumbs";
@@ -341,12 +341,16 @@ export function IdeShell({ sessionId, candidateName, taskBrief, starterFiles, as
   // The height of the bottom row — terminal, tests, and the camera beside them.
   const terminal = useResizable({ initial: 300, min: 160, max: 620, axis: "vertical", invert: true });
   const chatPane = useResizable({ initial: 380, min: 280, max: 600, axis: "horizontal", invert: true });
-  const cameraPane = useResizable({ initial: 360, min: 240, max: 560, axis: "horizontal", invert: true });
-  // The two cards a candidate can tuck away. A closed one leaves a chip
-  // floating over the camera picture that opens it again; a closed
-  // terminal keeps its sessions running.
-  const [chatOpen, setChatOpen] = useState(true);
+  // The camera's own height: it never follows the terminal's.
+  const cameraPane = useResizable({ initial: 300, min: 180, max: 560, axis: "vertical", invert: true });
+  // The terminal, the assistant and the camera can each be tucked away. A
+  // closed one leaves a chip that opens it again — on the camera picture,
+  // or in the bottom-right corner when the camera itself is closed. A
+  // closed terminal keeps its sessions running; closing the camera hides
+  // only its picture: it keeps recording.
   const [terminalOpen, setTerminalOpen] = useState(true);
+  const [chatOpen, setChatOpen] = useState(true);
+  const [cameraOpen, setCameraOpen] = useState(true);
   // The session is camera-proctored: the gate below blocks the workspace
   // until this is live, and re-blocks if the stream ever stops.
   const camera = useProctorCamera(!!sessionId && !practice);
@@ -920,16 +924,14 @@ export function IdeShell({ sessionId, candidateName, taskBrief, starterFiles, as
 
   // What the TASK.md tab shows.
   const taskMarkdown = sessionId ? (taskBrief ?? NO_BRIEF_MARKDOWN) : practice && taskBrief ? taskBrief : SCRATCH_MARKDOWN;
-  // The bottom row exists while it has something in it: the terminal, or
-  // — with the assistant closed — the camera.
-  const bottomRow = terminalOpen || !chatOpen;
-  // The chips that reopen closed cards, floating over the camera picture.
+  // The chips that reopen closed cards.
   const closedChips = (
     <ClosedChips
       theme={theme}
       chips={[
         !terminalOpen && { id: "terminal", label: "Terminal", icon: SquareTerminal, onOpen: () => setTerminalOpen(true) },
         !chatOpen && { id: "chat", label: "Mindfries AI", icon: Bot, onOpen: () => setChatOpen(true) },
+        !cameraOpen && { id: "camera", label: "Camera", icon: Video, onOpen: () => setCameraOpen(true) },
       ]}
     />
   );
@@ -1007,57 +1009,45 @@ export function IdeShell({ sessionId, candidateName, taskBrief, starterFiles, as
             </div>
           </div>
 
-          {bottomRow && (
-            <>
-              {/* The bottom row's top edge: drag it to size the row (the
-                  camera beside the assistant follows the same height). */}
-              <div onMouseDown={terminal.startDrag} title="Drag to resize" className="group flex h-2 shrink-0 cursor-row-resize items-center justify-center">
-                <span className={clsx("h-[3px] w-10 rounded-full opacity-0 transition-opacity group-hover:opacity-100", theme === "dark" ? "bg-[#3B82F6]/60" : "bg-[#4A7FA7]/60")} />
-              </div>
-              <div style={{ height: terminal.size }} className={clsx("flex shrink-0 gap-2", !terminal.dragging && "transition-[height] duration-200 ease-out")}>
-                {/* Hidden, never unmounted, while tucked away: the terminals
-                    keep their sessions and scrollback. */}
-                <div
-                  style={{ display: terminalOpen ? undefined : "none" }}
-                  className={clsx("min-w-0 flex-1 overflow-hidden rounded-2xl border", palette.border, cardShadow)}
-                >
-                  {/* The terminal acts differently on a sandbox; the context
-                      is how it knows. */}
-                  <SandboxContext.Provider value={sandboxContext}>
-                    <BottomPanel
-                      theme={theme}
-                      vfs={vfs}
-                      preview={previewController}
-                      onClose={() => setTerminalOpen(false)}
-                      diagnostics={diagnostics}
-                      onOpenLocation={(path) => openFile(path)}
-                      changes={changes}
-                      onOpenDiff={(path) => openFile(`${DIFF_PREFIX}${path}`)}
-                      previewState={preview}
-                      onFocusPreview={() => openFile(PREVIEW_TAB)}
-                      // Same path Ctrl+C takes: stop watching, keep the last build on
-                      // screen. Closing the preview's tab is a separate, more destructive act.
-                      onStopPreview={() => previewController.stop()}
-                    />
-                  </SandboxContext.Provider>
-                </div>
-                {/* With the assistant closed, the camera joins this row. */}
-                {!chatOpen && (
-                  <div
-                    style={{ width: cameraPane.size }}
-                    // On its own it keeps its width, at the right, rather than stretching across the row.
-                    className={clsx("relative ml-auto shrink-0 overflow-hidden rounded-2xl border", palette.border, palette.panelBg, cardShadow)}
-                  >
-                    {terminalOpen && <div onMouseDown={cameraPane.startDrag} title="Drag to resize the camera" className="absolute inset-y-0 left-0 z-10 w-1.5 cursor-col-resize" />}
-                    <CameraPanel theme={theme} stream={camera.stream} overlay={closedChips} />
-                  </div>
-                )}
-              </div>
-            </>
-          )}
+          {/* The terminal's top edge: drag it to size the terminal. The
+              camera has a height of its own and doesn't move with it. */}
+          {/* Hidden, never unmounted, while closed: the terminals keep their
+              sessions and scrollback. */}
+          <div
+            onMouseDown={terminal.startDrag}
+            title="Drag to resize"
+            style={{ display: terminalOpen ? undefined : "none" }}
+            className="group flex h-2 shrink-0 cursor-row-resize items-center justify-center"
+          >
+            <span className={clsx("h-[3px] w-10 rounded-full opacity-0 transition-opacity group-hover:opacity-100", theme === "dark" ? "bg-[#3B82F6]/60" : "bg-[#4A7FA7]/60")} />
+          </div>
+          <div
+            style={{ height: terminal.size, display: terminalOpen ? undefined : "none" }}
+            className={clsx("min-w-0 shrink-0 overflow-hidden rounded-2xl border", palette.border, cardShadow, !terminal.dragging && "transition-[height] duration-200 ease-out")}
+          >
+            {/* The terminal acts differently on a sandbox; the context is
+                how it knows. */}
+            <SandboxContext.Provider value={sandboxContext}>
+              <BottomPanel
+                theme={theme}
+                vfs={vfs}
+                preview={previewController}
+                onClose={() => setTerminalOpen(false)}
+                diagnostics={diagnostics}
+                onOpenLocation={(path) => openFile(path)}
+                changes={changes}
+                onOpenDiff={(path) => openFile(`${DIFF_PREFIX}${path}`)}
+                previewState={preview}
+                onFocusPreview={() => openFile(PREVIEW_TAB)}
+                // Same path Ctrl+C takes: stop watching, keep the last build on
+                // screen. Closing the preview's tab is a separate, more destructive act.
+                onStopPreview={() => previewController.stop()}
+              />
+            </SandboxContext.Provider>
+          </div>
         </div>
 
-        {chatOpen && (
+        {(chatOpen || cameraOpen) && (
           <>
             <div
               onMouseDown={chatPane.startDrag}
@@ -1065,30 +1055,44 @@ export function IdeShell({ sessionId, candidateName, taskBrief, starterFiles, as
             >
               <GripVertical size={10} className={palette.textMuted} />
             </div>
-            <div style={{ width: chatPane.size }} className="flex shrink-0 flex-col gap-2">
-              <div className={clsx("min-h-0 flex-1 overflow-hidden rounded-2xl border", palette.border, cardShadow)}>
-                <ChatPanel
-                  theme={theme}
-                  sessionId={sessionId}
-                  activePath={activeFile}
-                  activeContent={activeFile ? files[activeFile] : undefined}
-                  getFiles={currentSnapshot}
-                  onCopy={(chars) => telemetryRef.current?.record("assistant_copy", { chars })}
-                  onClose={() => setChatOpen(false)}
-                />
-              </div>
-              {/* The camera sits under the assistant, as tall as the bottom row. */}
-              <div
-                style={{ height: bottomRow ? terminal.size + 8 : 300 }}
-                className={clsx("shrink-0 overflow-hidden rounded-2xl border", palette.border, palette.panelBg, cardShadow)}
-              >
-                <CameraPanel theme={theme} stream={camera.stream} overlay={closedChips} />
-              </div>
+            <div style={{ width: chatPane.size }} className="flex shrink-0 flex-col">
+              {chatOpen ? (
+                <div className={clsx("min-h-0 flex-1 overflow-hidden rounded-2xl border", palette.border, cardShadow)}>
+                  <ChatPanel
+                    theme={theme}
+                    sessionId={sessionId}
+                    activePath={activeFile}
+                    activeContent={activeFile ? files[activeFile] : undefined}
+                    getFiles={currentSnapshot}
+                    onCopy={(chars) => telemetryRef.current?.record("assistant_copy", { chars })}
+                    onClose={() => setChatOpen(false)}
+                  />
+                </div>
+              ) : (
+                <div className="min-h-0 flex-1" />
+              )}
+              {cameraOpen && (
+                <>
+                  {/* The camera's own top edge: drag it to size the camera. */}
+                  <div onMouseDown={cameraPane.startDrag} title="Drag to resize the camera" className="group flex h-2 shrink-0 cursor-row-resize items-center justify-center">
+                    <span className={clsx("h-[3px] w-10 rounded-full opacity-0 transition-opacity group-hover:opacity-100", theme === "dark" ? "bg-[#3B82F6]/60" : "bg-[#4A7FA7]/60")} />
+                  </div>
+                  <div style={{ height: cameraPane.size }} className={clsx("shrink-0 overflow-hidden rounded-2xl border", palette.border, palette.panelBg, cardShadow)}>
+                    <CameraPanel theme={theme} stream={camera.stream} overlay={closedChips} onClose={() => setCameraOpen(false)} />
+                  </div>
+                </>
+              )}
             </div>
           </>
         )}
       </div>
 
+
+      {!cameraOpen && (
+        <div className="fixed right-4 bottom-14 z-30 flex flex-col items-end gap-2" aria-label="Closed panels">
+          {closedChips}
+        </div>
+      )}
 
       {/* Where the workspace runs, and whether it is reachable — said once,
           plainly, rather than left for the candidate to infer from a

@@ -31,10 +31,10 @@ const TABS: { id: PanelTab; label: string; icon: LucideIcon }[] = [
  * The Terminal card under the editor: Terminal, Output and Debug Console,
  * then Problems, Changes and Ports.
  *
- * Its cross tucks the card away (IdeShell floats a chip over the camera
- * picture that brings it back). Every panel stays mounted while another tab is
- * shown, and while the card is tucked away: terminals and the debug
- * console keep their sessions and scrollback.
+ * Its cross tucks the card away (IdeShell leaves a chip that opens it
+ * again). Every panel stays mounted while another tab is shown, and while
+ * the card is closed: terminals and the debug console keep their sessions
+ * and scrollback.
  */
 export function BottomPanel({
   theme,
@@ -52,8 +52,8 @@ export function BottomPanel({
   theme: IdeTheme;
   vfs: VfsBridge;
   preview: PreviewController;
-  /** Tucks the card away. */
-  onClose: () => void;
+  /** Tucks the card away; IdeShell leaves a chip that opens it again. */
+  onClose?: () => void;
   diagnostics: Diagnostic[];
   onOpenLocation: (path: string, line: number) => void;
   /** Files that differ from the task as given, and how to open one as a diff. */
@@ -96,7 +96,7 @@ export function BottomPanel({
             </button>
           );
         })}
-        <button
+        {onClose && <button
           type="button"
           onClick={onClose}
           title="Close the terminal card (it keeps running)"
@@ -104,7 +104,7 @@ export function BottomPanel({
           className={clsx("my-auto ml-auto flex h-8 w-8 shrink-0 items-center justify-center rounded-lg", palette.textMuted, palette.hover)}
         >
           <X size={16} />
-        </button>
+        </button>}
       </div>
 
       <div className="flex min-h-0 flex-1">
