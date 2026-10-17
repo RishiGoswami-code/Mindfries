@@ -239,31 +239,21 @@ export function ChatPanel({ theme, sessionId, activePath, activeContent, getFile
 
       <div
         ref={scrollRef}
-        className="min-h-0 flex-1 space-y-3 overflow-y-auto p-3"
+        className="min-h-0 flex-1 space-y-3 overflow-y-auto p-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
         onCopy={() => {
           const chars = window.getSelection()?.toString().length ?? 0;
           if (chars > 0) onCopy?.(chars);
         }}
       >
         {messages.length === 0 && (
-          <div className={clsx("space-y-2.5 text-xs leading-relaxed", palette.textMuted)}>
-            <p className={palette.text}>
-              An assistant for the assessment — not a coding agent.
-            </p>
-            <p>
-              Ask it to explain unfamiliar code, unpack an error, or think through an approach
-              with you. It won&apos;t write the solution or hand you code to paste: what&apos;s
-              being assessed is how <em>you</em> work.
-            </p>
-            <p>
-              Your conversation here forms part of the evidence from this session, so a sharp
-              question is worth more than asking for the answer. It can see the task, the files
-              in your project and the recent output of your terminal.
-            </p>
-            <p>
-              Copying out of this panel is recorded, and the report notes whether code it showed
-              you appears in what you submit.
-            </p>
+          // Short on purpose. What the assistant will and won't do, and that
+          // the conversation is recorded, are in the policy agreed to before
+          // the session; the one line here keeps both in view.
+          <div className="flex h-full flex-col items-center justify-center px-4 text-center">
+            {/* eslint-disable-next-line @next/next/no-img-element -- tiny static local SVG */}
+            <img src="/mindfries-logo.svg" alt="" width={64} height={64} />
+            <p className={clsx("mt-4 text-[16px] font-medium", palette.text)}>Hi! I can help you with this task.</p>
+            <p className={clsx("mt-1.5 text-[12.5px] leading-snug", palette.textMuted)}>I explain and guide — I won&apos;t write the solution. What you ask is part of the evidence.</p>
           </div>
         )}
 
