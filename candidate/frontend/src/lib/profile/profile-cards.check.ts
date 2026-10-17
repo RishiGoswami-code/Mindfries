@@ -68,7 +68,7 @@ check("2 of 6 is 33%", partial.done === 2 && partial.percent === 33, `${partial.
 const withDoc = profileCompletion({ ...{ hasResume: false, detailsSaved: false, links: {}, knowledgeCount: 0, completedAssessments: 0, assessmentsInProgress: 0, preferencesSet: false }, documents: 1 });
 check("a document alone completes evidence", withDoc.sections.find((s) => s.id === "evidence")?.state === "done");
 const noPrefs = profileCompletion({ hasResume: true, detailsSaved: false, links: {}, knowledgeCount: 0, completedAssessments: 0, assessmentsInProgress: 0, documents: 0, preferencesSet: null });
-check("without migration 0022, preferences are left out, not counted undone", noPrefs.total === 5 && !noPrefs.sections.some((s) => s.id === "preferences"));
+check("without migration 0024, preferences are left out, not counted undone", noPrefs.total === 5 && !noPrefs.sections.some((s) => s.id === "preferences"));
 
 // ── Projects & activity ──────────────────────────────────────────────
 const project = (name: string, updatedAt: string, language: string | null = "Python") => ({

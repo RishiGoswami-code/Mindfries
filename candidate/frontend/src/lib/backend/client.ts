@@ -100,13 +100,13 @@ export interface AssessmentView {
   company: string;
   location: string;
   tags: string[];
-  // A real per-candidate invitation (assessments.status) or the open pool's
-  // constant "invited" (every published template, same as before) — the
-  // backend distinguishes internally; this type just needs to cover both.
+  // The invitation's status (assessments.status), in this app's words.
   status: AssessmentStatus;
   due: string;
-  /** Only ever present on a real invitation (assessments.match_score) — the open pool has no per-candidate match to compute. */
+  /** assessments.match_score, when the company set one. */
   match?: number;
+  /** Whether the candidate's own task has been made yet (migration 0022). Absent from an older backend. */
+  taskStatus?: "pending" | "generating" | "ready" | "failed";
   /** The candidate's session for this assessment, when they have one — the workspace to resume, or the report to open. */
   sessionId?: string;
   /** Set for a company's invitation to this candidate — see Assessment in lib/dashboard/data.ts. */

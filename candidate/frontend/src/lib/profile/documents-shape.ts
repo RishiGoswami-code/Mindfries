@@ -1,6 +1,6 @@
 /**
  * Supporting documents on a candidate's profile (candidate_documents,
- * migration 0022): the shapes and limits, shared by the upload form, the
+ * migration 0024): the shapes and limits, shared by the upload form, the
  * server action and the list. No server or browser imports, so both sides
  * can use it.
  */
@@ -32,7 +32,7 @@ export interface CandidateDocument {
 
 /**
  * `available: false` means the documents table isn't in this database yet
- * (migration 0022 not applied) — said as such, rather than shown as an
+ * (migration 0024 not applied) — said as such, rather than shown as an
  * empty list the candidate can't add to.
  */
 export type DocumentList = { available: true; items: CandidateDocument[] } | { available: false; items: [] };

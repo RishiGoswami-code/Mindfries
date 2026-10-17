@@ -14,18 +14,18 @@ import { usePreviewMode } from "./PreviewMode";
  * accounts window: how many are connected, one row per platform, and why it
  * matters.
  *
- * A GitHub or GitLab username is read from that platform's public API by
- * the server when it is saved (lib/profile/actions.ts → knowledge.ts) — a
- * username with no account behind it is refused, and what's shown afterwards
- * came from the platform itself. That shows the account exists, so the row
- * says "Account found"; it does not show the account is the candidate's, so
- * it does not say "Verified". LinkedIn and a portfolio have no such API, so
- * those two are stored exactly as entered and marked "Linked".
+ * GitHub, GitLab and LinkedIn are connected only by signing in to them:
+ * Connect goes straight to the platform's own sign-in, hosted by Composio
+ * (app/api/connect, lib/composio.ts), which grants read access and shows
+ * the account is the candidate's. Nothing is typed. What the row shows
+ * afterwards was read through that connection.
  *
- * "Verified — yours" is a different claim, made only after the candidate
- * signed in to the account (app/api/connect, lib/composio.ts). For LinkedIn
- * that sign-in yields a name, not a profile address, so the row says who
- * signed in rather than calling the typed address verified.
+ * The portfolio is the exception — any website, with nothing to sign in
+ * to — so it is the one link typed in, stored as entered and marked
+ * "Linked".
+ *
+ * An account linked by username before sign-in existed still shows, marked
+ * unconfirmed, with a way to connect it properly.
  */
 const CONNECT_RESULT: Record<string, string> = {
   verified: "is confirmed as yours.",
@@ -36,20 +36,42 @@ const CONNECT_RESULT: Record<string, string> = {
   unavailable: "sign-in isn't available for this platform yet.",
 };
 
-/** What a row shows under "Connected": the handle or address, without the scheme. */
+/** What a row shows under its status: the handle or address, without the scheme. */
 export function linkHandle(id: LinkPlatform, link: StoredLink): string {
   if (id === "linkedin" && link.verified && !link.value) return link.verified.as;
-  return (link.value || link.profile?.profileUrl || "").replace(/^https?:\/\/(www\.)?/, "").replace(/\/$/, "");
+  return (link.value || link.profile?.profileUrl || link.verified?.as || "").replace(/^https?:\/\/(www\.)?/, "").replace(/\/$/, "");
 }
+
+type RowState = "verified" | "unconfirmed" | "linked" | "none";
+
+function stateOf(id: LinkPlatform, link: StoredLink | undefined): RowState {
+  if (!link) return "none";
+  if (link.verified) return "verified";
+  return id === "portfolio" ? "linked" : "unconfirmed";
+}
+
+const STATE_LABEL: Record<RowState, string> = {
+  verified: "Verified — yours",
+  unconfirmed: "Not confirmed",
+  linked: "Linked",
+  none: "Not connected",
+};
+
+const STATE_DOT: Record<RowState, string> = {
+  verified: "bg-[#1A9E6B]",
+  unconfirmed: "bg-[#D29B2A]",
+  linked: "bg-[#1A9E6B]",
+  none: "bg-[#A9A6BF]",
+};
 
 export function LinkedAccounts({
   links,
-  verifiable = [],
+  verifiable,
   connectResult,
 }: {
   links: Partial<Record<LinkPlatform, StoredLink>>;
-  /** The platforms that can be signed in to, to prove an account is yours (lib/composio.ts). */
-  verifiable?: string[];
+  /** The platforms whose sign-in is set up (lib/composio.ts). One that isn't says so instead of offering Connect. */
+  verifiable: string[];
   /** What a sign-in that just returned did: which platform, and how it ended. */
   connectResult?: { platform: string; result: string };
 }) {
@@ -100,7 +122,7 @@ export function LinkedAccounts({
               link={links[id]}
               open={open === id}
               preview={preview}
-              canVerify={verifiable.includes(id)}
+              canSignIn={verifiable.includes(id)}
               onToggle={() => setOpen((cur) => (cur === id ? null : id))}
               onSaved={() => setOpen(null)}
             />
@@ -114,11 +136,10 @@ export function LinkedAccounts({
           <div>
             <p className="text-[15px] font-semibold text-[#100E2E]">Why connect accounts?</p>
             <p className="mt-1 text-[13.5px] leading-relaxed text-[#5E5A82]">
-              A GitHub or GitLab username is looked up when you add it, and the account&apos;s public projects are read for
-              your profile. LinkedIn and a portfolio are stored as you enter them — there&apos;s no public way to check those
-              two.
-              {verifiable.length > 0 &&
-                ` Signing in to ${verifiable.map((id) => PLATFORMS[id as LinkPlatform]?.label ?? id).join(", ")} shows hiring teams the account is yours and lets us read it: your projects, their languages and your recent activity; from LinkedIn, your name, headline and picture. Private projects are only counted — their names are never stored or shown. Nothing is ever posted or changed, and removing the account here ends the connection.`}
+              Connect signs you in to GitHub, GitLab or LinkedIn on the platform itself. It shows hiring teams the account is
+              yours and lets us read it for your profile: your projects, the languages they&apos;re in and your recent
+              activity; from LinkedIn, your name, headline and picture. The access is read-only — nothing is ever posted or
+              changed — and it ends when you remove the account here. A portfolio is stored as you enter it.
             </p>
           </div>
         </div>
@@ -132,7 +153,7 @@ function PlatformRow({
   link,
   open,
   preview,
-  canVerify,
+  canSignIn,
   onToggle,
   onSaved,
 }: {
@@ -140,17 +161,19 @@ function PlatformRow({
   link: StoredLink | undefined;
   open: boolean;
   preview: boolean;
-  /** This platform can be signed in to, to show the account is the candidate's. */
-  canVerify: boolean;
+  /** This platform's sign-in is set up, so Connect can go to it. */
+  canSignIn: boolean;
   onToggle: () => void;
   onSaved: () => void;
 }) {
   const platform = PLATFORMS[id];
   const Icon = platform.icon;
+  const state = stateOf(id, link);
   const [value, setValue] = useState("");
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Only the portfolio is typed in; everything else is a sign-in.
   async function submit() {
     const result = platform.normalize(value);
     if (!result.ok) return setError(result.error);
@@ -184,6 +207,24 @@ function PlatformRow({
 
   const avatar = link?.stats?.avatarUrl ?? link?.profile?.pictureUrl;
   const href = link ? link.stats?.profileUrl ?? link.profile?.profileUrl ?? (link.value ? platform.profileUrl(link.value) : null) : null;
+  const signIn = `/api/connect/${id}/start`;
+
+  // The action beside a row with nothing linked yet.
+  const connectAction =
+    preview || link ? null : id === "portfolio" ? (
+      <button type="button" onClick={onToggle} className="rounded-lg bg-[#EEEBFA] px-4 py-1.5 text-[13.5px] font-semibold text-[#4B2BB8] hover:bg-[#E4DEF9]">
+        Add link
+      </button>
+    ) : canSignIn ? (
+      // A plain link: Connect leaves this site for the platform's own sign-in (through Composio), which grants read access only.
+      <a href={signIn} className="inline-block rounded-lg bg-[#EEEBFA] px-4 py-1.5 text-[13.5px] font-semibold text-[#4B2BB8] hover:bg-[#E4DEF9]">
+        Connect
+      </a>
+    ) : (
+      <span className="text-[12.5px] text-[#6E6A8F]">Sign-in isn&apos;t available right now</span>
+    );
+
+  const expandable = !!link || (id === "portfolio" && !preview);
 
   return (
     <li className="py-4">
@@ -204,25 +245,13 @@ function PlatformRow({
 
         <div className="hidden w-[210px] shrink-0 sm:block">
           <p className="flex items-center gap-2 text-[14px] text-[#2A2654]">
-            <span className={clsx("h-2.5 w-2.5 rounded-full", link ? "bg-[#1A9E6B]" : "bg-[#A9A6BF]")} />
-            {link ? (link.verified ? "Verified — yours" : "Connected") : "Not connected"}
+            <span className={clsx("h-2.5 w-2.5 rounded-full", STATE_DOT[state])} />
+            {STATE_LABEL[state]}
           </p>
-          {link ? (
-            <p className="mt-0.5 truncate pl-[18px] text-[13px] text-[#6E6A8F]">{linkHandle(id, link)}</p>
-          ) : (
-            !preview && (
-              <button
-                type="button"
-                onClick={onToggle}
-                className="mt-1.5 ml-[18px] rounded-lg bg-[#EEEBFA] px-4 py-1.5 text-[13.5px] font-semibold text-[#4B2BB8] hover:bg-[#E4DEF9]"
-              >
-                Connect
-              </button>
-            )
-          )}
+          {link ? <p className="mt-0.5 truncate pl-[18px] text-[13px] text-[#6E6A8F]">{linkHandle(id, link)}</p> : connectAction && <div className="mt-1.5 pl-[18px]">{connectAction}</div>}
         </div>
 
-        {(link || !preview) && (
+        {expandable ? (
           <button
             type="button"
             onClick={onToggle}
@@ -232,7 +261,15 @@ function PlatformRow({
           >
             <ChevronRight size={19} className={clsx("transition-transform", open && "rotate-90")} />
           </button>
+        ) : (
+          <span className="w-9 shrink-0" />
         )}
+      </div>
+
+      {/* On a phone the status column is hidden; say it under the name instead. */}
+      <div className="mt-2 flex flex-wrap items-center gap-3 pl-[60px] text-[13px] text-[#6E6A8F] sm:hidden">
+        <span>{link ? `${STATE_LABEL[state]} · ${linkHandle(id, link)}` : STATE_LABEL[state]}</span>
+        {!link && connectAction}
       </div>
 
       {open && (
@@ -240,21 +277,15 @@ function PlatformRow({
           {link ? (
             <div className="space-y-2.5">
               <p className="flex items-center gap-1.5 text-[13.5px] text-[#2A2654]">
-                {link.verified ? (
+                {state === "verified" ? (
                   <>
                     <BadgeCheck size={15} className="text-[#1A9E6B]" />
-                    {id === "linkedin" ? `Signed in as ${link.verified.as}` : `Verified — signed in as ${link.verified.as}`}
+                    {id === "linkedin" ? `Signed in as ${link.verified!.as}` : `Verified — signed in as ${link.verified!.as}`}
                   </>
-                ) : platform.live ? (
-                  link.stats ? (
-                    <>
-                      <BadgeCheck size={15} className="text-[#1A9E6B]" /> Account found — not yet confirmed as yours
-                    </>
-                  ) : (
-                    "Not looked up yet"
-                  )
+                ) : state === "unconfirmed" ? (
+                  "Added by username before sign-in was available — not confirmed as yours until you connect it."
                 ) : (
-                  "Linked as you entered it"
+                  "Linked as you entered it."
                 )}
               </p>
               {(link.stats?.publicRepos !== undefined || link.stats?.followers !== undefined) && (
@@ -274,10 +305,10 @@ function PlatformRow({
                     View <ExternalLink size={13} />
                   </a>
                 )}
-                {!preview && canVerify && !link.verified && (
+                {!preview && state === "unconfirmed" && canSignIn && (
                   // A plain link: it leaves this site for the platform's own sign-in.
-                  <a href={`/api/connect/${id}/start`} className="text-[13.5px] font-medium text-[#4B2BB8] hover:underline">
-                    Confirm it&apos;s yours
+                  <a href={signIn} className="text-[13.5px] font-semibold text-[#4B2BB8] hover:underline">
+                    Connect to verify →
                   </a>
                 )}
                 {!preview && (
@@ -294,49 +325,37 @@ function PlatformRow({
               </div>
             </div>
           ) : (
-            <div>
-              <div className="flex items-center gap-2">
-                <input
-                  autoFocus
-                  type="text"
-                  value={value}
-                  onChange={(e) => {
-                    setValue(e.target.value);
-                    setError(null);
-                  }}
-                  onKeyDown={(e) => e.key === "Enter" && void submit()}
-                  placeholder={platform.placeholder}
-                  disabled={pending}
-                  aria-label={`${platform.label} ${platform.live ? "username" : "address"}`}
-                  className="h-10 min-w-0 flex-1 rounded-lg border border-[#DCD7EE] bg-white px-3 text-[14px] outline-none focus:border-[#7C5CFC]"
-                />
-                <button
-                  type="button"
-                  onClick={() => void submit()}
-                  disabled={pending || !value.trim()}
-                  className="h-10 shrink-0 rounded-lg bg-[#5B3BE0] px-4 text-[13.5px] font-semibold text-white hover:bg-[#4B2BB8] disabled:opacity-50"
-                >
-                  {pending ? <Loader2 size={16} className="animate-spin" /> : platform.live ? "Look up and save" : "Save"}
-                </button>
-                <button type="button" onClick={onToggle} aria-label="Cancel" className="flex h-10 w-10 items-center justify-center rounded-lg text-[#6E6A8F] hover:bg-white">
-                  <X size={16} />
-                </button>
-              </div>
-              {canVerify && (
-                <a href={`/api/connect/${id}/start`} className="mt-3 inline-block text-[13.5px] font-semibold text-[#4B2BB8] hover:underline">
-                  Or sign in with {platform.label} to show it&apos;s yours →
-                </a>
-              )}
+            <div className="flex items-center gap-2">
+              <input
+                autoFocus
+                type="url"
+                value={value}
+                onChange={(e) => {
+                  setValue(e.target.value);
+                  setError(null);
+                }}
+                onKeyDown={(e) => e.key === "Enter" && void submit()}
+                placeholder={platform.placeholder}
+                disabled={pending}
+                aria-label="Portfolio address"
+                className="h-10 min-w-0 flex-1 rounded-lg border border-[#DCD7EE] bg-white px-3 text-[14px] outline-none focus:border-[#7C5CFC]"
+              />
+              <button
+                type="button"
+                onClick={() => void submit()}
+                disabled={pending || !value.trim()}
+                className="h-10 shrink-0 rounded-lg bg-[#5B3BE0] px-4 text-[13.5px] font-semibold text-white hover:bg-[#4B2BB8] disabled:opacity-50"
+              >
+                {pending ? <Loader2 size={16} className="animate-spin" /> : "Save"}
+              </button>
+              <button type="button" onClick={onToggle} aria-label="Cancel" className="flex h-10 w-10 items-center justify-center rounded-lg text-[#6E6A8F] hover:bg-white">
+                <X size={16} />
+              </button>
             </div>
           )}
           {error && <p className="mt-2 text-[13px] text-[#a6203c]">{error}</p>}
         </div>
       )}
-
-      {/* On a phone the status column is hidden; say it under the name instead. */}
-      <p className="mt-2 pl-[60px] text-[13px] text-[#6E6A8F] sm:hidden">
-        {link ? `${link.verified ? "Verified" : "Connected"} · ${linkHandle(id, link)}` : "Not connected"}
-      </p>
     </li>
   );
 }

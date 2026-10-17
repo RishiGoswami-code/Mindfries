@@ -1,6 +1,7 @@
 import "server-only";
 import { db } from "../supabase";
 import { shapeGithub, shapeGitlab, type Knowledge, type KnowledgeSource } from "./knowledge-shape";
+import type { LinkedInProfile } from "./knowledge-connection";
 
 /**
  * Reading a linked GitHub or GitLab account and keeping what it says
@@ -119,10 +120,41 @@ export async function dropKnowledge(candidateId: string, source: KnowledgeSource
   await c.from("candidate_knowledge").delete().eq("candidate_id", candidateId).eq("source", source);
 }
 
+/**
+ * What LinkedIn said about the member who signed in, kept beside the code
+ * accounts (source 'linkedin') so the hiring team's and Mindfries' views
+ * read one knowledge base. Only ever stored from a sign-in, so it is always
+ * verified: it is the account the candidate signed in to.
+ */
+export async function storeLinkedIn(candidateId: string, profile: LinkedInProfile): Promise<void> {
+  const c = db();
+  if (!c) return;
+  await c.from("candidate_knowledge").upsert({
+    candidate_id: candidateId,
+    source: "linkedin",
+    handle: profile.name,
+    verified: true,
+    payload: { source: "linkedin", profile },
+    fetched_at: new Date().toISOString(),
+  });
+}
+
+export async function dropLinkedIn(candidateId: string): Promise<void> {
+  const c = db();
+  if (!c) return;
+  await c.from("candidate_knowledge").delete().eq("candidate_id", candidateId).eq("source", "linkedin");
+}
+
+/** The code accounts in the knowledge base (LinkedIn's entry is read with the link itself). */
 export async function listKnowledge(candidateId: string): Promise<StoredKnowledge[]> {
   const c = db();
   if (!c) return [];
-  const { data } = await c.from("candidate_knowledge").select("source, handle, verified, payload, fetched_at").eq("candidate_id", candidateId).order("source");
+  const { data } = await c
+    .from("candidate_knowledge")
+    .select("source, handle, verified, payload, fetched_at")
+    .eq("candidate_id", candidateId)
+    .in("source", ["github", "gitlab"])
+    .order("source");
   return (data ?? []).map((r) => ({
     source: r.source as KnowledgeSource,
     handle: r.handle as string,

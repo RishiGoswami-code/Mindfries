@@ -44,7 +44,7 @@ const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? o
  * them, evidence with supporting documents, job preferences — plus a
  * completion checklist that opens each of the others.
  *
- * Job preferences and documents need migration 0022; read apart from the
+ * Job preferences and documents need migration 0024; read apart from the
  * profile (lib/profile/extras.ts), a database without it still loads this
  * page, and those two say they aren't set up.
  *
@@ -208,7 +208,7 @@ export default async function ProfilePage({ searchParams }: { searchParams: Prom
                 dialog={{ subtitle: "Your projects, languages and recent activity, read from your linked accounts.", size: "xl" }}
                 summary={
                   knowledge.length === 0 ? (
-                    <p>Link GitHub or GitLab to show your work</p>
+                    <p>Connect GitHub or GitLab to show your work</p>
                   ) : (
                     <>
                       <p>{[plural(totalProjects, "project"), plural(summary.languages.length, "language"), active].filter(Boolean).join(" · ")}</p>

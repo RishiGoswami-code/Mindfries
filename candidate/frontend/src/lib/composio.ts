@@ -39,6 +39,21 @@ const WHOAMI: Record<ConnectPlatform, string> = {
 
 export class ComposioError extends Error {}
 
+/**
+ * Every tool this app may run through a candidate's connection — all of
+ * them reads. runTool refuses anything else, so a mistake elsewhere can't
+ * post, change or delete on the candidate's account. The sign-ins
+ * themselves are set up in Composio with read-only scopes too (see
+ * .env.example), so the platform would refuse a write regardless.
+ */
+const READ_TOOLS = new Set<string>([
+  ...Object.values(WHOAMI),
+  "GITHUB_LIST_REPOSITORIES_FOR_THE_AUTHENTICATED_USER",
+  "GITHUB_LIST_EVENTS_FOR_THE_AUTHENTICATED_USER",
+  "GITLAB_GET_PROJECTS",
+  "GITLAB_GET_PROJECT_LANGUAGES",
+]);
+
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 async function call(method: string, path: string, body?: unknown): Promise<any> {
@@ -175,6 +190,7 @@ export async function identityOf(platform: ConnectPlatform, candidateId: string,
  * the candidate has since revoked on the platform's side fails here.
  */
 export async function runTool(tool: string, candidateId: string, connectedAccountId: string, args: Record<string, unknown>): Promise<any> {
+  if (!READ_TOOLS.has(tool)) throw new ComposioError(`Composio: ${tool} isn't one of the read tools this app runs`);
   const result = await call("POST", `/tools/execute/${tool}`, { user_id: candidateId, connected_account_id: connectedAccountId, arguments: args });
   if (!result?.successful) throw new ComposioError(`Composio: ${tool} — ${result?.error || "no result"}`);
   return result.data;

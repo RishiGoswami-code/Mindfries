@@ -26,16 +26,19 @@ type Invitation struct {
 	CandidateEmail string
 	CandidateName  *string
 	Role           *string
-	Status         string // invited|in_progress|submitted|closed
-	DueDate        *string
-	MatchScore     *int
+	Status         string // invited|in_progress|submitted|closed|declined
+	// TaskStatus is whether the candidate's own task exists yet:
+	// pending|generating|ready|failed (migration 0022).
+	TaskStatus string
+	DueDate    *string
+	MatchScore *int
 }
 
 const invitationColumns = `
-	a.id, a.company_id, coalesce(c.name, '—'),
-	a.template_id, coalesce(t.name, 'Untitled assessment'), coalesce(t.task_variant, ''),
+	a.id, coalesce(a.company_id::text, ''), coalesce(c.name, 'Mindfries'),
+	coalesce(a.template_id::text, ''), coalesce(t.name, 'Assessment'), coalesce(t.task_variant, ''),
 	coalesce(t.tech_stack, '{}'), coalesce(t.duration_min, 60),
-	a.candidate_email, a.candidate_name, a.role, a.status,
+	a.candidate_email, a.candidate_name, a.role, a.status, a.task_status,
 	to_char(a.due_date, 'YYYY-MM-DD'), a.match_score
 `
 
@@ -45,7 +48,7 @@ func scanInvitation(row pgx.Row) (Invitation, error) {
 		&inv.ID, &inv.CompanyID, &inv.CompanyName,
 		&inv.TemplateID, &inv.TemplateName, &inv.TaskVariant,
 		&inv.TechStack, &inv.DurationMin,
-		&inv.CandidateEmail, &inv.CandidateName, &inv.Role, &inv.Status,
+		&inv.CandidateEmail, &inv.CandidateName, &inv.Role, &inv.Status, &inv.TaskStatus,
 		&inv.DueDate, &inv.MatchScore,
 	)
 	return inv, err

@@ -4,9 +4,11 @@ import { can } from "@/lib/auth/permissions";
 import { getApplicationForCompany, getCandidateReport, getInvitationResponse } from "@/lib/db";
 import { getCandidateProfile } from "@/lib/candidate-profile";
 import { EmptyState, PageHeader, Pill } from "@/components/ui";
-import { fmtDate, recommendationLabel, sessionStatusTone, stageLabel, stageTone, titleCase } from "@/lib/format";
+import { fmtDate, recommendationLabel, sessionStatusTone, stageLabel, stageTone } from "@/lib/format";
 import { CameraTimeline } from "./CameraTimeline";
+import { FlaggedMoments } from "./FlaggedMoments";
 import { CandidateProfileCard } from "./CandidateProfileCard";
+import { CandidateSnapshot } from "./CandidateSnapshot";
 import { EvidenceList } from "./EvidenceList";
 import { InterviewTranscript } from "./InterviewTranscript";
 import { ReviewerDecisionForm } from "./ReviewerDecisionForm";
@@ -22,7 +24,7 @@ export default async function CandidateDetailPage({ params }: { params: Promise<
   const application = await getApplicationForCompany(user.companyId, candidateId);
   if (!application) notFound();
 
-  const [{ session, report, interview, camera }, profile, invitation] = await Promise.all([
+  const [{ session, report, interview, camera, screen, flags }, profile, invitation] = await Promise.all([
     getCandidateReport(application.assessmentId),
     getCandidateProfile(application.candidateEmail),
     getInvitationResponse(user.companyId, application.assessmentId),
@@ -59,16 +61,21 @@ export default async function CandidateDetailPage({ params }: { params: Promise<
         </div>
       )}
 
-      {Object.keys(application.sectionScores).length > 0 && (
-        <div className="hair-card divide-y divide-hair">
-          {Object.entries(application.sectionScores).map(([section, score]) => (
-            <div key={section} className="flex items-center justify-between px-6 py-3">
-              <span className="text-sm font-semibold">{titleCase(section)}</span>
-              <span className="mono text-sm text-dim">{score}%</span>
-            </div>
-          ))}
-        </div>
-      )}
+      <CandidateSnapshot
+        name={application.candidateName ?? profile?.name ?? ""}
+        email={application.candidateEmail}
+        profile={profile}
+        score={application.score}
+        sectionScores={application.sectionScores}
+        recommendation={
+          report?.review?.recommendation
+            ? { value: report.review.recommendation, by: "reviewer" }
+            : report?.status === "ready" && report.recommendation
+              ? { value: report.recommendation, by: "ai" }
+              : null
+        }
+        sessionStatus={session?.status ?? null}
+      />
 
       <CandidateProfileCard profile={profile} />
 
@@ -83,7 +90,9 @@ export default async function CandidateDetailPage({ params }: { params: Promise<
               <span className="mono text-dim">
                 {session.elapsedMin}/{session.durationMin}m
               </span>
-              <span className="text-dim">sandbox {session.sandboxHealth}</span>
+              <span className="text-dim" title="Where the candidate worked. The browser workspace runs Python and JavaScript for real but can't install every package or run servers.">
+                {session.workspace === "sandbox" ? "Worked on a sandbox machine" : "Worked in the browser workspace"}
+              </span>
             </div>
           </div>
 
@@ -134,6 +143,8 @@ export default async function CandidateDetailPage({ params }: { params: Promise<
           )}
 
           <InterviewTranscript exchanges={interview} />
+
+          <FlaggedMoments flags={flags} screen={screen} />
 
           <CameraTimeline camera={camera} />
 

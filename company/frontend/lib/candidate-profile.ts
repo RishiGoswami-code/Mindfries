@@ -14,8 +14,9 @@ import { db } from "./supabase";
 //
 // Each part says where it came from, because they are not the same kind of
 // claim: the identity is the candidate's own words, the resume fields are a
-// pattern match over their resume, and the code accounts are public data
-// about a username they typed.
+// pattern match over their resume, and the accounts are what GitHub, GitLab
+// or LinkedIn said — through the candidate's own read-only sign-in when they
+// connected one (verified), or public data about a username they typed.
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -57,6 +58,23 @@ export interface ProfileCodeAccount {
   activity: { lastActiveAt: string | null; since: string | null; pushes: number; pullRequests: number; reviews: number; issues: number } | null;
   /** Private projects of their own, seen through their connection. A count only — names are never stored. */
   privateProjects: number;
+  name: string;
+  avatarUrl: string | null;
+  /** Stars across their own public projects. */
+  totalStars: number;
+  followers: number | null;
+  following: number | null;
+  /** How it was read: through the candidate's own read-only connection, or the public API. */
+  via: "connection" | "public";
+}
+
+/** What LinkedIn said about the member who signed in (candidate_knowledge, source 'linkedin'). */
+export interface ProfileLinkedIn {
+  name: string;
+  headline: string | null;
+  pictureUrl: string | null;
+  profileUrl: string | null;
+  fetchedAt: string;
 }
 
 export interface CandidateProfile {
@@ -80,9 +98,12 @@ export interface CandidateProfile {
     readable: boolean;
   } | null;
   codeAccounts: ProfileCodeAccount[];
-  /** What they're looking for (job_preferences, migration 0022), or null when unset or not in this database. */
+  linkedin: ProfileLinkedIn | null;
+  /** A picture of the candidate from an account they linked, if any. */
+  avatarUrl: string | null;
+  /** What they're looking for (job_preferences, migration 0024), or null when unset or not in this database. */
   jobPreferences: ProfileJobPreferences | null;
-  /** Supporting documents they added (candidate_documents, 0022). Empty when none, or not in this database. */
+  /** Supporting documents they added (candidate_documents, 0024). Empty when none, or not in this database. */
   documents: ProfileDocument[];
 }
 
@@ -142,6 +163,7 @@ function toLinks(raw: any): ProfileLink[] {
 }
 
 function toCodeAccount(r: any): ProfileCodeAccount | null {
+  if (r.source !== "github" && r.source !== "gitlab") return null;
   const k = r.payload;
   if (!k || typeof k !== "object") return null;
   const profileUrl = safeUrl(String(k.profile?.profileUrl ?? ""));
@@ -160,7 +182,72 @@ function toCodeAccount(r: any): ProfileCodeAccount | null {
     projectCount: Number(k.projectCount) || 0,
     activity: k.activity ?? null,
     privateProjects: Number(k.privateProjects) || 0,
+    name: typeof k.profile?.name === "string" ? k.profile.name.slice(0, 200) : r.handle,
+    avatarUrl: safeUrl(String(k.profile?.avatarUrl ?? "")),
+    totalStars: Number(k.totalStars) || (Array.isArray(k.projects) ? k.projects.reduce((s: number, p: any) => s + (Number(p?.stars) || 0), 0) : 0),
+    followers: typeof k.profile?.followers === "number" ? k.profile.followers : null,
+    following: typeof k.profile?.following === "number" ? k.profile.following : null,
+    via: k.via === "connection" ? "connection" : "public",
   };
+}
+
+function toLinkedIn(r: any): ProfileLinkedIn | null {
+  const p = r?.payload?.profile;
+  if (!p || typeof p.name !== "string" || !p.name) return null;
+  return {
+    name: p.name.slice(0, 200),
+    headline: typeof p.headline === "string" && p.headline ? p.headline.slice(0, 300) : null,
+    pictureUrl: typeof p.pictureUrl === "string" && p.pictureUrl.startsWith("https://") ? safeUrl(p.pictureUrl) : null,
+    profileUrl: typeof p.profileUrl === "string" ? safeUrl(p.profileUrl) : null,
+    fetchedAt: r.fetched_at,
+  };
+}
+
+/** A picture to show for the candidate: GitHub's, then GitLab's, then LinkedIn's. */
+function pictureOf(accounts: ProfileCodeAccount[], linkedin: ProfileLinkedIn | null): string | null {
+  return accounts.find((a) => a.verified && a.avatarUrl)?.avatarUrl ?? linkedin?.pictureUrl ?? accounts.find((a) => a.avatarUrl)?.avatarUrl ?? null;
+}
+
+/** What the candidate list shows beside each name: a picture and which accounts are linked. */
+export interface ProfileBadge {
+  avatarUrl: string | null;
+  accounts: Array<{ platform: "github" | "gitlab" | "linkedin"; verified: boolean; projects: number | null }>;
+  languages: string[];
+}
+
+/**
+ * Badges for many invited emails at once, keyed by lower-cased email. An
+ * email with no candidate account has no entry. Callers pass only emails
+ * from their own company's applications.
+ */
+export async function listProfileBadges(emails: string[]): Promise<Record<string, ProfileBadge>> {
+  const c = db();
+  const wanted = [...new Set(emails.map((e) => e.trim().toLowerCase()).filter(Boolean))];
+  if (!c || wanted.length === 0) return {};
+  const { data: users } = await c.from("candidate_users").select("id, email").in("email", wanted).eq("status", "active");
+  if (!users?.length) return {};
+  const { data: rows } = await c
+    .from("candidate_knowledge")
+    .select("candidate_id, source, handle, verified, payload, fetched_at")
+    .in("candidate_id", users.map((u: any) => u.id));
+  const out: Record<string, ProfileBadge> = {};
+  for (const u of users as any[]) {
+    const mine = (rows ?? []).filter((r: any) => r.candidate_id === u.id);
+    const code = mine.filter((r: any) => r.source !== "linkedin").map(toCodeAccount).filter((a): a is ProfileCodeAccount => a !== null);
+    const li = mine.find((r: any) => r.source === "linkedin");
+    const linkedin = li ? toLinkedIn(li) : null;
+    const languages = new Map<string, number>();
+    for (const a of code) for (const l of a.languages) languages.set(l.name, (languages.get(l.name) ?? 0) + l.projects);
+    out[String(u.email).toLowerCase()] = {
+      avatarUrl: pictureOf(code, linkedin),
+      accounts: [
+        ...code.map((a) => ({ platform: a.source, verified: a.verified, projects: a.projectCount + a.privateProjects })),
+        ...(linkedin ? [{ platform: "linkedin" as const, verified: true, projects: null }] : []),
+      ],
+      languages: [...languages.entries()].sort((a, b) => b[1] - a[1]).slice(0, 3).map(([n]) => n),
+    };
+  }
+  return out;
 }
 
 /**
@@ -186,8 +273,15 @@ export async function getCandidateProfile(candidateEmail: string): Promise<Candi
     r.resume_path ? c.storage.from("resumes").createSignedUrl(r.resume_path, 3600) : Promise.resolve(null),
   ]);
 
+  const codeAccounts = (knowledge ?? [])
+    .filter((k: any) => k.source === "github" || k.source === "gitlab")
+    .map(toCodeAccount)
+    .filter((a): a is ProfileCodeAccount => a !== null);
+  const li = (knowledge ?? []).find((k: any) => k.source === "linkedin");
+  const linkedin = li ? toLinkedIn(li) : null;
+
   const parsed = r.resume_parsed as { skills?: string[]; years?: { from: number; to: number } } | null;
-  // Read apart from the profile row: they depend on migration 0022, and a
+  // Read apart from the profile row: they depend on migration 0024, and a
   // select naming a column that isn't there fails the whole query.
   const [jobPreferences, documents] = await Promise.all([readJobPreferences(c, r.id), readDocuments(c, r.id)]);
 
@@ -211,7 +305,9 @@ export async function getCandidateProfile(candidateEmail: string): Promise<Candi
           readable: !!parsed,
         }
       : null,
-    codeAccounts: (knowledge ?? []).map(toCodeAccount).filter((a): a is ProfileCodeAccount => a !== null),
+    codeAccounts,
+    linkedin,
+    avatarUrl: pictureOf(codeAccounts, linkedin),
     jobPreferences,
     documents,
   };

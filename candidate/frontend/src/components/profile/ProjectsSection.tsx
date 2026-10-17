@@ -38,8 +38,8 @@ export function ProjectsSection({ items }: { items: SummarySource[] }) {
         </span>
         <p className="mt-4 text-[17px] font-semibold text-[#100E2E]">Nothing read yet</p>
         <p className="mx-auto mt-1 max-w-md text-[14px] text-[#5E5A82]">
-          Link a GitHub or GitLab account and your own projects, the languages they&apos;re in and your recent activity appear
-          here — read from the platform, not typed in.
+          Connect GitHub or GitLab and your own projects, the languages they&apos;re in and your recent activity appear
+          here — read through the connection, not typed in.
         </p>
         {!preview && (
           <button
@@ -47,7 +47,7 @@ export function ProjectsSection({ items }: { items: SummarySource[] }) {
             onClick={() => setOpen("linked")}
             className="mt-5 inline-flex h-11 items-center rounded-xl bg-[#5B3BE0] px-5 text-[14.5px] font-semibold text-white hover:bg-[#4B2BB8]"
           >
-            Link an account
+            Connect an account
           </button>
         )}
       </div>
@@ -190,8 +190,8 @@ export function ProjectsSection({ items }: { items: SummarySource[] }) {
           </ul>
           {notice && <p className="mt-2 text-[13px] text-[#a6203c]">{notice}</p>}
           <p className="mt-3 text-[12.5px] leading-relaxed text-[#6E6A8F]">
-            An account you signed in to is marked as yours; one linked only by username shows the account exists, not that
-            it&apos;s yours — and hiring teams are told which.
+            Read through the accounts you connected, which are marked as yours. An account added by username before
+            sign-in was available isn&apos;t confirmed as yours until you connect it — and hiring teams are told which.
           </p>
         </div>
       </div>

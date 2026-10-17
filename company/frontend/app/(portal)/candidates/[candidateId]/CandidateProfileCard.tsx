@@ -185,6 +185,33 @@ export function CandidateProfileCard({ profile }: { profile: CandidateProfile | 
         </div>
       )}
 
+      {profile.linkedin && (
+        <div className="flex flex-wrap items-start gap-3 p-5">
+          {profile.linkedin.pictureUrl && (
+            // eslint-disable-next-line @next/next/no-img-element -- LinkedIn's own picture of the member; 40px
+            <img src={profile.linkedin.pictureUrl} alt="" width={40} height={40} className="h-10 w-10 rounded-full border border-hair object-cover" />
+          )}
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="eyebrow">LinkedIn</div>
+              {profile.linkedin.profileUrl ? (
+                <a href={profile.linkedin.profileUrl} target="_blank" rel="noreferrer" className="text-sm font-semibold underline underline-offset-2">
+                  {profile.linkedin.name}
+                </a>
+              ) : (
+                <span className="text-sm font-semibold">{profile.linkedin.name}</span>
+              )}
+              <Pill tone="green">Signed in by the candidate</Pill>
+            </div>
+            {profile.linkedin.headline && <p className="mt-1 text-sm text-dim">{profile.linkedin.headline}</p>}
+            <p className="mt-1 text-xs text-faint">
+              What LinkedIn gave for the member who signed in, read-only. LinkedIn shares a name, headline and picture with apps — not
+              work history. Read {fmtDate(profile.linkedin.fetchedAt)}.
+            </p>
+          </div>
+        </div>
+      )}
+
       {profile.codeAccounts.map((a) => (
         <div key={a.source} className="p-5">
           <div className="flex flex-wrap items-center gap-2">
@@ -194,6 +221,20 @@ export function CandidateProfileCard({ profile }: { profile: CandidateProfile | 
             </a>
             <Pill tone={a.verified ? "green" : "amber"}>{a.verified ? "Ownership confirmed" : "Ownership not confirmed"}</Pill>
           </div>
+          {(a.totalStars > 0 || a.followers != null) && (
+            <p className="mt-2 text-sm text-dim">
+              {[
+                a.totalStars > 0 ? `${a.totalStars} ${a.totalStars === 1 ? "star" : "stars"} across their own projects` : "",
+                a.followers != null ? n(a.followers, "follower") : "",
+                a.following != null ? `following ${a.following}` : "",
+              ]
+                .filter(Boolean)
+                .join(" · ")}
+            </p>
+          )}
+          {a.verified && a.via === "connection" && (
+            <p className="mt-2 text-xs text-faint">Read through the candidate&apos;s own sign-in to {a.source === "github" ? "GitHub" : "GitLab"}, which gives read-only access.</p>
+          )}
           {!a.verified && (
             <p className="mt-2 text-xs text-faint">
               The candidate entered this username. The account exists and what follows is public information about it; nothing has shown

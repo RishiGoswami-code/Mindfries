@@ -40,7 +40,12 @@ export interface ProctorCamera {
   stop: () => void;
 }
 
-export function useProctorCamera(): ProctorCamera {
+/**
+ * @param withMicrophone open the microphone with the camera — for a real
+ *   session, where sound is listened to for voices and noise
+ *   (lib/ide/audio-watch.ts). Turned off in practice runs.
+ */
+export function useProctorCamera(withMicrophone = false): ProctorCamera {
   const [status, setStatus] = useState<ProctorStatus>("idle");
   const [message, setMessage] = useState<string | null>(null);
   const [stream, setStream] = useState<MediaStream | null>(null);
@@ -59,7 +64,12 @@ export function useProctorCamera(): ProctorCamera {
     setStatus("requesting");
     setMessage(null);
     try {
-      const next = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+      const next = await navigator.mediaDevices.getUserMedia({
+        video: true,
+        // Raw levels: the browser's noise suppression would hide exactly the
+        // background sound the session listens for.
+        audio: withMicrophone ? { echoCancellation: true, noiseSuppression: false, autoGainControl: false } : false,
+      });
       streamRef.current = next;
       setStream(next);
       setStatus("live");
@@ -67,12 +77,14 @@ export function useProctorCamera(): ProctorCamera {
       // The only reliable signal that access went away mid-session: revoking
       // permission, unplugging the camera, or the OS suspending it all end
       // the track. Polling permissions would be slower and less certain.
-      for (const track of next.getVideoTracks()) {
+      for (const track of next.getTracks()) {
+        const what = track.kind === "audio" ? "microphone" : "camera";
         track.addEventListener("ended", () => {
+          for (const other of next.getTracks()) other.stop();
           streamRef.current = null;
           setStream(null);
           setStatus("ended");
-          setMessage("The camera stopped. It may have been unplugged, or access revoked.");
+          setMessage(`The ${what} stopped. It may have been unplugged, or access revoked.`);
         });
       }
     } catch (err) {
@@ -93,7 +105,7 @@ export function useProctorCamera(): ProctorCamera {
         setMessage(err instanceof Error ? err.message : String(err));
       }
     }
-  }, []);
+  }, [withMicrophone]);
 
   /**
    * Deliberate release, distinct from the `ended` status: that one means the

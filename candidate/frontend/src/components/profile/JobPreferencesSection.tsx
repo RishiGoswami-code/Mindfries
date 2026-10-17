@@ -39,7 +39,7 @@ export function JobPreferencesSection({
 }: {
   value: JobPreferences | null;
   workModes: string[];
-  /** False when the database doesn't have job preferences yet (migration 0022). */
+  /** False when the database doesn't have job preferences yet (migration 0024). */
   available: boolean;
 }) {
   const preview = usePreviewMode();

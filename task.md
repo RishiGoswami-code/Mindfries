@@ -23,7 +23,7 @@ at all. This is the single biggest thing missing from the product.
 | 1 | Sign up | ❌ No sign-up page or account system exists for companies |
 | 2 | Create a role | ❌ |
 | 3 | Pick or configure an assessment | ❌ |
-| 4 | Invite a candidate | 🟡 Our own team can send a real invitation on a company's behalf. A company still can't do it themselves |
+| 4 | Invite a candidate | ✅ Both a company (from a role in its portal) and our own team (from the admin portal, on a company's behalf) can invite. Each invitation has its own link, and each candidate gets their own task, generated from the role's brief (since 2026-10-14) |
 | 5 | See how an assessment is going | ❌ |
 | 6 | Review a candidate's report | ❌ |
 
@@ -39,15 +39,18 @@ Mostly real and working.
 | 4 | Read the task | ✅ Real, as long as someone has written a real task description for that assessment. If not, it says so honestly instead of showing a fake one |
 | 5 | Work in a real codebase | ✅ Real, same condition as above — starts empty if nobody's added starter files yet |
 | 6 | Use a terminal, run tests | 🟡 The terminal is fully real. There's no automatic test runner yet |
-| 7 | Talk to an AI coding assistant | 🟡 Built and answering — it sees the task and the open file, and won't write the solution. Needs the hosted backend and OpenRouter credit to run for real candidates |
+| 7 | Talk to an AI coding assistant | 🟡 Built and answering — it sees the task and the open file, and won't write the solution. Runs on Gemini; needs a Gemini key with billing on for real use (a free-tier key allows 20 requests a day per model) |
 | 8 | Do a follow-up AI interview | 🟡 Built — four questions about the candidate's own changes before submit, typed or by turn-based voice. Not a live call. Same hosting and credit condition |
 | 9 | Submit | ✅ Real, and can only be done successfully once per session — a candidate can't replay or reset their own submission |
 
 ### Candidate side — everything still to build
 
-Checked against the code on 2026-10-07. Two decisions are already made:
-the AI interviewer and assistant use a **Gemini model through OpenRouter**,
-and social accounts are connected through **Composio**.
+Checked against the code on 2026-10-07. Decisions already made: every AI
+job — task generation, assistant, interviewer, evaluation, report — uses
+**Gemini through Google's API directly** (2026-10-14, replacing OpenRouter);
+assessments are **by invitation only**, each candidate getting their own
+generated task (2026-10-14); and social accounts are connected through
+**Composio**.
 
 **AI**
 
@@ -83,7 +86,7 @@ and social accounts are connected through **Composio**.
 | 18 | Environment check (camera, mic, browser) | Built. Opens the camera and shows the picture, opens the microphone and shows the level it hears, and asks the browser for each thing the workspace uses; a failure says what to do about it. Passing all three ticks the step on the dashboard. What is saved is the browser's own report (three yes/no answers), not something the server measured. Run in the browser with stand-in devices, including a refused permission — not with a real camera or microphone |
 | 19 | Practice run | Built. Opens the real workspace on a small task with one bug and a test that catches it (checked with real Python: fails as given, passes when fixed). There is no session behind it, so nothing is recorded, timed or submitted; only that one was opened is kept, for the dashboard's counter and setup step. The AI assistant is off in a practice run, and the brief says so |
 | 20 | Login check on `/practice` and `/environment-check` | Built. Both now require sign-in, like the rest of the portal |
-| 21 | Per-candidate limit on self-started sessions | Built. Three open-pool assessments in any 24 hours, and never two at once; invitations aren't counted. Not yet run against the live database |
+| 21 | ~~Per-candidate limit on self-started sessions~~ | Removed 2026-10-14 with the open pool: assessments are by invitation only. A candidate can start only an invitation addressed to their own email whose task is ready |
 
 **Workspace**
 
@@ -201,3 +204,14 @@ write-up with exact detail.
    nothing uses yet.
 5. **Merge the two "reset a session" tools into one** — one is the real
    one, the other is a temporary backup.
+
+### Invitation-only assessments (2026-10-14)
+
+| What | State |
+|---|---|
+| No open pool | Built. The candidate's list holds their invitations only; a library task can't be started directly (checked against the real database) |
+| A link per invitation | Built (migration 0022). `/invite/<token>` on the candidate site: signed out, it shows who invited them with the address masked and offers sign-in or sign-up, coming back to the link after; signed in as someone else, it says so and offers to switch; signed in as the invited address, it starts the assessment. Checked in a browser |
+| A task per candidate | Built. candidate/backend notices each new invitation, generates a task from the role's brief that differs from the role's other candidates' tasks, runs it (tests must fail as given and pass with the solution) and links it. A rejected task is written again with the reason; a used-up quota or a busy model makes the invitation wait instead of failing. Run end to end on 2026-10-14 against real Gemini and Daytona: two candidates invited to one payments role each got a different task (a split-payment compensation bug; a settlement withholding bug), both passing the run check, in about six minutes each on `gemini-3.8-flash`; one was then opened from its link, through onboarding, into a sandbox workspace on that task. With thinking turned down, six of six tasks had failed the check |
+| Company portal | A role has a brief and a kind of task; inviting shows the link to copy and whether the task is ready, with "Try again" if it failed. Type-checked; not driven in a browser |
+| Admin portal | Invite on a company's behalf to one of its roles or a new one described there; the link is shown. Type-checked; not driven in a browser |
+| AI provider | Gemini, called directly (`AI_PROVIDER=gemini`, the default). Every agent on `gemini-3.5-flash` until the key has billing; Pro models can be set per agent with `GEMINI_MODEL_<AGENT>` |

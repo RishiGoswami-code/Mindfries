@@ -161,7 +161,7 @@ const MAX_SNAPSHOT_BYTES = 200 * 1024;
  * the same way as for an interview recording: by asking the backend for the
  * session with the candidate's own cookie.
  */
-export async function startSnapshotUpload(sessionId: string): Promise<RecordingUpload | { error: string }> {
+export async function startSnapshotUpload(sessionId: string, kind: "camera" | "screen" | "audio" = "camera"): Promise<RecordingUpload | { error: string }> {
   if (!backendReady()) return { error: AI_OFFLINE };
   try {
     const session = await getSession(sessionId);
@@ -173,7 +173,9 @@ export async function startSnapshotUpload(sessionId: string): Promise<RecordingU
   if (!storage) return { error: "Snapshot storage isn't configured." };
 
   await storage.createBucket(SNAPSHOTS_BUCKET, { public: false, fileSizeLimit: MAX_SNAPSHOT_BYTES });
-  const path = `${safeSegment(sessionId)}/${Date.now()}.jpg`;
+  // Screen stills are kept beside the camera's, named so either can be told
+  // apart at a glance (issue #120).
+  const path = `${safeSegment(sessionId)}/${kind === "screen" ? "screen-" : kind === "audio" ? "audio-" : ""}${Date.now()}.${kind === "audio" ? "webm" : "jpg"}`;
   const { data, error } = await storage.from(SNAPSHOTS_BUCKET).createSignedUploadUrl(path);
   if (error || !data) return { error: error?.message ?? "Could not prepare the upload." };
   return { uploadUrl: data.signedUrl, path };

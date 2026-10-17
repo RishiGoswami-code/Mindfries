@@ -6,7 +6,7 @@ import { db } from "../supabase";
 import { dummyWork, hashPassword, verifyPassword } from "./password";
 import { readSession, SESSION_COOKIE, sessionSecret, type Session } from "./session";
 import { sessionStillValid } from "./revocation";
-import type { StoredLinks } from "@/lib/profile/types";
+import type { ProfileLinks } from "../profile/types";
 
 // Deciding who may sign in, who may create an account, and reading back who
 // did — the candidate-side counterpart to internal-admin's lib/auth/admins.ts,
@@ -29,7 +29,7 @@ export interface CandidateRow {
   notice_period: string | null;
   open_to: string[] | null;
   resume_path: string | null;
-  links: StoredLinks | null;
+  links: ProfileLinks;
   profile_updated_at: string | null;
 }
 

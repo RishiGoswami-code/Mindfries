@@ -28,7 +28,7 @@ export interface CompletionInput {
   completedAssessments: number;
   assessmentsInProgress: number;
   documents: number;
-  /** Null when job preferences aren't set up in this database yet (migration 0022) — left out rather than counted as undone. */
+  /** Null when job preferences aren't set up in this database yet (migration 0024) — left out rather than counted as undone. */
   preferencesSet: boolean | null;
 }
 
@@ -66,14 +66,14 @@ export function profileCompletion(input: CompletionInput): Completion {
       // A code account is what makes this section say something a hiring
       // team can check; LinkedIn or a portfolio alone is a start.
       state: codeAccount ? "done" : anyAccount ? "in-progress" : "todo",
-      next: "Link a GitHub or GitLab account",
+      next: "Connect GitHub or GitLab",
     },
     {
       id: "projects",
       title: "Projects & activity",
       description: "Your projects, languages and recent activity, read from your code accounts.",
       state: input.knowledgeCount > 0 ? "done" : "todo",
-      next: "Link a code account to show your projects",
+      next: "Connect a code account to show your projects",
     },
     {
       id: "evidence",

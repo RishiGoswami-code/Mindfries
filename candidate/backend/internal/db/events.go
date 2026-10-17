@@ -124,6 +124,29 @@ func (d *DB) HasEvent(ctx context.Context, sessionID, eventType string) (bool, e
 	return exists, err
 }
 
+// EventPayloadsOfType returns the payloads of every event of one type in a
+// session, oldest first.
+func (d *DB) EventPayloadsOfType(ctx context.Context, sessionID, eventType string) ([]json.RawMessage, error) {
+	rows, err := d.pool.Query(ctx, `
+		select payload from activity_events
+		where session_id = $1 and event_type = $2
+		order by occurred_at, id
+	`, sessionID, eventType)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []json.RawMessage
+	for rows.Next() {
+		var p json.RawMessage
+		if err := rows.Scan(&p); err != nil {
+			return nil, err
+		}
+		out = append(out, p)
+	}
+	return out, rows.Err()
+}
+
 // LatestEventPayload returns the payload of a session's most recent event of
 // the given type, or nil when it has none.
 func (d *DB) LatestEventPayload(ctx context.Context, sessionID, eventType string) (json.RawMessage, error) {

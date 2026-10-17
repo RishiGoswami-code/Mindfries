@@ -46,18 +46,22 @@ type Config struct {
 	// (never "*") and credentials mode.
 	AllowedOrigins []string
 
-	// OpenRouterAPIKey — unified access to every non-realtime LLM call
-	// (System_Archetect_And_PRD.md §2.3, confirmed 2026-09-12). Empty means
-	// every agent — the four analysis agents, the workspace assistant, the
-	// interviewer, task generation — answers "not configured" instead of
-	// returning fabricated output.
+	// AIProvider is which service every model call goes to: "gemini"
+	// (Google's Gemini API, called directly with GeminiAPIKey — the default)
+	// or "openrouter" (OpenRouterAPIKey). Whichever it is, an agent whose
+	// provider has no key answers "not configured" instead of returning
+	// fabricated output.
+	AIProvider string
+
+	// OpenRouterAPIKey — only used with AI_PROVIDER=openrouter.
 	OpenRouterAPIKey  string
 	OpenRouterBaseURL string
 
-	// GeminiAPIKey is for the one call OpenRouter can't carry: the
-	// interviewer's live voice line (Gemini's Live API, internal/llm/live.go).
-	// Empty means the interview runs turn by turn over OpenRouter instead.
-	// GeminiLiveModel overrides which Live model is used.
+	// GeminiAPIKey is a Google AI Studio key. It carries every agent — the
+	// four analysis agents, the workspace assistant, the interviewer, task
+	// generation — and the interviewer's live voice line (Gemini's Live
+	// API, internal/llm/live.go). GeminiLiveModel overrides which Live model
+	// is used; GeminiBaseURL is for pointing at a stand-in in tests.
 	GeminiAPIKey    string
 	GeminiLiveModel string
 
@@ -75,6 +79,9 @@ type Config struct {
 	SandboxNetwork string
 	// SandboxMaxLive is how many sessions may hold a sandbox at once. One
 	// more than that starts in the browser instead. 0 means no ceiling.
+	// Measured 2026-10-14 (issue #121): the Daytona account allows 10 vCPU
+	// running at once, one per sandbox, and refuses the 11th. Checking a
+	// generated task needs a sandbox too, so the default leaves one free.
 	SandboxMaxLive int
 
 	// RequireVerifiedEmail makes a confirmed email address a condition of
@@ -117,6 +124,7 @@ func Load() (Config, error) {
 		AdminSessionSecret:     os.Getenv("ADMIN_SESSION_SECRET"),
 		CompanySessionSecret:   os.Getenv("COMPANY_SESSION_SECRET"),
 		AllowedOrigins:         splitCSV(getenv("ALLOWED_ORIGINS", "http://localhost:3000,http://localhost:3001")),
+		AIProvider:             strings.ToLower(getenv("AI_PROVIDER", "gemini")),
 		OpenRouterAPIKey:       os.Getenv("OPENROUTER_API_KEY"),
 		OpenRouterBaseURL:      getenv("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1"),
 		GeminiAPIKey:           os.Getenv("GEMINI_API_KEY"),
@@ -124,7 +132,7 @@ func Load() (Config, error) {
 		DaytonaAPIKey:          os.Getenv("DAYTONA_API_KEY"),
 		DaytonaBaseURL:         getenv("DAYTONA_BASE_URL", "https://app.daytona.io/api"),
 		SandboxNetwork:         strings.ToLower(getenv("SANDBOX_NETWORK", "open")),
-		SandboxMaxLive:         25,
+		SandboxMaxLive:         9,
 		RequireVerifiedEmail:   strings.EqualFold(os.Getenv("REQUIRE_VERIFIED_EMAIL"), "true"),
 	}
 	if v := os.Getenv("SANDBOX_MAX_LIVE"); v != "" {
@@ -133,6 +141,9 @@ func Load() (Config, error) {
 			return Config{}, fmt.Errorf("SANDBOX_MAX_LIVE must be a whole number, 0 for no ceiling (got %q)", v)
 		}
 		cfg.SandboxMaxLive = n
+	}
+	if cfg.AIProvider != "gemini" && cfg.AIProvider != "openrouter" {
+		return Config{}, fmt.Errorf("AI_PROVIDER must be gemini or openrouter (got %q)", cfg.AIProvider)
 	}
 	switch cfg.SandboxNetwork {
 	case "open", "essentials", "none":
@@ -162,11 +173,15 @@ func (c Config) Warnings() []string {
 	if c.AdminSessionSecret == "" {
 		w = append(w, "ADMIN_SESSION_SECRET is not set — every admin-authenticated request will be refused")
 	}
-	if c.OpenRouterAPIKey == "" {
+	if c.AIProvider == "openrouter" && c.OpenRouterAPIKey == "" {
 		w = append(w, "OPENROUTER_API_KEY is not set — the evaluation agents, the workspace assistant, the interviewer and task generation will answer 'not configured'")
 	}
 	if c.GeminiAPIKey == "" {
-		w = append(w, "GEMINI_API_KEY is not set — the interview runs turn by turn instead of as a live voice call")
+		if c.AIProvider == "openrouter" {
+			w = append(w, "GEMINI_API_KEY is not set — the interview runs turn by turn instead of as a live voice call")
+		} else {
+			w = append(w, "GEMINI_API_KEY is not set — the evaluation agents, the workspace assistant, the interviewer and task generation will answer 'not configured', and there is no live voice interview")
+		}
 	}
 	if !c.RequireVerifiedEmail {
 		w = append(w, "REQUIRE_VERIFIED_EMAIL is not true — an invitation can be started by whoever registers the invited address, confirmed or not. Turn it on once candidate/frontend can send mail")

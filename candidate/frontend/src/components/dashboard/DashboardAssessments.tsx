@@ -2,6 +2,7 @@ import Link from "next/link";
 import clsx from "clsx";
 import { FileText } from "lucide-react";
 import { AssessmentRow } from "@/components/assessments/AssessmentItem";
+import { RefreshWhilePreparing } from "@/components/assessments/RefreshWhilePreparing";
 import { sortByAttention, UNAVAILABLE, type Assessment } from "@/lib/dashboard/data";
 import { display } from "@/lib/dashboard/fonts";
 
@@ -21,6 +22,7 @@ export function DashboardAssessments({ items: loaded }: { items?: Assessment[] }
 
   return (
     <section className="rounded-[22px] border border-white/90 bg-white/55 p-6 shadow-[0_10px_30px_-20px_rgba(76,58,160,0.3)] backdrop-blur">
+      <RefreshWhilePreparing items={items} />
       <div className="flex items-center gap-5">
         <h2 className={clsx(display.className, "text-[25px] font-medium tracking-tight text-[#100E2E]")}>Your assessments</h2>
         <span className="flex h-[30px] min-w-[40px] items-center justify-center rounded-full bg-[#EEEBFA] px-3 text-[14px] font-medium tabular-nums text-[#1B1840]">

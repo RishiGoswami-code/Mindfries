@@ -6,6 +6,7 @@ import clsx from "clsx";
 import { Button } from "@/components/ui/Button";
 import { saveIdentity } from "@/lib/profile/actions";
 import { usePreviewMode } from "./PreviewMode";
+import type { SavedIdentity } from "@/lib/profile/types";
 
 /** Dispatch on `window` to open the Edit profile form from anywhere on the profile page. */
 export const EDIT_PROFILE_EVENT = "mindfries:edit-profile";
@@ -19,7 +20,7 @@ type FormState = { name: string; role: string; location: string; openTo: string[
  *
  * Saves directly to the database via a Server Action (saveIdentity).
  */
-export function EditProfileModal({ savedIdentity }: { savedIdentity: FormState }) {
+export function EditProfileModal({ savedIdentity }: { savedIdentity: SavedIdentity }) {
   const preview = usePreviewMode();
 
   const [open, setOpen] = useState(false);

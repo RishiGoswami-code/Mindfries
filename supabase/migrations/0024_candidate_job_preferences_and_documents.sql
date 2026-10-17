@@ -1,7 +1,7 @@
 -- Mindfries — two things a candidate can now add to their profile: the work
 -- they're looking for, and documents that back up what they say.
 --
--- Additive only. Apply after 0021_assessments_candidate_id.sql.
+-- Additive only. Apply after 0023_admin_login_throttle.sql.
 
 -- What the candidate wants next: the roles they're after, the employment
 -- types they'd take, where, and the salary range they expect. Shape (written

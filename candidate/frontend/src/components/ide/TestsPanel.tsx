@@ -81,19 +81,21 @@ export function TestsPanel({ theme, vfs, preview }: { theme: IdeTheme; vfs: VfsB
   const failing = run?.tests.filter((t) => t.status === "fail" || t.status === "error") ?? [];
   const others = run?.tests.filter((t) => t.status !== "fail" && t.status !== "error") ?? [];
 
+  const total = run ? run.passed + run.failed + run.skipped : 0;
+
   return (
-    <div className={clsx("flex h-full min-h-0 flex-col text-xs", palette.text)}>
-      <div className={clsx("flex shrink-0 items-center gap-3 border-b px-3 py-1.5", palette.border)}>
+    <div className={clsx("flex h-full min-h-0 flex-col text-[13px]", palette.text)}>
+      <div className="flex shrink-0 items-center gap-3 px-4 py-2.5">
         <button
           type="button"
           onClick={() => void runTests()}
           disabled={running}
-          className={clsx("flex items-center gap-1.5 rounded-md px-2 py-1 font-medium disabled:opacity-50", palette.hover)}
+          className={clsx("flex items-center gap-2 rounded-lg px-2.5 py-1.5 font-semibold disabled:opacity-50", palette.hover)}
         >
-          <Play size={11} /> {running ? "Running…" : "Run tests"}
+          <Play size={13} /> {running ? "Running…" : "Run tests"}
         </button>
         {run && !running && (
-          <span className={palette.textMuted}>
+          <span className={clsx("min-w-0 flex-1 truncate", palette.textMuted)}>
             {run.parsed ? (
               <>
                 <span className={run.failed > 0 ? "font-semibold text-red-400" : "font-semibold text-emerald-500"}>
@@ -112,9 +114,14 @@ export function TestsPanel({ theme, vfs, preview }: { theme: IdeTheme; vfs: VfsB
             {new Date(run.at).toLocaleTimeString()}
           </span>
         )}
+        {run?.parsed && !running && total > 0 && (
+          <span className={clsx("ml-auto shrink-0", palette.textMuted)}>
+            {total} {total === 1 ? "test" : "tests"}
+          </span>
+        )}
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto px-3 py-2">
+      <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-3">
         {note && <p className={palette.textMuted}>{note}</p>}
         {!run && !note && (
           <p className={palette.textMuted}>
@@ -137,7 +144,7 @@ export function TestsPanel({ theme, vfs, preview }: { theme: IdeTheme; vfs: VfsB
         {run?.parsed && run.tests.length === 0 && run.failed + run.passed === 0 && (
           <pre className="font-mono whitespace-pre-wrap">{run.tail}</pre>
         )}
-        <ul className="space-y-0.5">
+        <ul className="space-y-2">
           {[...failing, ...others].map((test, index) => (
             <TestRow
               key={`${test.name}-${index}`}
@@ -155,23 +162,33 @@ export function TestsPanel({ theme, vfs, preview }: { theme: IdeTheme; vfs: VfsB
 
 function TestRow({ test, open, onToggle, theme }: { test: TestCase; open: boolean; onToggle: () => void; theme: IdeTheme }) {
   const palette = idePalette(theme);
+  const dark = theme === "dark";
   const failed = test.status === "fail" || test.status === "error";
-  const Icon = failed ? CircleX : test.status === "skip" ? CircleMinus : CircleCheck;
+  const skipped = test.status === "skip";
+  const Icon = failed ? CircleX : skipped ? CircleMinus : CircleCheck;
   return (
-    <li>
+    <li
+      className={clsx(
+        "overflow-hidden rounded-lg border border-l-[3px]",
+        dark ? "border-[#232C5E] bg-[#121940]" : "border-[#B3CFE5] bg-white",
+        failed ? "border-l-[#F0566A]" : skipped ? (dark ? "border-l-[#4A537D]" : "border-l-[#B3CFE5]") : "border-l-[#22C55E]"
+      )}
+    >
       <button
         type="button"
         onClick={onToggle}
         disabled={!test.detail}
-        className={clsx("flex w-full items-center gap-2 rounded-md px-1.5 py-1 text-left", test.detail && palette.hover)}
+        className={clsx("flex w-full items-center gap-2.5 px-3 py-2 text-left", test.detail && palette.hover)}
       >
-        <Icon size={12} className={failed ? "text-red-400" : test.status === "skip" ? palette.textMuted : "text-emerald-500"} />
-        <span className="font-mono">{test.name}</span>
-        {test.status === "error" && <span className="text-red-400">error</span>}
-        {test.status === "skip" && <span className={palette.textMuted}>skipped</span>}
+        <Icon size={15} className={failed ? "text-[#F0566A]" : skipped ? palette.textMuted : "text-[#22C55E]"} />
+        <span className="min-w-0 flex-1 truncate font-mono">{test.name}</span>
+        {test.status === "error" && <span className="text-[#F0566A]">error</span>}
+        {failed && test.status !== "error" && <span className="text-[#F0566A]">failed</span>}
+        {skipped && <span className={palette.textMuted}>skipped</span>}
+        {!failed && !skipped && <span className="text-[#22C55E]">passed</span>}
       </button>
       {open && test.detail && (
-        <pre className={clsx("mt-0.5 mb-1.5 ml-6 overflow-x-auto rounded-md border px-2 py-1.5 font-mono whitespace-pre-wrap", palette.border)}>
+        <pre className={clsx("mx-3 mb-2.5 overflow-x-auto rounded-md border px-2.5 py-2 font-mono text-xs whitespace-pre-wrap", palette.border)}>
           {test.detail}
         </pre>
       )}

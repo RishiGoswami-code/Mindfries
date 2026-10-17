@@ -46,5 +46,8 @@ export async function signUp(_prev: SignUpState, form: FormData): Promise<SignUp
     maxAge: SESSION_MAX_AGE,
   });
 
-  redirect("/dashboard");
+  // Only ever a path on this site, as on sign-in: a caller-supplied absolute
+  // URL here would make sign-up a redirector to anywhere.
+  const wanted = text(form.get("next"), 512);
+  redirect(wanted.startsWith("/") && !wanted.startsWith("//") ? wanted : "/dashboard");
 }

@@ -4,7 +4,8 @@ import { useState } from "react";
 import Link from "next/link";
 import { Button, Pill } from "@/components/ui";
 import { fmtDate, stageLabel, stageTone } from "@/lib/format";
-import { bulkChangeStage, changeStage } from "./actions";
+import { bulkChangeStage, changeStage, retryTask } from "./actions";
+import { CopyLink } from "./CopyLink";
 import type { ApplicationStage, CandidateApplication } from "@/lib/types";
 
 // The three moves a company actually makes by hand — any stage to any of
@@ -20,10 +21,13 @@ export function PipelineList({
   roleId,
   applications,
   canChangeStage,
+  links,
 }: {
   roleId: string;
   applications: CandidateApplication[];
   canChangeStage: boolean;
+  /** Each application's invitation link, by application id, where one can be made. */
+  links: Record<string, string>;
 }) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const allSelected = applications.length > 0 && selected.size === applications.length;
@@ -88,6 +92,25 @@ export function PipelineList({
             <div className="truncate text-xs text-dim">{a.candidateEmail}</div>
           </Link>
           <Pill tone={stageTone[a.stage]}>{stageLabel[a.stage]}</Pill>
+          {a.stage === "invited" && a.invite && a.invite.taskStatus !== "ready" && (
+            <span className="flex items-center gap-2 text-xs">
+              {a.invite.taskStatus === "failed" ? (
+                <>
+                  <span className="text-[#a6203c]" title={a.invite.taskError ?? undefined}>
+                    Task couldn&apos;t be made
+                  </span>
+                  {a.assessmentId && (
+                    <Button type="submit" size="sm" variant="soft" formAction={retryTask.bind(null, roleId, a.assessmentId)} className="!px-2.5 !py-1 !text-[12px]">
+                      Try again
+                    </Button>
+                  )}
+                </>
+              ) : (
+                <span className="text-dim">Preparing their task…</span>
+              )}
+            </span>
+          )}
+          {a.stage === "invited" && links[a.id] && <CopyLink link={links[a.id]} compact />}
           {a.score != null && <span className="mono text-sm text-dim">{a.score}%</span>}
           <span className="text-xs text-faint">{fmtDate(a.createdAt)}</span>
 

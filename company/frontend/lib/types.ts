@@ -49,7 +49,17 @@ export interface JobRole {
   interviewConfig: InterviewConfig;
   /** Whether candidates for this role get the AI assistant, and its message limit — always complete. */
   assistantConfig: AssistantConfig;
+  /**
+   * What the assessment should test — the work, the level, what to look
+   * for. Each invited candidate gets their own task, generated from this.
+   */
+  assessmentBrief: string;
+  /** The kind of task generated: bug_fix | feature | refactor | debug. */
+  taskVariant: TaskVariant;
 }
+
+/** Whether an invited candidate's own task has been made yet (candidate/backend makes it). */
+export type InviteTaskStatus = "pending" | "generating" | "ready" | "failed";
 
 export type ApplicationStage =
   | "invited"
@@ -75,6 +85,8 @@ export interface CandidateApplication {
   timeTakenMin: number | null;
   completedAt: string | null;
   createdAt: string;
+  /** The invitation behind this application: its own link, and whether its task exists yet. */
+  invite: { token: string | null; taskStatus: InviteTaskStatus; taskError: string | null } | null;
 }
 
 /** One role's pipeline at a glance — IMPLEMENTATION.md §9. */
@@ -95,6 +107,13 @@ export interface SessionSummary {
   id: string;
   status: string;
   sandboxHealth: string;
+  /**
+   * Where the candidate worked: on a sandbox machine, or in their browser
+   * (no sandbox could be had — the pool was full, or it didn't come up).
+   * The two are different environments, which a hiring team comparing
+   * candidates should know.
+   */
+  workspace: "sandbox" | "browser";
   progressPct: number;
   durationMin: number;
   elapsedMin: number;
@@ -179,6 +198,30 @@ export interface CandidateReport {
   interview: InterviewExchange[];
   /** Stills of the proctoring camera through the session. */
   camera: CameraRecord;
+  /** Stills of the candidate's screen: kept when it changed, and every few minutes. */
+  screen: CameraRecord;
+  /** Moments flagged live during the session, each with its evidence (issue #120). */
+  flags: FlaggedMoment[];
+}
+
+/**
+ * A moment the candidate's browser flagged during the session — leaving the
+ * workspace, voices on the microphone, a second face — with the camera, the
+ * screen and (for sounds) the audio from that moment. A prompt for a person
+ * to look, not a finding.
+ */
+export interface FlaggedMoment {
+  kind: string;
+  label: string;
+  offsetSeconds: number;
+  /** Short facts, e.g. "812 characters". */
+  detail: string | null;
+  /** Signed, short-lived links; null when there was none or it has been deleted. */
+  cameraUrl: string | null;
+  screenUrl: string | null;
+  audioUrl: string | null;
+  /** Lower-confidence signals (face detection) are marked so. */
+  lowConfidence: boolean;
 }
 
 /** The proctoring camera's record of a session: a sample of its stills. */

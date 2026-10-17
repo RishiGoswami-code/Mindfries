@@ -2,18 +2,25 @@
 
 import { revalidatePath } from "next/cache";
 import {
-  addOnboarded, addWaitlist, waitlistActivity, createCompany, createInvitation, createTemplate, recordEmailEvent, setCompanyStatus,
-  setLeadStage, setSessionState, setTemplateStatus,
+  addOnboarded, addWaitlist, waitlistActivity, createCompany, listCompanyRoles, markInvitationEmailedByToken, type CompanyRole, createInvitation, createTemplate, recordEmailEvent, setCompanyStatus,
+  setLeadStage, setTemplateStatus,
 } from "@/lib/db";
-import { sendMail, NOTIFY_EMAIL } from "@/lib/mailer";
+import { mailerReady, sendMail, NOTIFY_EMAIL } from "@/lib/mailer";
 import { targetsStore } from "@/lib/targets-store";
 import { requireAdminRole } from "@/lib/auth/admins";
 import { backendReady, generateTaskViaBackend, resetSessionViaBackend, retriggerEvaluationViaBackend, type GeneratedTask } from "@/lib/backend/client";
 import type { EmailTemplate } from "@/lib/email-templates";
-import type { CompanyStatus, LeadStage, MemberRole, Plan, RubricCriterion, TaskVariant, TemplateStatus, TemplateVariant } from "@/lib/types";
+import type { Company, CompanyStatus, LeadStage, MemberRole, Plan, RubricCriterion, TaskVariant, TemplateStatus, TemplateVariant } from "@/lib/types";
 
 type Result = { ok: true } | { ok: false; error: string };
-const fail = (e: unknown): Result => ({ ok: false, error: e instanceof Error ? e.message : String(e) });
+// Supabase errors are plain objects, not Error instances — String(e) on one
+// is "[object Object]", which is what the toast used to show.
+const errMsg = (e: unknown): string => {
+  if (e instanceof Error) return e.message;
+  if (e && typeof e === "object" && "message" in e && typeof e.message === "string") return e.message;
+  return String(e);
+};
+const fail = (e: unknown): { ok: false; error: string } => ({ ok: false, error: errMsg(e) });
 
 // Send a demo/POC email to a lead, log it, advance the pipeline.
 export async function sendLeadEmail(input: {
@@ -166,7 +173,7 @@ export async function generateTaskDraft(input: {
     if (!backendReady()) throw new Error("Task generation isn't connected — set ADMIN_BACKEND_URL to the candidate backend");
     return { ok: true, task: await generateTaskViaBackend(input) };
   } catch (e) {
-    return { ok: false, error: e instanceof Error ? e.message : String(e) };
+    return fail(e);
   }
 }
 
@@ -186,13 +193,15 @@ export async function toggleTemplateStatus(id: string, status: TemplateStatus): 
 export async function onboardCompanyAccount(input: {
   name: string; website: string; plan: Plan; status: CompanyStatus; seats: number;
   team: { email: string; role: MemberRole }[]; defaultTemplateIds: string[];
-}): Promise<Result> {
+}): Promise<{ ok: true; company: Company } | { ok: false; error: string }> {
   try {
     await requireAdminRole();
     if (!input.name.trim()) throw new Error("Company name is required");
-    await createCompany(input);
+    // Returned so the client can show the row under its real id — inviting a
+    // candidate sends that id, and an invented one fails the FK on job_roles.
+    const company = await createCompany(input);
     revalidatePath("/admin/companies");
-    return { ok: true };
+    return { ok: true, company };
   } catch (e) {
     return fail(e);
   }
@@ -209,50 +218,96 @@ export async function setCompanyStatusAction(id: string, status: CompanyStatus):
   }
 }
 
-// Invite a candidate: the admin-side half of a real per-candidate
-// invitation (candidate/backend's CreateInvitation is the other half, still
-// unused — see lib/db.ts's createInvitation for why this goes direct to
-// Supabase instead of calling it). Until this action existed, nothing could
-// create one except a direct database write.
+// Invite a candidate on a company's behalf. The invitation is for one of
+// the company's roles (or a new one described here); the candidate gets
+// their own task, written for them from the role's brief by
+// candidate/backend, and their own link (lib/db.ts's createInvitation). The
+// link is returned so it can be sent another way when mail isn't set up.
 export async function inviteCandidate(input: {
-  companyId: string; templateId: string; candidateEmail: string; candidateName?: string; role?: string; dueDate?: string;
-}): Promise<Result> {
+  companyId: string;
+  roleId?: string;
+  newRole?: { title: string; assessmentBrief: string; taskVariant: string };
+  candidateEmail: string;
+  candidateName?: string;
+  dueDate?: string;
+}): Promise<{ ok: true; link: string | null; emailed: boolean; note: string } | { ok: false; error: string }> {
   try {
     await requireAdminRole();
     if (!input.companyId) throw new Error("Pick a company");
-    if (!input.templateId) throw new Error("Pick an assessment");
-    const email = input.candidateEmail.trim().toLowerCase();
+    const email = input.candidateEmail.trim().toLowerCase().slice(0, 254);
     if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) throw new Error("That doesn't look like an email address");
-    await createInvitation({ ...input, candidateEmail: email });
+    const variants = ["bug_fix", "feature", "refactor", "debug"] as const;
+    const newRole = input.newRole
+      ? {
+          title: input.newRole.title.trim().slice(0, 200),
+          assessmentBrief: input.newRole.assessmentBrief.trim().slice(0, 4000),
+          taskVariant: (variants as readonly string[]).includes(input.newRole.taskVariant) ? (input.newRole.taskVariant as TaskVariant) : "bug_fix",
+        }
+      : undefined;
+    if (!input.roleId && !newRole?.title) throw new Error("Pick a role, or give the new one a title");
+
+    const { inviteToken, roleTitle } = await createInvitation({
+      companyId: input.companyId,
+      roleId: input.roleId || undefined,
+      newRole: input.roleId ? undefined : newRole,
+      candidateEmail: email,
+      candidateName: input.candidateName?.trim().slice(0, 200) || undefined,
+      dueDate: input.dueDate || undefined,
+    });
+
+    const portal = process.env.CANDIDATE_PORTAL_URL?.replace(/\/+$/, "");
+    const link = portal && inviteToken ? `${portal}/invite/${inviteToken}` : null;
+    let emailed = false;
+    let note = "Their own task is being prepared — usually a minute or two.";
+    if (link && mailerReady()) {
+      try {
+        await sendMail({
+          to: email,
+          subject: `You're invited to a technical assessment for ${roleTitle}`,
+          text:
+            `Hi${input.candidateName?.trim() ? ` ${input.candidateName.trim().split(/\s+/)[0]}` : ""},\n\n` +
+            `You've been invited to take a technical assessment for ${roleTitle} on Mindfries.\n\n` +
+            `Your invitation, and the assessment itself, are here:\n\n${link}\n\n` +
+            `Sign in — or create an account — with this email address; the invitation is tied to it, and the link works for no one else.\n` +
+            (input.dueDate ? `\nPlease complete it by ${input.dueDate}.\n` : "") +
+            `\nNothing starts, and no clock runs, until you choose to begin.\n`,
+          replyTo: NOTIFY_EMAIL,
+        });
+        emailed = true;
+        await markInvitationEmailedByToken(inviteToken);
+      } catch (e) {
+        note = `The email couldn't be sent (${e instanceof Error ? e.message : "unknown error"}) — send them the link yourself. ${note}`;
+      }
+    } else {
+      note = `No email was sent (${!link ? "CANDIDATE_PORTAL_URL isn't set, so there is no link" : "email isn't set up"})${link ? " — send them the link" : ""}. ${note}`;
+    }
     revalidatePath("/admin/companies");
-    return { ok: true };
+    return { ok: true, link, emailed, note };
   } catch (e) {
     return fail(e);
   }
 }
 
-// Session Monitor support overrides — go through the real Go Admin API
-// (candidate/backend/internal/httpapi/admin.go) when it's reachable, rather
-// than internal-admin's own direct-to-Supabase write. This is the
-// consolidation task.md's "Gaps worth naming" #3 asked for: two separate
-// implementations of "reset a session" is a real maintenance hazard, and
-// for retrigger specifically the two aren't even equivalent today — the
-// direct-Supabase version below only ever flips sessions.status to
-// "evaluating"; it never actually calls an evaluation agent. The backend's
-// own /retrigger-evaluation runs the real pipeline. ADMIN_BACKEND_URL is
-// unset in every deployed environment right now (the Go backend isn't
-// deployed anywhere — see task.md), so the fallback below is what actually
-// runs today; it's kept, not deleted, so this feature doesn't regress the
-// moment nobody's set that variable yet. Once the backend has a real home,
-// removing the fallback finishes what this pass started.
+/** The company's open roles, for the invite form. */
+export async function companyRoles(companyId: string): Promise<CompanyRole[]> {
+  await requireAdminRole();
+  return listCompanyRoles(companyId);
+}
+
+// Session Monitor support overrides — through the Go Admin API
+// (candidate/backend/internal/httpapi/admin.go), the one implementation:
+// "reset" puts the session back to a fresh state there, and "retrigger"
+// runs the real evaluation pipeline. The direct-to-Supabase fallback that
+// used to stand in when ADMIN_BACKEND_URL was unset is gone (issue #71) — its
+// "retrigger" only flipped a status flag and evaluated nothing. Without
+// ADMIN_BACKEND_URL these say so instead of pretending.
+const NO_BACKEND = "ADMIN_BACKEND_URL isn't set on this portal, so sessions can't be reset or re-evaluated from here. Set it to the candidate backend's address.";
+
 export async function resetSession(id: string): Promise<Result> {
   try {
     await requireAdminRole();
-    if (backendReady()) {
-      await resetSessionViaBackend(id);
-    } else {
-      await setSessionState(id, { status: "live", sandboxHealth: "healthy", progressPct: 0, elapsedMin: 0 });
-    }
+    if (!backendReady()) throw new Error(NO_BACKEND);
+    await resetSessionViaBackend(id);
     revalidatePath("/admin/sessions");
     return { ok: true };
   } catch (e) {
@@ -263,15 +318,8 @@ export async function resetSession(id: string): Promise<Result> {
 export async function retriggerEval(id: string): Promise<Result> {
   try {
     await requireAdminRole();
-    if (backendReady()) {
-      await retriggerEvaluationViaBackend(id);
-    } else {
-      // Honest about what this fallback actually does: it flips the status
-      // flag the Sessions page reads, but doesn't call an evaluation agent
-      // the way the real backend path (above) does. Configuring
-      // ADMIN_BACKEND_URL is what makes "retrigger" genuinely retrigger.
-      await setSessionState(id, { status: "evaluating" });
-    }
+    if (!backendReady()) throw new Error(NO_BACKEND);
+    await retriggerEvaluationViaBackend(id);
     revalidatePath("/admin/sessions");
     return { ok: true };
   } catch (e) {

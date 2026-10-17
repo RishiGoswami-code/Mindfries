@@ -113,6 +113,31 @@ func (d *DB) SaveReportFailure(ctx context.Context, reportID, reason string) err
 	return err
 }
 
+// SessionsWaitingForAI lists sessions whose report failed because the AI
+// service stopped it (its text starts "Waiting:") and that haven't been
+// tried since `since`.
+func (d *DB) SessionsWaitingForAI(ctx context.Context, since time.Time, limit int) ([]string, error) {
+	rows, err := d.pool.Query(ctx, `
+		select session_id from assessment_reports
+		where status = 'failed' and error like 'Waiting:%' and updated_at < $1
+		order by updated_at
+		limit $2
+	`, since, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		out = append(out, id)
+	}
+	return out, rows.Err()
+}
+
 // GetEvidenceItems loads every observation for a report, grouped by nothing
 // in particular here — the caller (the API response) groups by category.
 func (d *DB) GetEvidenceItems(ctx context.Context, reportID string) ([]EvidenceItem, error) {

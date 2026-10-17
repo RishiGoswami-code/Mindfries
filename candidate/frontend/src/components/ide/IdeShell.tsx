@@ -2,7 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import clsx from "clsx";
-import { GripVertical, GripHorizontal } from "lucide-react";
+import { GripVertical } from "lucide-react";
+import { CameraPanel } from "./CameraPanel";
 import { FileExplorer } from "./FileExplorer";
 import { Breadcrumbs } from "./Breadcrumbs";
 import { EditorPanel } from "./EditorPanel";
@@ -30,6 +31,11 @@ import { loadPersistedWorkspace, pickWorkspace, savePersistedWorkspace } from "@
 import { buildPreview, releaseBuild, type PreviewBuild } from "@/lib/ide/preview/build-preview";
 import { useResizable } from "@/lib/ide/use-resizable";
 import { useProctorCamera } from "@/lib/ide/proctor-camera";
+import { startScreenKeyframes, useProctorScreen, type ScreenKeyframes } from "@/lib/ide/screen-capture";
+import { keepStill, stillTaker, type StillSink, type StillTaker } from "@/lib/ide/stills";
+import { FLAG_NOTICE, watchActivity, type Flag } from "@/lib/ide/activity-watch";
+import { watchFaces } from "@/lib/ide/face-watch";
+import { watchAudio } from "@/lib/ide/audio-watch";
 import { useDiagnostics } from "@/lib/ide/diagnostics";
 import { CHANNELS, output } from "@/lib/ide/output";
 import { exitFullscreen } from "@/lib/ide/fullscreen";
@@ -111,6 +117,8 @@ export function IdeShell({ sessionId, candidateName, taskBrief, starterFiles, as
   const storageId = sessionId ?? (practice ? "practice" : undefined);
   const { theme, toggleTheme } = useIdeTheme();
   const palette = idePalette(theme);
+  // The cards' soft shadow, in the dark theme only — on the light canvas it reads as dirt.
+  const cardShadow = theme === "dark" ? "shadow-[0_10px_30px_-14px_rgba(0,0,0,0.75)]" : "";
 
   // A real starting codebase when one was authored for this assessment;
   // the same empty workspace as always otherwise. Computed once, from
@@ -325,15 +333,19 @@ export function IdeShell({ sessionId, candidateName, taskBrief, starterFiles, as
   }, [dirtyPaths, files]);
 
   const sidebar = useResizable({ initial: 240, min: 160, max: 480, axis: "horizontal" });
-  const terminal = useResizable({ initial: 220, min: 100, max: 520, axis: "vertical", invert: true });
+  const terminal = useResizable({ initial: 300, min: 140, max: 600, axis: "vertical", invert: true });
+  // The task drawer (BottomPanel) starts collapsed to its tab bar, leaving
+  // the editor the room; it opens upward when a tab is chosen or dragged.
+  const [drawerOpen, setDrawerOpen] = useState(false);
   const chatPane = useResizable({ initial: 320, min: 240, max: 560, axis: "horizontal", invert: true });
+  const cameraPane = useResizable({ initial: 300, min: 200, max: 520, axis: "horizontal", invert: true });
   const [chatOpen, setChatOpen] = useState(false);
   // Lives here rather than in the Task panel: the Explorer under it is sized
   // differently depending on whether the brief is open.
   const [taskCollapsed, setTaskCollapsed] = useState(false);
   // The session is camera-proctored: the gate below blocks the workspace
   // until this is live, and re-blocks if the stream ever stops.
-  const camera = useProctorCamera();
+  const camera = useProctorCamera(!!sessionId && !practice);
   // A still of the camera every half minute, kept with the session — see
   // lib/ide/camera-snapshots.ts. Only in a real session: a scratch workspace
   // records nothing.
@@ -341,12 +353,120 @@ export function IdeShell({ sessionId, candidateName, taskBrief, starterFiles, as
     if (!sessionId || !camera.stream) return;
     return startCameraSnapshots(camera.stream, {
       uploadTarget: async () => {
-        const target = await startSnapshotUpload(sessionId);
+        const target = await startSnapshotUpload(sessionId, "camera");
         return "error" in target ? null : target;
       },
       stored: (snapshot) => telemetryRef.current?.record("camera_snapshot", snapshot),
     });
   }, [sessionId, camera.stream]);
+
+  // ── The screen, and live activity flags (issue #120) ──────────────────
+  // A real session also needs the entire screen shared (a practice run and
+  // the scratch workspace don't record anything, so they don't ask). Its
+  // keyframes, and the flags raised during the session, each with a camera
+  // still and a screen still of that moment — see lib/ide/screen-capture.ts
+  // and lib/ide/activity-watch.ts.
+  const screen = useProctorScreen();
+  const proctored = !!sessionId && !practice;
+  const keyframesRef = useRef<ScreenKeyframes | null>(null);
+  const cameraStillsRef = useRef<StillTaker | null>(null);
+  const [flagNotice, setFlagNotice] = useState<string | null>(null);
+  const stillSink = useMemo<StillSink | null>(
+    () =>
+      sessionId
+        ? {
+            uploadTarget: async (kind) => {
+              const target = await startSnapshotUpload(sessionId, kind);
+              return "error" in target ? null : target;
+            },
+          }
+        : null,
+    [sessionId],
+  );
+  useEffect(() => {
+    if (!proctored || !screen.stream || !stillSink) return;
+    const keyframes = startScreenKeyframes(screen.stream, stillSink, (still) => telemetryRef.current?.record("screen_snapshot", still));
+    keyframesRef.current = keyframes;
+    return () => {
+      keyframes.stop();
+      keyframesRef.current = null;
+    };
+  }, [proctored, screen.stream, stillSink]);
+  useEffect(() => {
+    if (!proctored || !camera.stream) return;
+    const taker = stillTaker(camera.stream, { width: 320, quality: 0.6 });
+    cameraStillsRef.current = taker;
+    return () => {
+      taker.stop();
+      cameraStillsRef.current = null;
+    };
+  }, [proctored, camera.stream]);
+
+  // One flagged moment: the camera and the screen as they are right now,
+  // kept, and the flag recorded with both. The candidate is told.
+  const raiseFlag = useCallback(
+    async (flag: Flag, audioClip?: Promise<Blob | null>) => {
+      const at = new Date().toISOString();
+      const notice = FLAG_NOTICE[flag.kind];
+      if (notice) setFlagNotice(notice);
+      const cameraStill = async () => {
+        const blob = await cameraStillsRef.current?.take();
+        if (!blob || !stillSink) return null;
+        const path = await keepStill(blob, "camera", stillSink);
+        if (path) telemetryRef.current?.record("camera_snapshot", { path, bytes: blob.size, reason: "flag" });
+        return path;
+      };
+      // A sound's clip finishes a few seconds after the flag; it is kept and
+      // named in the same record.
+      const audio = async () => {
+        const blob = audioClip ? await audioClip : null;
+        if (!blob || !stillSink) return null;
+        const path = await keepStill(blob, "audio", stillSink);
+        if (path) telemetryRef.current?.record("audio_clip", { path, bytes: blob.size });
+        return path;
+      };
+      const [cameraPath, screenPath, audioPath] = await Promise.all([cameraStill(), keyframesRef.current?.captureNow() ?? Promise.resolve(null), audio()]);
+      telemetryRef.current?.record("activity_flag", {
+        kind: flag.kind,
+        at,
+        ...(flag.detail ? { detail: flag.detail } : {}),
+        cameraPath,
+        screenPath,
+        ...(audioClip ? { audioPath } : {}),
+      });
+    },
+    [stillSink],
+  );
+  useEffect(() => {
+    if (!flagNotice) return;
+    const timer = setTimeout(() => setFlagNotice(null), 8000);
+    return () => clearTimeout(timer);
+  }, [flagNotice]);
+  // Watching starts once the workspace is in use — both shares live — so
+  // the permission prompts themselves aren't flagged as leaving.
+  const watching = proctored && camera.status === "live" && screen.status === "live";
+  useEffect(() => {
+    if (!watching || !sessionId) return;
+    return watchActivity((flag) => void raiseFlag(flag), sessionId);
+  }, [watching, sessionId, raiseFlag]);
+  useEffect(() => {
+    if (!watching || !camera.stream) return;
+    return watchAudio(camera.stream, (event) => void raiseFlag({ kind: event.kind }, event.clip));
+  }, [watching, camera.stream, raiseFlag]);
+  useEffect(() => {
+    if (!watching || !cameraStillsRef.current) return;
+    return watchFaces(cameraStillsRef.current.video, (event) =>
+      void raiseFlag({ kind: event.kind, ...(event.kind === "multiple_faces" ? { detail: { faces: event.faces } } : {}) }),
+    );
+  }, [watching, raiseFlag]);
+  // The share stopping is a moment too; the gate below locks the workspace.
+  const screenStatus = screen.status;
+  useEffect(() => {
+    if (!proctored || screenStatus !== "ended") return;
+    // After this render, not during it: raising a flag updates state.
+    const timer = setTimeout(() => void raiseFlag({ kind: "screen_share_stopped" }), 0);
+    return () => clearTimeout(timer);
+  }, [proctored, screenStatus, raiseFlag]);
 
   // Real markers from Monaco's TypeScript service — see lib/ide/diagnostics.ts.
   const diagnostics = useDiagnostics(tree, files);
@@ -725,6 +845,7 @@ export function IdeShell({ sessionId, candidateName, taskBrief, starterFiles, as
     telemetryRef.current?.destroy();
     telemetryRef.current = null;
     camera.stop();
+    screen.stop();
     // Hand the screen back: staying fullscreen on a closing screen leaves
     // someone stuck in a chrome-less tab with nothing left to do in it.
     void exitFullscreen();
@@ -775,18 +896,19 @@ export function IdeShell({ sessionId, candidateName, taskBrief, starterFiles, as
   // its own (sharp-cornered) internal content is clipped to the card's
   // rounded shape instead of poking out past the corners.
   return (
-    <div className={clsx("flex h-dvh w-full flex-col gap-1 p-1", palette.canvas, palette.text)}>
+    <div className={clsx("flex h-dvh w-full flex-col gap-2 p-2", palette.canvas, palette.text)}>
       <HeaderPanel
         theme={theme}
         assessmentName={assessmentName ?? (sessionId ? "Assessment" : "Scratch workspace")}
         durationSeconds={remainingSeconds}
         onSubmit={() => setSubmitting(true)}
         onExpire={expire}
+        cameraLive={camera.status === "live"}
       />
-      <div className="flex min-h-0 flex-1 gap-1">
+      <div className="flex min-h-0 flex-1 gap-2">
         <div
           style={{ width: sidebar.size }}
-          className={clsx("flex shrink-0 flex-col overflow-hidden rounded-xl border", palette.border)}
+          className={clsx("flex shrink-0 flex-col overflow-hidden rounded-2xl border", palette.border, palette.panelBg, cardShadow)}
         >
           <TaskDescriptionPanel
             theme={theme}
@@ -824,21 +946,21 @@ export function IdeShell({ sessionId, candidateName, taskBrief, starterFiles, as
         <div
           onMouseDown={sidebar.startDrag}
           className={clsx(
-            "flex w-1 shrink-0 cursor-col-resize items-center justify-center rounded-full",
+            "-mx-1.5 flex w-1 shrink-0 cursor-col-resize items-center justify-center rounded-full",
             palette.hover
           )}
         >
           <GripVertical size={10} className={palette.textMuted} />
         </div>
 
-        <div className="flex min-w-0 flex-1 flex-col gap-1">
+        <div className="flex min-w-0 flex-1 flex-col">
           <div
             className={clsx(
-              "flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border",
-              palette.border
+              "relative flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border",
+              palette.border,
+              cardShadow
             )}
           >
-            <Breadcrumbs path={activeFile} theme={theme} />
             <div className="min-h-0 flex-1">
               <EditorPanel
                 theme={theme}
@@ -851,47 +973,70 @@ export function IdeShell({ sessionId, candidateName, taskBrief, starterFiles, as
                 onCloseTab={closeTab}
                 onChange={changeFile}
                 onSave={saveFile}
+                breadcrumbs={<Breadcrumbs path={activeFile} theme={theme} />}
               />
             </div>
+            {/* In the editor's bottom-right corner, so it follows the editor
+                as the drawer opens and never covers the drawer or camera. */}
+            <ChatLauncher theme={theme} hidden={chatOpen} onClick={() => setChatOpen(true)} />
           </div>
 
+          {/* The drawer's top edge: drag it up to open the drawer and size
+              it. Collapsed, this is just the gap above the tab bar. */}
           <div
-            onMouseDown={terminal.startDrag}
-            className={clsx(
-              "flex h-1 shrink-0 cursor-row-resize items-center justify-center rounded-full",
-              palette.hover
-            )}
+            onMouseDown={(e) => {
+              setDrawerOpen(true);
+              terminal.startDrag(e);
+            }}
+            title="Drag to resize the panel"
+            className={clsx("group flex h-2 shrink-0 cursor-row-resize items-center justify-center")}
           >
-            <GripHorizontal size={10} className={palette.textMuted} />
+            <span className={clsx("h-[3px] w-10 rounded-full opacity-0 transition-opacity group-hover:opacity-100", theme === "dark" ? "bg-[#7C5CFF]/60" : "bg-[#4A7FA7]/60")} />
           </div>
 
+          {/* The task drawer, with the camera beside it. Collapsed, both are
+              a slim bar; open, they share the drawer's height. The camera is
+              outside the drawer's tabs so it shows on every one, and is the
+              same mounted element open or closed, so the feed never stops. */}
           <div
-            style={{ height: terminal.size }}
-            className={clsx("shrink-0 overflow-hidden rounded-xl border", palette.border)}
+            style={{ height: drawerOpen ? terminal.size : 44 }}
+            className={clsx("flex shrink-0 gap-2", !terminal.dragging && "transition-[height] duration-200 ease-out")}
           >
-            {/* The terminal and the Tests panel in here are the two that act
-                differently on a sandbox; the context is how they know. */}
-            <SandboxContext.Provider value={sandboxContext}>
-            <BottomPanel
-              theme={theme}
-              vfs={vfs}
-              preview={previewController}
-              cameraStream={camera.stream}
-              diagnostics={diagnostics}
-              onOpenLocation={(path) => openFile(path)}
-              changes={changes}
-              onOpenDiff={(path) => openFile(`${DIFF_PREFIX}${path}`)}
-              previewState={preview}
-              onClosePreview={() => {
-                releaseBuild(previewBuildRef.current);
-                previewBuildRef.current = null;
-                setPreview(null);
-              }}
-              // Same path Ctrl+C takes: stop watching, keep the last build on
-              // screen. Closing the panel is a separate, more destructive act.
-              onStopPreview={() => previewController.stop()}
-            />
-            </SandboxContext.Provider>
+            <div className={clsx("min-w-0 flex-1 overflow-hidden rounded-2xl border", palette.border, cardShadow)}>
+                {/* The terminal and the Tests panel in here are the two that act
+                    differently on a sandbox; the context is how they know. */}
+                <SandboxContext.Provider value={sandboxContext}>
+                <BottomPanel
+                  theme={theme}
+                  vfs={vfs}
+                  preview={previewController}
+                  open={drawerOpen}
+                  onOpenChange={setDrawerOpen}
+                  diagnostics={diagnostics}
+                  onOpenLocation={(path) => openFile(path)}
+                  changes={changes}
+                  onOpenDiff={(path) => openFile(`${DIFF_PREFIX}${path}`)}
+                  previewState={preview}
+                  onClosePreview={() => {
+                    releaseBuild(previewBuildRef.current);
+                    previewBuildRef.current = null;
+                    setPreview(null);
+                  }}
+                  // Same path Ctrl+C takes: stop watching, keep the last build on
+                  // screen. Closing the panel is a separate, more destructive act.
+                  onStopPreview={() => previewController.stop()}
+                />
+                </SandboxContext.Provider>
+            </div>
+            <div
+              style={{ width: drawerOpen ? cameraPane.size : 220 }}
+              className={clsx("relative shrink-0 overflow-hidden rounded-2xl border", palette.border, palette.panelBg, cardShadow)}
+            >
+              {drawerOpen && (
+                <div onMouseDown={cameraPane.startDrag} title="Drag to resize the camera" className="absolute inset-y-0 left-0 z-10 w-1.5 cursor-col-resize" />
+              )}
+              <CameraPanel theme={theme} stream={camera.stream} compact={!drawerOpen} />
+            </div>
           </div>
         </div>
 
@@ -908,7 +1053,7 @@ export function IdeShell({ sessionId, candidateName, taskBrief, starterFiles, as
             </div>
             <div
               style={{ width: chatPane.size }}
-              className={clsx("shrink-0 overflow-hidden rounded-xl border", palette.border)}
+              className={clsx("shrink-0 overflow-hidden rounded-2xl border", palette.border, cardShadow)}
             >
               <ChatPanel
                 theme={theme}
@@ -940,6 +1085,16 @@ export function IdeShell({ sessionId, candidateName, taskBrief, starterFiles, as
           {sandboxSync.status === "error" &&
             `Your sandbox couldn't be reached${sandboxSync.problem ? ` (${sandboxSync.problem})` : ""}. Reload the page to try again — your work on it is safe.`}
           {sandboxSync.status === "ready" && sandboxSync.problem && `The sandbox isn't answering (${sandboxSync.problem}). Your edits are kept here and sent as soon as it does.`}
+        </div>
+      )}
+
+      {/* A real session that didn't get a machine — the pool was full, or
+          it didn't come up — runs here in the browser. Said once, so a
+          candidate isn't surprised that some packages won't install. */}
+      {sessionId && !sandboxed && !practice && (
+        <div role="status" className={clsx("shrink-0 rounded-xl border px-3 py-1.5 text-xs", palette.border, palette.textMuted)}>
+          This session runs in your browser: Python and JavaScript run for real, but some packages can&apos;t be installed and servers can&apos;t be
+          started. The hiring team can see which workspace you had.
         </div>
       )}
 
@@ -1018,6 +1173,7 @@ export function IdeShell({ sessionId, candidateName, taskBrief, starterFiles, as
               // original local-only confirmation.
               setSubmitting(false);
               camera.stop();
+              screen.stop();
               exitFullscreen();
               setSubmitted(true);
               return;
@@ -1040,8 +1196,12 @@ export function IdeShell({ sessionId, candidateName, taskBrief, starterFiles, as
           beforeInterview={!interviewed}
         />
       )}
-      <ProctorGate theme={theme} camera={camera} />
-      <ChatLauncher theme={theme} hidden={chatOpen} onClick={() => setChatOpen(true)} />
+      <ProctorGate theme={theme} camera={camera} screen={proctored ? screen : null} />
+      {flagNotice && (
+        <div role="status" className="fixed bottom-4 left-1/2 z-40 max-w-md -translate-x-1/2 rounded-xl bg-[#0A1931] px-4 py-2.5 text-center text-xs text-white shadow-lg">
+          {flagNotice}
+        </div>
+      )}
     </div>
   );
 }

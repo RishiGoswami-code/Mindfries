@@ -4,7 +4,7 @@ import clsx from "clsx";
 import { CalendarClock, Clock, Navigation } from "lucide-react";
 import { display } from "@/lib/dashboard/fonts";
 import { EditProfileModal } from "./EditProfileModal";
-import type { CandidateProfile } from "@/lib/profile/types";
+import type { CandidateProfile, SavedIdentity } from "@/lib/profile/types";
 
 function formatUpdated(iso: string): string {
   return new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
@@ -28,14 +28,14 @@ export function IdentityCard({ sessionName, profile }: IdentityCardProps) {
   // Always use DB data if profile has been updated, otherwise show just the
   // session name with empty fields so new users see their real name, not sample data.
   const hasUpdated = !!profile?.profile_updated_at;
-  const identity = {
-    name: hasUpdated ? (profile.name || sessionName || "—") : (sessionName || "—"),
-    role: hasUpdated ? (profile.role || "") : "",
-    location: hasUpdated ? (profile.location || "") : "",
-    openTo: hasUpdated ? (profile.open_to || []) : [],
-    noticePeriod: hasUpdated ? (profile.notice_period || "") : "",
-    bio: hasUpdated ? (profile.bio || "") : "",
-    updatedAt: hasUpdated ? profile.profile_updated_at : null,
+  const identity: SavedIdentity = {
+    name: hasUpdated ? (profile?.name || sessionName || "—") : (sessionName || "—"),
+    role: hasUpdated ? (profile?.role || "") : "",
+    location: hasUpdated ? (profile?.location || "") : "",
+    openTo: hasUpdated ? (profile?.open_to || []) : [],
+    noticePeriod: hasUpdated ? (profile?.notice_period || "") : "",
+    bio: hasUpdated ? (profile?.bio || "") : "",
+    updatedAt: hasUpdated ? (profile?.profile_updated_at ?? null) : null,
   };
 
   return (

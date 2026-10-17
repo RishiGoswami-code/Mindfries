@@ -2,14 +2,14 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { currentCompanyUser } from "@/lib/auth/company-users";
 import { can } from "@/lib/auth/permissions";
-import { getJobRole, listApplicationsForRole, listPublishedTemplates, stageCountsForRole } from "@/lib/db";
+import { getJobRole, listApplicationsForRole, stageCountsForRole } from "@/lib/db";
+import { inviteLink } from "@/lib/invite-link";
 import { Button, EmptyState, Field, Input, PageHeader, Pill } from "@/components/ui";
 import { roleStatusTone, stageLabel, stageTone } from "@/lib/format";
 import type { ApplicationStage, CandidateApplication } from "@/lib/types";
 import { AssistantSettingsForm } from "./AssistantSettingsForm";
-import { AttachTemplateForm } from "./AttachTemplateForm";
-import { GenerateTaskForm } from "./GenerateTaskForm";
 import { InterviewSettingsForm } from "./InterviewSettingsForm";
+import { RoleBriefForm } from "./RoleBriefForm";
 import { InviteCandidateForm } from "./InviteCandidateForm";
 import { PipelineList } from "./PipelineList";
 import { RoleStatusToggle } from "./RoleStatusToggle";
@@ -52,11 +52,7 @@ export default async function RoleDetailPage({
   if (!role) notFound();
 
   const canWriteRole = can("role:write", user.role);
-  const [counts, allApplications, templates] = await Promise.all([
-    stageCountsForRole(role.id),
-    listApplicationsForRole(role.id),
-    canWriteRole ? listPublishedTemplates(user.companyId) : Promise.resolve([]),
-  ]);
+  const [counts, allApplications] = await Promise.all([stageCountsForRole(role.id), listApplicationsForRole(role.id)]);
 
   const activeStage = STAGE_ORDER.includes(stageParam as ApplicationStage) ? (stageParam as ApplicationStage) : null;
   const byStage = activeStage ? allApplications.filter((a) => a.stage === activeStage) : allApplications;
@@ -81,11 +77,7 @@ export default async function RoleDetailPage({
       <div className="flex flex-wrap items-center gap-1.5">
         <Pill tone={roleStatusTone[role.status]}>{role.status}</Pill>
         {canWriteRole && <RoleStatusToggle roleId={role.id} status={role.status} />}
-        {role.templateId ? (
-          <Pill tone="violet">{role.templateName ?? "Assessment attached"}</Pill>
-        ) : (
-          <Pill tone="amber">No assessment attached</Pill>
-        )}
+        {role.assessmentBrief ? <Pill tone="violet">Brief written</Pill> : <Pill tone="amber">No brief yet</Pill>}
         <Link href={`/roles/${role.id}`}>
           <Pill tone={activeStage === null ? "violet" : "gray"}>All ({allApplications.length})</Pill>
         </Link>
@@ -98,11 +90,7 @@ export default async function RoleDetailPage({
         ))}
       </div>
 
-      {canWriteRole && (
-        <AttachTemplateForm roleId={role.id} templates={templates} currentTemplateId={role.templateId} />
-      )}
-
-      {canWriteRole && <GenerateTaskForm roleId={role.id} roleTitle={role.title} techStack={role.techStack} durationMin={role.durationMin} />}
+      {canWriteRole && <RoleBriefForm roleId={role.id} brief={role.assessmentBrief} taskVariant={role.taskVariant} />}
 
       {canWriteRole && <AssistantSettingsForm roleId={role.id} config={role.assistantConfig} />}
       {canWriteRole && <InterviewSettingsForm roleId={role.id} config={role.interviewConfig} />}
@@ -156,7 +144,12 @@ export default async function RoleDetailPage({
           hint={activeStage || hasFilters ? undefined : "Invite one above to start this role's pipeline."}
         />
       ) : (
-        <PipelineList roleId={role.id} applications={applications} canChangeStage={canChangeStage} />
+        <PipelineList
+          roleId={role.id}
+          applications={applications}
+          canChangeStage={canChangeStage}
+          links={Object.fromEntries(applications.flatMap((a) => (inviteLink(a.invite?.token) ? [[a.id, inviteLink(a.invite?.token) as string]] : [])))}
+        />
       )}
     </div>
   );

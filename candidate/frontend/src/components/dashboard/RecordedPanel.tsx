@@ -1,5 +1,5 @@
 import clsx from "clsx";
-import { Camera, FileDiff, Shield, SquareTerminal, type LucideIcon } from "lucide-react";
+import { Camera, Monitor, Shield, SquareTerminal, type LucideIcon } from "lucide-react";
 import { display } from "@/lib/dashboard/fonts";
 import { PoliciesLink } from "./PoliciesLink";
 
@@ -7,17 +7,16 @@ import { PoliciesLink } from "./PoliciesLink";
  * What a session records, in plain sight — something a candidate on a
  * proctored platform is entitled to see without opening a policy page.
  *
- * Every row has to be true of the product today. The screen is NOT
- * recorded (task.md #28 — it was never built), so it isn't listed: the
- * three here are the camera stills, the commands run in the terminal, and
- * the changes made to the code. The footnote names the rest and opens the
- * full consent copy (lib/policies.ts), so this can't drift from what the
- * candidate agreed to.
+ * Every row has to be true of the product today, and match the consent copy
+ * (lib/policies.ts): the camera and the whole screen are kept as stills —
+ * the screen when it changes and at flagged moments — and the commands run
+ * in the terminal are recorded. The footnote names the rest and opens the
+ * full consent copy, so this can't drift from what the candidate agreed to.
  */
 const ROWS: { label: string; icon: LucideIcon; tile: string; ink: string }[] = [
   { label: "Your camera (as stills)", icon: Camera, tile: "bg-[#EEECF6]", ink: "text-[#3A3660]" },
-  { label: "The commands you run", icon: SquareTerminal, tile: "bg-[#E2F4F1]", ink: "text-[#1E4A46]" },
-  { label: "The changes you make", icon: FileDiff, tile: "bg-[#ECE6FD]", ink: "text-[#5B3BE0]" },
+  { label: "Your screen (as stills)", icon: Monitor, tile: "bg-[#E2F4F1]", ink: "text-[#1E4A46]" },
+  { label: "The commands you run", icon: SquareTerminal, tile: "bg-[#ECE6FD]", ink: "text-[#5B3BE0]" },
 ];
 
 export function RecordedPanel() {
@@ -42,8 +41,9 @@ export function RecordedPanel() {
       </ul>
 
       <p className="mt-4 px-1 text-[12.5px] leading-relaxed text-[#6E6A8F]">
-        Also your AI assistant chats, pastes and time away from the tab — only during an assessment, never on a
-        practice run. Your screen is not recorded.{" "}
+        Also sounds that last a few seconds, the changes you make and what you ask the AI assistant. Moments like
+        leaving the workspace are flagged for the hiring team to look at. Only during an assessment, never on a
+        practice run.{" "}
         <PoliciesLink className="font-medium text-[#5B3BE0] underline-offset-2 hover:underline">Read the full list</PoliciesLink>
       </p>
     </section>

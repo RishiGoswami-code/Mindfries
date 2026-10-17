@@ -26,11 +26,8 @@ type sessionStore interface {
 	Ping(ctx context.Context) error
 	GetSession(ctx context.Context, id string) (db.Session, error)
 	GetTemplateContent(ctx context.Context, templateID string) (db.TemplateContent, error)
-	ListPublishedTemplates(ctx context.Context) ([]db.Template, error)
 	ListInvitationsForCandidate(ctx context.Context, candidateID, email string) ([]db.Invitation, error)
-	StartSession(ctx context.Context, candidateID, candidateName string, tmpl db.Template) (db.Session, error)
 	StartSessionFromInvitation(ctx context.Context, candidateID, candidateName string, inv db.Invitation) (db.Session, error)
-	GetSessionByCandidateAndTemplate(ctx context.Context, candidateID, templateID string) (db.Session, error)
 	MarkSubmitted(ctx context.Context, id string) error
 	GetReportBySession(ctx context.Context, sessionID string) (db.Report, error)
 	GetEvidenceItems(ctx context.Context, reportID string) ([]db.EvidenceItem, error)

@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   Building2, CircleDollarSign, Crosshair, LayoutDashboard, LibraryBig, LogOut, MonitorPlay, Radar, Rocket,
-  UserPlus, type LucideIcon,
+  UserPlus, UsersRound, type LucideIcon,
 } from "lucide-react";
 import { signOut } from "@/app/login/actions";
 
@@ -44,6 +44,7 @@ const SECTIONS: { title: string | null; items: Item[] }[] = [
       { href: "/admin/companies", label: "Companies", icon: Building2 },
       { href: "/admin/library", label: "Game Library", icon: LibraryBig },
       { href: "/admin/sessions", label: "Sessions", icon: MonitorPlay }, // live candidate sessions
+      { href: "/admin/candidates", label: "Candidates", icon: UsersRound }, // accounts, linked profiles, outcomes
     ],
   },
 ];

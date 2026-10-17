@@ -6,9 +6,9 @@ import type { CandidateDocument, DocumentKind, DocumentList } from "./documents-
 /**
  * Reads for the profile's newer parts — job preferences, supporting
  * documents, and the resume file's details — kept apart from getProfile()
- * on purpose: they depend on migration 0022, and a select naming a column
+ * on purpose: they depend on migration 0024, and a select naming a column
  * that isn't there yet fails the whole query. Read separately, a database
- * without 0022 still loads the profile, and these say "not set up yet".
+ * without 0024 still loads the profile, and these say "not set up yet".
  */
 
 export const DOCUMENTS_BUCKET = "candidate-documents";

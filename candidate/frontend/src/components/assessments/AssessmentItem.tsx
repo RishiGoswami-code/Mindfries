@@ -10,9 +10,9 @@ import { display } from "@/lib/dashboard/fonts";
  * a card (the grid view). Both share `AssessmentAction`, so what a button
  * does can't differ between the two:
  *
- * - a company's invitation not yet answered asks Accept / Decline first;
- * - then, and for an open-pool assessment straight away, Start opens the
- *   onboarding wizard;
+ * - an invitation not yet answered asks Accept / Decline first;
+ * - then, once the candidate's own task has been made, Start opens the
+ *   onboarding wizard — until then it says the task is being prepared;
  * - in progress resumes the session — the clock is the server's and kept
  *   running, so nothing is gained by leaving and coming back;
  * - submitted opens its report.
@@ -54,6 +54,7 @@ export function AssessmentRow({ assessment }: { assessment: Assessment }) {
         </div>
         <p className="mt-1.5 truncate text-[16px] font-medium text-[#100E2E]">{assessment.role}</p>
         <p className="truncate text-[13px] text-[#6E6A8F]">{details(assessment)}</p>
+        <TaskNote assessment={assessment} />
       </div>
       <AssessmentAction assessment={assessment} />
     </li>
@@ -78,6 +79,9 @@ export function AssessmentCard({ assessment }: { assessment: Assessment }) {
         {assessment.role}
       </h3>
       <p className="mt-1.5 text-[13px] text-[#6E6A8F]">{details(assessment)}</p>
+      <div className="mt-2">
+        <TaskNote assessment={assessment} />
+      </div>
       <div className="mt-auto flex flex-wrap items-end justify-between gap-3 pt-5">
         <span className="text-[12.5px] text-[#6E6A8F]">{assessment.due}</span>
         <AssessmentAction assessment={assessment} />
@@ -86,11 +90,31 @@ export function AssessmentCard({ assessment }: { assessment: Assessment }) {
   );
 }
 
+/**
+ * Each invitation gets a task written for that candidate after it is sent;
+ * until it is ready there is nothing to start. An older backend doesn't
+ * say, which counts as ready, as it always was.
+ */
+function taskReady(a: Assessment): boolean {
+  return !a.taskStatus || a.taskStatus === "ready";
+}
+
+/** Said under the due date while the task is being made — before an invitation is answered too, so accepting doesn't lead to a Start that isn't there yet. */
+function TaskNote({ assessment }: { assessment: Assessment }) {
+  if (assessment.status !== "invited" || taskReady(assessment)) return null;
+  return (
+    <span role="status" className={clsx("text-[12.5px] font-medium", assessment.taskStatus === "failed" ? "text-[#a6203c]" : "text-[#4B2BB8]")}>
+      {assessment.taskStatus === "failed" ? "Couldn't be prepared — the team that invited you can see this" : "Task being prepared…"}
+    </span>
+  );
+}
+
 function AssessmentAction({ assessment }: { assessment: Assessment }) {
   const { status, invitation, sessionId } = assessment;
   const unanswered = status === "invited" && !!invitation && !invitation.accepted;
 
   if (unanswered) return <InvitationAnswer assessmentId={assessment.id} />;
+  if (status === "invited" && !taskReady(assessment)) return null; // TaskNote says why there's no Start yet
   if (status === "invited") return <ActionLink href={`/onboarding?template=${encodeURIComponent(assessment.id)}`}>Start</ActionLink>;
   if (status === "in-progress" && sessionId) return <ActionLink href={`/ide?session=${encodeURIComponent(sessionId)}`}>Resume</ActionLink>;
   if (status === "submitted" && sessionId)

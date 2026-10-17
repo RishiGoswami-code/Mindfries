@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/mindfries/candidate-backend/internal/db"
@@ -96,6 +97,41 @@ func (o *Orchestrator) RunAbandonedSweep(ctx context.Context, every time.Duratio
 				slog.Error("orchestrator: abandoned-session sweep failed", "error", err)
 			}
 			cancel()
+		}
+	}
+}
+
+// How often reports held up by the AI service are tried again.
+const reportRetryEvery = 15 * time.Minute
+
+// RunReportRetrySweep evaluates again, every reportRetryEvery, the sessions
+// whose report was stopped by the AI service — its quota used up, or too
+// busy (evaluate.go's waitingForAIService). Each is tried once a round; the
+// first that is stopped again ends the round, since the rest would be too.
+func (o *Orchestrator) RunReportRetrySweep(ctx context.Context) {
+	ticker := time.NewTicker(reportRetryEvery)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+		}
+		ids, err := o.DB.SessionsWaitingForAI(ctx, time.Now().Add(-reportRetryEvery+time.Minute), 10)
+		if err != nil {
+			slog.Error("orchestrator: listing reports waiting for the AI service", "error", err)
+			continue
+		}
+		for _, id := range ids {
+			err := o.Evaluate(ctx, id)
+			if err == nil {
+				slog.Info("orchestrator: a waiting report was written", "session", id)
+				continue
+			}
+			if strings.Contains(err.Error(), "Waiting:") {
+				break
+			}
+			slog.Error("orchestrator: evaluating a waiting report", "session", id, "error", err)
 		}
 	}
 }

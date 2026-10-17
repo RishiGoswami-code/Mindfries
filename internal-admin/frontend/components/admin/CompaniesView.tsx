@@ -8,7 +8,8 @@ import { countWithin, cumulative, DAY, WEEK } from "@/lib/overview";
 import type { Company, GameTemplate, MemberRole, Plan } from "@/lib/types";
 import { Button, Field, Input, Modal, PageHeader, Pill, Select } from "@/components/ui";
 import { companyTone, fmtDate, planLabel } from "@/lib/format";
-import { inviteCandidate, onboardCompanyAccount, setCompanyStatusAction } from "@/app/admin/actions";
+import { companyRoles, inviteCandidate, onboardCompanyAccount, setCompanyStatusAction } from "@/app/admin/actions";
+import type { CompanyRole } from "@/lib/db";
 import { toast } from "@/components/admin/toast";
 
 /**
@@ -82,10 +83,10 @@ export function CompaniesView({
         return;
       }
       toast.success("Company onboarded", input.name);
-      // Optimistic — the persisted row (with its real id/createdAt) also
-      // arrives on the next server render via revalidatePath.
-      const optimisticTeam = team.map((m, i) => ({ ...m, id: String(i) }));
-      setRows((r) => [{ ...input, team: optimisticTeam, id: crypto.randomUUID(), createdAt: new Date().toISOString() }, ...r]);
+      // The persisted row, under its real id — anything done from this card
+      // before the next server render (inviting a candidate, say) sends that
+      // id to the database, so an invented one isn't just a React key.
+      setRows((r) => [res.company, ...r]);
       reset();
       setOpen(false);
     });
@@ -100,23 +101,38 @@ export function CompaniesView({
     });
   }
 
-  // Invite-a-candidate form — the one piece of the invitation flow that
-  // wasn't reachable from anywhere but a direct database write until this
-  // pass. `inviteFor` is which company's modal is open; null means closed.
+  // Invite a candidate on a company's behalf. The invitation is for one of
+  // the company's roles, or a new one described here; the candidate gets
+  // their own task generated from the role's brief, and their own link,
+  // which the modal shows once the invitation exists. `inviteFor` is which
+  // company's modal is open; null means closed.
   const [inviteFor, setInviteFor] = useState<Company | null>(null);
-  const [inviteTemplateId, setInviteTemplateId] = useState("");
+  const [roles, setRoles] = useState<CompanyRole[] | null>(null);
+  const [inviteRoleId, setInviteRoleId] = useState("");
+  const [newTitle, setNewTitle] = useState("");
+  const [newBrief, setNewBrief] = useState("");
+  const [newVariant, setNewVariant] = useState("bug_fix");
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteName, setInviteName] = useState("");
-  const [inviteRole, setInviteRole] = useState("");
   const [inviteDue, setInviteDue] = useState("");
+  const [invited, setInvited] = useState<{ email: string; link: string | null; note: string } | null>(null);
 
   function openInvite(c: Company) {
     setInviteFor(c);
-    setInviteTemplateId(publishedTemplates[0]?.id ?? "");
+    setRoles(null);
+    setInviteRoleId("");
+    setNewTitle("");
+    setNewBrief("");
+    setNewVariant("bug_fix");
     setInviteEmail("");
     setInviteName("");
-    setInviteRole("");
     setInviteDue("");
+    setInvited(null);
+    start(async () => {
+      const list = await companyRoles(c.id).catch(() => []);
+      setRoles(list);
+      setInviteRoleId(list[0]?.id ?? "new");
+    });
   }
 
   function invite() {
@@ -125,20 +141,22 @@ export function CompaniesView({
     start(async () => {
       const res = await inviteCandidate({
         companyId: company.id,
-        templateId: inviteTemplateId,
+        roleId: inviteRoleId !== "new" ? inviteRoleId : undefined,
+        newRole: inviteRoleId === "new" ? { title: newTitle, assessmentBrief: newBrief, taskVariant: newVariant } : undefined,
         candidateEmail: inviteEmail,
         candidateName: inviteName.trim() || undefined,
-        role: inviteRole.trim() || undefined,
         dueDate: inviteDue || undefined,
-      });
+      }).catch((e: unknown) => ({ ok: false as const, error: e instanceof Error ? e.message : "Couldn't reach the server" }));
       if (!res.ok) {
         toast.error("Couldn't send the invitation", res.error);
         return;
       }
       toast.success("Candidate invited", `${inviteEmail} → ${company.name}`);
-      setInviteFor(null);
+      setInvited({ email: inviteEmail, link: res.link, note: res.note });
     });
   }
+
+  const roleReady = inviteRoleId === "new" ? newTitle.trim().length > 0 : !!inviteRoleId;
 
   const active = rows.filter((c) => c.status === "active").length;
   const onboarding = rows.filter((c) => c.status === "onboarding").length;
@@ -208,8 +226,7 @@ export function CompaniesView({
                       <div className="flex justify-end gap-2">
                         <button
                           onClick={() => openInvite(c)}
-                          disabled={pending || publishedTemplates.length === 0}
-                          title={publishedTemplates.length === 0 ? "No published assessments to invite someone to yet" : undefined}
+                          disabled={pending}
                           className="rounded-lg border border-hair px-3 py-1.5 text-xs font-semibold text-dim hover:border-hair-bright hover:text-ink disabled:opacity-50"
                         >
                           Invite
@@ -315,50 +332,100 @@ export function CompaniesView({
         onClose={() => setInviteFor(null)}
         title={inviteFor ? `Invite a candidate — ${inviteFor.name}` : "Invite a candidate"}
         footer={
-          <>
-            <Button variant="ghost" onClick={() => setInviteFor(null)}>
-              Cancel
-            </Button>
-            <Button onClick={invite} disabled={!inviteTemplateId || !inviteEmail.trim() || pending}>
-              {pending ? "Sending…" : "Send invitation"}
-            </Button>
-          </>
+          invited ? (
+            <Button onClick={() => setInviteFor(null)}>Done</Button>
+          ) : (
+            <>
+              <Button variant="ghost" onClick={() => setInviteFor(null)}>
+                Cancel
+              </Button>
+              <Button onClick={invite} disabled={!roleReady || !inviteEmail.trim() || pending || roles === null}>
+                {pending ? "Sending…" : "Send invitation"}
+              </Button>
+            </>
+          )
         }
       >
-        <div className="space-y-4">
-          <Field label="Assessment">
-            <Select value={inviteTemplateId} onChange={(e) => setInviteTemplateId(e.target.value)}>
-              {publishedTemplates.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.name}
-                </option>
-              ))}
-            </Select>
-          </Field>
-          <Field label="Candidate email">
-            <Input
-              type="email"
-              value={inviteEmail}
-              onChange={(e) => setInviteEmail(e.target.value)}
-              placeholder="jane@example.com"
-            />
-          </Field>
-          <div className="grid grid-cols-2 gap-4">
-            <Field label="Candidate name" hint="Optional">
-              <Input value={inviteName} onChange={(e) => setInviteName(e.target.value)} placeholder="Jane Doe" />
-            </Field>
-            <Field label="Role" hint="Optional — shown on the candidate's dashboard">
-              <Input value={inviteRole} onChange={(e) => setInviteRole(e.target.value)} placeholder="Backend Engineer" />
-            </Field>
+        {invited ? (
+          <div className="space-y-3">
+            <p className="text-sm">
+              <span className="font-semibold">{invited.email}</span> is invited. {invited.note}
+            </p>
+            {invited.link ? (
+              <div className="space-y-1.5">
+                <div className="text-xs font-semibold text-dim">Their own link — it works only for that email address</div>
+                <div className="flex items-center gap-2 rounded-lg border border-hair px-3 py-2">
+                  <code className="min-w-0 flex-1 truncate text-xs">{invited.link}</code>
+                  <button
+                    type="button"
+                    className="shrink-0 text-xs font-semibold hover:underline"
+                    onClick={() => void navigator.clipboard?.writeText(invited.link as string).then(() => toast.success("Link copied", invited.email))}
+                  >
+                    Copy
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <p className="text-xs text-dim">Set CANDIDATE_PORTAL_URL on this portal to get a link to send.</p>
+            )}
           </div>
-          <Field label="Due date" hint="Optional">
-            <Input type="date" value={inviteDue} onChange={(e) => setInviteDue(e.target.value)} />
-          </Field>
-          <p className="text-xs text-dim">
-            Shows up the next time {inviteEmail.trim() || "the candidate"} loads their dashboard — no email is sent yet
-            (see task.md: the PRD&apos;s candidate/company transactional email doesn&apos;t exist).
-          </p>
-        </div>
+        ) : (
+          <div className="space-y-4">
+            <Field label="Role">
+              <Select value={inviteRoleId} onChange={(e) => setInviteRoleId(e.target.value)} disabled={roles === null}>
+                {roles === null && <option value="">Loading the company&apos;s roles…</option>}
+                {(roles ?? []).map((r) => (
+                  <option key={r.id} value={r.id}>
+                    {r.title}
+                    {r.assessmentBrief ? "" : " (no brief yet)"}
+                  </option>
+                ))}
+                {roles !== null && <option value="new">+ A new role…</option>}
+              </Select>
+            </Field>
+            {inviteRoleId === "new" && (
+              <div className="space-y-3 rounded-lg border border-hair p-3">
+                <Field label="Role title">
+                  <Input value={newTitle} onChange={(e) => setNewTitle(e.target.value)} placeholder="Backend Engineer" />
+                </Field>
+                <Field label="What the assessment tests" hint="Each candidate's own task is generated from this">
+                  <textarea
+                    value={newBrief}
+                    onChange={(e) => setNewBrief(e.target.value)}
+                    rows={4}
+                    maxLength={4000}
+                    className="w-full rounded-lg border border-hair px-3 py-2 text-sm"
+                    placeholder="Mid-level backend engineer. Python services and REST APIs. Look for debugging discipline and clear tests."
+                  />
+                </Field>
+                <Field label="Kind of task">
+                  <Select value={newVariant} onChange={(e) => setNewVariant(e.target.value)}>
+                    <option value="bug_fix">Find and fix a bug</option>
+                    <option value="debug">Debug a failure</option>
+                    <option value="feature">Build a feature</option>
+                    <option value="refactor">Refactor</option>
+                  </Select>
+                </Field>
+                <p className="text-xs text-dim">The role is added to the company&apos;s portal, where its team can see it.</p>
+              </div>
+            )}
+            <Field label="Candidate email">
+              <Input type="email" value={inviteEmail} onChange={(e) => setInviteEmail(e.target.value)} placeholder="jane@example.com" />
+            </Field>
+            <div className="grid grid-cols-2 gap-4">
+              <Field label="Candidate name" hint="Optional">
+                <Input value={inviteName} onChange={(e) => setInviteName(e.target.value)} placeholder="Jane Doe" />
+              </Field>
+              <Field label="Due date" hint="Optional">
+                <Input type="date" value={inviteDue} onChange={(e) => setInviteDue(e.target.value)} />
+              </Field>
+            </div>
+            <p className="text-xs text-dim">
+              The candidate gets their own task, written for them from the role&apos;s brief, and their own link. It also shows on their dashboard
+              when they sign in with this address.
+            </p>
+          </div>
+        )}
       </Modal>
     </>
   );

@@ -245,25 +245,109 @@ function toAssessment(r: any): Assessment {
  * someone. Until this pass, nothing called either one — a candidate's real
  * invitation could only ever be created by hand-writing SQL.
  */
+export interface CompanyRole {
+  id: string;
+  title: string;
+  assessmentBrief: string;
+  taskVariant: TaskVariant;
+}
+
+/** Records that an invitation's email went out. */
+export async function markInvitationEmailedByToken(token: string | null): Promise<void> {
+  const c = db();
+  if (!c || !token) return;
+  await c.from("assessments").update({ invite_emailed_at: new Date().toISOString() }).eq("invite_token", token);
+}
+
+/** A company's open roles — what Mindfries can invite a candidate to on its behalf. */
+export async function listCompanyRoles(companyId: string): Promise<CompanyRole[]> {
+  const c = db();
+  if (!c) return [];
+  const { data } = await c
+    .from("job_roles")
+    .select("id, title, assessment_brief, task_variant, status")
+    .eq("company_id", companyId)
+    .eq("status", "open")
+    .order("created_at", { ascending: false });
+  return (data ?? []).map((r: any) => ({
+    id: r.id,
+    title: r.title,
+    assessmentBrief: r.assessment_brief ?? "",
+    taskVariant: (["bug_fix", "feature", "refactor", "debug"].includes(r.task_variant) ? r.task_variant : "bug_fix") as TaskVariant,
+  }));
+}
+
+/**
+ * Invite a candidate on a company's behalf (migration 0022). The invitation
+ * is for one of the company's roles — an existing one, or one created here
+ * from a title and a brief, which then appears in the company's own portal
+ * like any other. It starts with no task: candidate/backend writes one for
+ * this candidate from the role's brief and links it. A pipeline row is made
+ * too, so the company sees the candidate on that role.
+ */
 export async function createInvitation(input: {
-  companyId: string; templateId: string; candidateEmail: string; candidateName?: string; role?: string; dueDate?: string;
-}): Promise<Assessment> {
+  companyId: string;
+  roleId?: string;
+  newRole?: { title: string; assessmentBrief: string; taskVariant: TaskVariant };
+  candidateEmail: string;
+  candidateName?: string;
+  dueDate?: string;
+}): Promise<{ assessment: Assessment; inviteToken: string | null; roleTitle: string }> {
   const c = db();
   if (!c) throw new Error("Supabase not configured");
+
+  let roleId = input.roleId ?? null;
+  let roleTitle = "";
+  if (roleId) {
+    const { data: role } = await c.from("job_roles").select("id, title").eq("id", roleId).eq("company_id", input.companyId).maybeSingle();
+    if (!role) throw new Error("That role isn't one of this company's");
+    roleTitle = role.title;
+  } else if (input.newRole) {
+    const { data: role, error } = await c
+      .from("job_roles")
+      .insert({
+        company_id: input.companyId,
+        title: input.newRole.title,
+        assessment_brief: input.newRole.assessmentBrief || null,
+        task_variant: input.newRole.taskVariant,
+        visibility: "invite_only",
+      })
+      .select("id, title")
+      .single();
+    if (error || !role) throw error ?? new Error("Couldn't create the role");
+    roleId = role.id;
+    roleTitle = role.title;
+  } else {
+    throw new Error("Pick a role, or describe a new one");
+  }
+
   const { data, error } = await c
     .from("assessments")
     .insert({
       company_id: input.companyId,
-      template_id: input.templateId,
+      template_id: null,
+      job_role_id: roleId,
+      task_status: "pending",
+      invited_by: "mindfries",
       candidate_email: input.candidateEmail,
       candidate_name: input.candidateName || null,
-      role: input.role || null,
+      role: roleTitle,
       due_date: input.dueDate || null,
     })
     .select("*")
     .single();
   if (error || !data) throw error ?? new Error("Insert returned no row");
-  return toAssessment(data);
+
+  const { error: appError } = await c.from("candidate_applications").insert({
+    job_role_id: roleId,
+    assessment_id: data.id,
+    candidate_email: input.candidateEmail,
+    candidate_name: input.candidateName || null,
+    stage: "invited",
+  });
+  if (appError) throw appError;
+
+  return { assessment: toAssessment(data), inviteToken: data.invite_token ?? null, roleTitle };
 }
 
 // The Assessment/Game Library — internal-admin authors, candidate app consumes.
@@ -356,22 +440,6 @@ export async function listSessions(): Promise<Session[]> {
     .select("*, companies(name), game_templates(name)")
     .order("started_at", { ascending: false });
   return (data ?? []).map(toSession);
-}
-
-// Support overrides (PRD §1.11): reset a stuck sandbox, re-trigger evaluation.
-export async function setSessionState(
-  id: string,
-  patch: { status?: SessionStatus; sandboxHealth?: SandboxHealth; progressPct?: number; elapsedMin?: number },
-): Promise<void> {
-  const c = db();
-  if (!c) return;
-  const row: Record<string, unknown> = {};
-  if (patch.status !== undefined) row.status = patch.status;
-  if (patch.sandboxHealth !== undefined) row.sandbox_health = patch.sandboxHealth;
-  if (patch.progressPct !== undefined) row.progress_pct = patch.progressPct;
-  if (patch.elapsedMin !== undefined) row.elapsed_min = patch.elapsedMin;
-  const { error } = await c.from("sessions").update(row).eq("id", id);
-  if (error) throw error;
 }
 
 /**

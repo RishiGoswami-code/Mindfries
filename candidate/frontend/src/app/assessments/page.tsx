@@ -6,6 +6,7 @@ import { CandidateShell } from "@/components/dashboard/CandidateShell";
 import { SearchBox } from "@/components/dashboard/SearchBox";
 import { StatusTabs, assessmentsHref, type AssessmentView } from "@/components/assessments/StatusTabs";
 import { AssessmentCard, AssessmentRow } from "@/components/assessments/AssessmentItem";
+import { RefreshWhilePreparing } from "@/components/assessments/RefreshWhilePreparing";
 import { ASSESSMENT_STATUSES, UNAVAILABLE, sortByAttention, statusLabels, type AssessmentStatus } from "@/lib/dashboard/data";
 import { listAssessmentsOrUndefined } from "@/lib/backend/client";
 import { currentCandidate } from "@/lib/auth/users";
@@ -28,10 +29,9 @@ export const dynamic = "force-dynamic";
  * three are the query string, filtered server-side, so any view is a URL
  * that can be bookmarked or shared.
  *
- * There is no "new assessment" here: a candidate can't create one — a
- * company invites them, or they start one from the open pool. The header's
- * button is the practice run instead, which is the one thing a candidate
- * can start on their own at any time.
+ * There is no "new assessment" here: a candidate can't create one —
+ * assessments are by invitation only. The header's button is the practice
+ * run instead, the one thing a candidate can start on their own at any time.
  */
 export default async function AssessmentsPage({
   searchParams,
@@ -65,6 +65,7 @@ export default async function AssessmentsPage({
 
   return (
     <CandidateShell sessionName={session?.name} profile={profile} search={false}>
+      <RefreshWhilePreparing items={all} />
       <header className="mt-6 flex flex-col gap-5 px-1 lg:flex-row lg:items-start lg:justify-between">
         <div className="min-w-0">
           <h1 className={clsx(display.className, "text-[44px] leading-none font-medium tracking-[-0.02em] text-[#100E2E] sm:text-[52px]")}>

@@ -2,7 +2,9 @@
 
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import { checkCredentials } from "@/lib/auth/admins";
+import { checkCredentials, rootEmail } from "@/lib/auth/admins";
+import { adminAttemptsExceeded, adminWaitMessage, noteAdminFailure, noteRootFailure, ROOT_FAILURE_PAUSE_MS } from "@/lib/auth/throttle";
+import { mailerReady, sendMail, NOTIFY_EMAIL } from "@/lib/mailer";
 import { SESSION_COOKIE, SESSION_MAX_AGE, signSession, sessionSecret } from "@/lib/auth/session";
 
 // A server action is a public HTTP endpoint, so everything here is treated as
@@ -22,8 +24,35 @@ export async function signIn(_prev: LoginState, form: FormData): Promise<LoginSt
   const email = text(form.get("email"), 254);
   const password = text(form.get("password"), 512);
 
+  // Before the password is looked at: a network that has been guessing
+  // doesn't get to keep finding out whether its guesses are right.
+  const wait = await adminAttemptsExceeded();
+  if (wait > 0) return { error: adminWaitMessage(wait) };
+
   const result = await checkCredentials(email, password);
-  if (!result.ok) return { error: result.error };
+  if (!result.ok) {
+    await noteAdminFailure();
+    if (rootEmail() && email.trim().toLowerCase() === rootEmail()) {
+      // The root account is never locked, so guessing at it is slowed down
+      // and reported instead (lib/auth/throttle.ts).
+      const { failures, alert } = await noteRootFailure();
+      if (alert && mailerReady()) {
+        await sendMail({
+          to: NOTIFY_EMAIL,
+          subject: "Mindfries admin: repeated failed sign-ins as the root admin",
+          text:
+            `There have been ${failures} failed sign-ins as the root admin (${rootEmail()}) in the last 15 minutes.
+
+` +
+            `If that wasn't you, change ROOT_ADMIN_PASSWORD on the admin portal's deployment. Sign-ins from the network doing it are refused after repeated failures, but the root account itself is never locked.
+`,
+        }).catch(() => undefined);
+      }
+      if (alert) console.warn(`admin: ${failures} failed root sign-ins in 15 minutes`);
+      await new Promise((r) => setTimeout(r, ROOT_FAILURE_PAUSE_MS));
+    }
+    return { error: result.error };
+  }
 
   const jar = await cookies();
   jar.set(SESSION_COOKIE, await signSession(result.session, secret), {

@@ -6,6 +6,10 @@ import { EmptyState, Input, LinkButton, Pill } from "@/components/ui";
 import { fmtDate, roleStatusTone, stageLabel, stageTone } from "@/lib/format";
 import type { CandidateApplicationWithRole } from "@/lib/db";
 import type { JobRole } from "@/lib/types";
+import type { ProfileBadge } from "@/lib/candidate-profile";
+import { GithubMark, GitlabMark, LinkedinMark } from "@/components/BrandMarks";
+
+const MARK = { github: GithubMark, gitlab: GitlabMark, linkedin: LinkedinMark } as const;
 
 type RoleBlock = {
   role: JobRole;
@@ -30,7 +34,16 @@ function matches(a: CandidateApplicationWithRole, query: string): boolean {
 const MIN_COMPARE = 2;
 const MAX_COMPARE = 4;
 
-export function CandidatesBoard({ roles, applications }: { roles: JobRole[]; applications: CandidateApplicationWithRole[] }) {
+export function CandidatesBoard({
+  roles,
+  applications,
+  badges = {},
+}: {
+  roles: JobRole[];
+  applications: CandidateApplicationWithRole[];
+  /** Picture and linked accounts per invited email (lower-cased), from the candidate's profile. */
+  badges?: Record<string, ProfileBadge>;
+}) {
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState<Set<string>>(new Set());
 
@@ -99,7 +112,9 @@ export function CandidatesBoard({ roles, applications }: { roles: JobRole[]; app
                 </span>
               </Link>
               <div className="divide-y divide-hair">
-                {candidates.map((a) => (
+                {candidates.map((a) => {
+                  const badge = badges[a.candidateEmail.toLowerCase()];
+                  return (
                   <div key={a.id} className="flex flex-wrap items-center gap-4 px-6 py-3.5 transition hover:bg-black/[0.02]">
                     <input
                       type="checkbox"
@@ -109,16 +124,45 @@ export function CandidatesBoard({ roles, applications }: { roles: JobRole[]; app
                       aria-label={`Select ${a.candidateName ?? a.candidateEmail} to compare`}
                     />
                     <Link href={`/candidates/${a.id}`} className="flex min-w-0 flex-1 flex-wrap items-center gap-4 hover:underline">
+                      {badge?.avatarUrl ? (
+                        // eslint-disable-next-line @next/next/no-img-element -- a remote avatar from the candidate's linked account; 32px
+                        <img src={badge.avatarUrl} alt="" width={32} height={32} className="h-8 w-8 shrink-0 rounded-full border border-hair object-cover" />
+                      ) : (
+                        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-surface-2 text-xs font-bold text-dim">
+                          {(a.candidateName ?? a.candidateEmail).charAt(0).toUpperCase()}
+                        </span>
+                      )}
                       <div className="min-w-0 flex-1">
                         <div className="truncate text-sm font-bold">{a.candidateName ?? a.candidateEmail}</div>
-                        <div className="truncate text-xs text-dim">{a.candidateEmail}</div>
+                        <div className="truncate text-xs text-dim">
+                          {a.candidateEmail}
+                          {badge && badge.languages.length > 0 ? ` · ${badge.languages.join(", ")}` : ""}
+                        </div>
                       </div>
+                      {badge && badge.accounts.length > 0 && (
+                        <span className="flex items-center gap-2 text-dim">
+                          {badge.accounts.map((acc) => {
+                            const Mark = MARK[acc.platform];
+                            return (
+                              <span
+                                key={acc.platform}
+                                className={`inline-flex items-center gap-1 text-xs ${acc.verified ? "text-[#1b8f4e]" : ""}`}
+                                title={`${acc.platform === "github" ? "GitHub" : acc.platform === "gitlab" ? "GitLab" : "LinkedIn"}${acc.verified ? " — signed in by the candidate" : " — username entered, not confirmed"}${acc.projects != null ? ` · ${acc.projects} projects` : ""}`}
+                              >
+                                <Mark size={13} />
+                                {acc.projects != null && acc.projects}
+                              </span>
+                            );
+                          })}
+                        </span>
+                      )}
                       <Pill tone={stageTone[a.stage]}>{stageLabel[a.stage]}</Pill>
                       {a.score != null && <span className="mono text-sm text-dim">{a.score}%</span>}
                       <span className="text-xs text-faint">{fmtDate(a.createdAt)}</span>
                     </Link>
                   </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           ))}

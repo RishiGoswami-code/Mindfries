@@ -21,6 +21,10 @@ export default async function IdePage({
   if (!session && practice) {
     return <IdeShell practice candidateName={candidate?.name} assessmentName={PRACTICE_NAME} taskBrief={PRACTICE_BRIEF} starterFiles={PRACTICE_FILES} />;
   }
+  // No session and no practice run: there is no task, so there is no
+  // workspace. Assessments are by invitation; a workspace opens only on a
+  // session the candidate started from one (or on the practice task above).
+  if (!session) redirect("/dashboard");
   // Fetched here, server-side, before the IDE ever renders — not from
   // inside IdeShell — so the workspace's very first paint already has the
   // real starting files/brief (or the honest fallback) rather than

@@ -24,17 +24,23 @@ export interface Assessment {
   /** The candidate's session for this assessment, when they have one — the workspace to resume, or the report to open. */
   sessionId?: string;
   /**
-   * Present when this is a company's invitation to this candidate, and
-   * absent for an open-pool assessment anyone can start: whether they have
-   * accepted it, or declined it (a declined invitation's status is "closed").
+   * Whether the candidate has accepted the invitation, or declined it (a
+   * declined invitation's status is "closed"). Every assessment is an
+   * invitation; this is absent only when the answers couldn't be read.
    */
   invitation?: { accepted: boolean; declined: boolean };
+  /**
+   * Whether the candidate's own task has been made yet. Each invitation
+   * gets a task written for that candidate after it is sent; until it is
+   * "ready" there is nothing to start.
+   */
+  taskStatus?: "pending" | "generating" | "ready" | "failed";
 }
 
-/** Shown when the list couldn't be read — distinct from a real, empty list. */
+/** Shown when the list couldn't be read â€” distinct from a real, empty list. */
 export const UNAVAILABLE = {
   title: "Assessments unavailable",
-  body: "We couldn't load your assessments just now. Nothing is lost — try again in a moment.",
+  body: "We couldn't load your assessments just now. Nothing is lost â€” try again in a moment.",
 };
 
 export const statusLabels: Record<AssessmentStatus, string> = {

@@ -1,6 +1,6 @@
 /**
  * The work a candidate is looking for (candidate_users.job_preferences,
- * migration 0022). Pure: the profile form and the server action both use
+ * migration 0024). Pure: the profile form and the server action both use
  * `cleanJobPreferences`, so what the form allows and what is stored can't
  * drift apart.
  *

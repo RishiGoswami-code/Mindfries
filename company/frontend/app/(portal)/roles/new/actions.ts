@@ -3,8 +3,8 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireCompanyPermission, ForbiddenError } from "@/lib/auth/company-users";
-import { createJobRole } from "@/lib/db";
-import type { RoleVisibility } from "@/lib/types";
+import { createJobRole, TASK_VARIANTS } from "@/lib/db";
+import type { TaskVariant } from "@/lib/types";
 
 const text = (v: unknown, max: number) => (typeof v === "string" ? v.slice(0, max).trim() : "");
 
@@ -32,11 +32,14 @@ export async function createRole(_prev: CreateRoleState, form: FormData): Promis
     return { error: "Duration must be a positive number of minutes." };
   }
 
-  const visibility: RoleVisibility = form.get("visibility") === "open_pool" ? "open_pool" : "invite_only";
+  // Assessments are by invitation only; every role is.
+  const variant = String(form.get("taskVariant") ?? "");
+  const taskVariant: TaskVariant = (TASK_VARIANTS as string[]).includes(variant) ? (variant as TaskVariant) : "bug_fix";
+  const assessmentBrief = text(form.get("assessmentBrief"), 4000);
 
   let roleId: string;
   try {
-    roleId = (await createJobRole({ companyId, title, techStack, durationMin, visibility })).id;
+    roleId = (await createJobRole({ companyId, title, techStack, durationMin, visibility: "invite_only", assessmentBrief, taskVariant })).id;
   } catch (e) {
     return { error: e instanceof Error ? e.message : "Couldn't create that role — try again." };
   }
