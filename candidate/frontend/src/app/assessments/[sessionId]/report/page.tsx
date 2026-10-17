@@ -218,9 +218,9 @@ function Summary({ report, activity, durationMin, href }: { report: ReportView; 
 
   return (
     <>
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1.35fr)_repeat(5,minmax(0,1fr))]">
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,2fr)]">
         <RecommendationCard report={report} />
-        <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 xl:col-span-5 xl:grid-cols-5">
+        <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 xl:grid-cols-5">
           {tiles.map((t) => {
             const body = (
               <>
