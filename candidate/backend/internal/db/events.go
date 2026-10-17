@@ -60,6 +60,19 @@ func (d *DB) InsertActivityEvents(ctx context.Context, sessionID string, events 
 	return tx.Commit(ctx)
 }
 
+// SaveFlagDescription stores (or replaces) the vision caption for one flagged
+// moment, keyed by its activity_event id, so the report's Flags panel can show
+// what the moment's screen still contained. Idempotent: re-running evaluation
+// overwrites the caption rather than erroring.
+func (d *DB) SaveFlagDescription(ctx context.Context, eventID int64, sessionID, description string) error {
+	_, err := d.pool.Exec(ctx, `
+		insert into flag_descriptions (event_id, session_id, description)
+		values ($1, $2, $3)
+		on conflict (event_id) do update set description = excluded.description, created_at = now()
+	`, eventID, sessionID, description)
+	return err
+}
+
 // ReplaceFlaggedEvent stores one event in place of every earlier event of
 // the same type on this session whose payload carries `"<flag>": true`. It
 // is for state that is saved over and over and only ever read at its latest

@@ -3,6 +3,7 @@ package orchestrator
 import (
 	"context"
 	"encoding/base64"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -23,7 +24,7 @@ const proctorBucket = "proctor-snapshots"
 // Best-effort and never a verdict: it falls back to the plain note when the
 // stills store or the describer isn't configured, and any still that can't be
 // fetched or described simply has no caption. It never fails the evaluation.
-func (o *Orchestrator) describedFlagsNote(ctx context.Context, events []db.ActivityEvent, startedAt time.Time, taskContext string) string {
+func (o *Orchestrator) describedFlagsNote(ctx context.Context, sessionID string, events []db.ActivityEvent, startedAt time.Time, taskContext string) string {
 	moments, camera := flagMoments(events, startedAt)
 	if len(moments) == 0 {
 		return ""
@@ -44,6 +45,13 @@ func (o *Orchestrator) describedFlagsNote(ctx context.Context, events []db.Activ
 			desc, err := o.Agents.DescribeStill(ctx, llm.ImagePart{MimeType: ctype, Data: base64.StdEncoding.EncodeToString(data)}, taskContext)
 			if err == nil && strings.TrimSpace(desc) != "" {
 				captions[i] = strings.TrimSpace(desc)
+				if m.eventID != 0 && o.DB != nil {
+					// Store it against the flag so the report's Flags panel can
+					// show it too, not just the report prose. Best-effort.
+					if err := o.DB.SaveFlagDescription(ctx, m.eventID, sessionID, captions[i]); err != nil {
+						slog.Warn("orchestrator: saving flag description failed", "event", m.eventID, "error", err)
+					}
+				}
 			}
 		}
 	}
