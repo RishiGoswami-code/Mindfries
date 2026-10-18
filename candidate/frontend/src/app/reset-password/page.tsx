@@ -1,6 +1,9 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { LoginBlobs } from "@/components/login/LoginBlobs";
+import clsx from "clsx";
+import { Link2Off as LinkIcon } from "lucide-react";
+import { AuthShell, authSubmit } from "@/components/login/AuthShell";
+import { display } from "@/lib/dashboard/fonts";
 import { MIN_PASSWORD_LENGTH, resetLinkIsLive } from "@/lib/auth/email-links";
 import { ResetForm } from "./ResetForm";
 
@@ -23,30 +26,23 @@ export default async function ResetPasswordPage({ searchParams }: { searchParams
   const live = typeof token === "string" && (await resetLinkIsLive(token));
 
   return (
-    <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-[#F6FAFD] px-6 py-16">
-      <LoginBlobs />
-
-      <div className="relative z-10 flex w-full flex-col items-center">
-        <div className="mb-10 flex items-center gap-2.5">
-          {/* eslint-disable-next-line @next/next/no-img-element -- tiny static local SVG, no optimization needed */}
-          <img src="/mindfries-logo.svg" alt="" width={34} height={34} />
-          <span className="text-[22px] font-semibold tracking-tight text-[#0A1931]">Mindfries</span>
+    <AuthShell>
+      {live ? (
+        <ResetForm token={token as string} minLength={MIN_PASSWORD_LENGTH} />
+      ) : (
+        <div className="w-full text-center">
+          <span className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-[#FDE8EC] text-[#DC2643]">
+            <LinkIcon size={24} strokeWidth={1.8} />
+          </span>
+          <h1 className={clsx(display.className, "mt-5 text-[30px] leading-tight font-semibold tracking-tight text-[#100E2E]")}>This link no longer works</h1>
+          <p className="mt-2 text-[14.5px] leading-relaxed text-[#5E5A82]">
+            A reset link works once, for an hour. Ask for a new one and use it straight away.
+          </p>
+          <Link href="/forgot-password" className={clsx(authSubmit, "mt-6")}>
+            Send a new link
+          </Link>
         </div>
-
-        {live ? (
-          <ResetForm token={token as string} minLength={MIN_PASSWORD_LENGTH} />
-        ) : (
-          <div className="w-full max-w-sm text-center">
-            <h1 className="text-[17px] font-semibold text-[#0A1931]">This link no longer works</h1>
-            <p className="mt-2 text-[13.5px] leading-relaxed text-[#4A7FA7]">
-              A reset link works once, for an hour. Ask for a new one and use it straight away.
-            </p>
-            <Link href="/forgot-password" className="mt-5 inline-block text-[13px] font-medium text-[#1A3D63] hover:underline">
-              Send a new link
-            </Link>
-          </div>
-        )}
-      </div>
-    </div>
+      )}
+    </AuthShell>
   );
 }
