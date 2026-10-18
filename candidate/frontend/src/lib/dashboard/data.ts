@@ -35,6 +35,8 @@ export interface Assessment {
    * "ready" there is nothing to start.
    */
   taskStatus?: "pending" | "generating" | "ready" | "failed";
+  /** True when the company has shared the report with the candidate. */
+  reportShared?: boolean;
 }
 
 /** Shown when the list couldn't be read â€” distinct from a real, empty list. */

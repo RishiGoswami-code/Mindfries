@@ -94,7 +94,7 @@ export default async function InvitePage({ params }: { params: Promise<{ token: 
               You&apos;ve already submitted this assessment.{" "}
               {sessionId && (
                 <Link href={`/assessments/${encodeURIComponent(sessionId)}/report`} className="font-semibold underline underline-offset-4">
-                  See your report
+                  View submission status
                 </Link>
               )}
             </p>

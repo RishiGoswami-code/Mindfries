@@ -8,17 +8,20 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-// Report is one assessment_reports row (0006_events_and_reports.sql) —
+// Report is one assessment_reports row (0006_events_and_reports.sql, 0028_share_report_with_candidate.sql) —
 // PRD §1.10's ASSESSMENT_REPORT.
 type Report struct {
-	ID             string
-	SessionID      string
-	Status         string // pending|generating|ready|failed
-	Recommendation *string
-	Summary        *string
-	Error          *string
-	CreatedAt      time.Time
-	UpdatedAt      time.Time
+	ID                  string
+	SessionID           string
+	Status              string // pending|generating|ready|failed
+	Recommendation      *string
+	Summary             *string
+	Error               *string
+	SharedWithCandidate bool
+	SharedAt            *time.Time
+	SharedBy            *string
+	CreatedAt           time.Time
+	UpdatedAt           time.Time
 }
 
 // EvidenceItem is one evidence_items row — PRD §1.10's EVIDENCE_ITEM, one
@@ -41,14 +44,14 @@ func (d *DB) CreatePendingReport(ctx context.Context, sessionID string) (Report,
 		insert into assessment_reports (session_id, status)
 		values ($1, 'pending')
 		on conflict (session_id) do update set status = 'pending', error = null, updated_at = now()
-		returning id, session_id, status, recommendation, summary, error, created_at, updated_at
+		returning id, session_id, status, recommendation, summary, error, coalesce(shared_with_candidate, false), shared_at, shared_by, created_at, updated_at
 	`, sessionID)
 	return scanReport(row)
 }
 
 func scanReport(row pgx.Row) (Report, error) {
 	var r Report
-	err := row.Scan(&r.ID, &r.SessionID, &r.Status, &r.Recommendation, &r.Summary, &r.Error, &r.CreatedAt, &r.UpdatedAt)
+	err := row.Scan(&r.ID, &r.SessionID, &r.Status, &r.Recommendation, &r.Summary, &r.Error, &r.SharedWithCandidate, &r.SharedAt, &r.SharedBy, &r.CreatedAt, &r.UpdatedAt)
 	return r, err
 }
 
@@ -56,7 +59,7 @@ func scanReport(row pgx.Row) (Report, error) {
 // endpoint polls.
 func (d *DB) GetReportBySession(ctx context.Context, sessionID string) (Report, error) {
 	row := d.pool.QueryRow(ctx, `
-		select id, session_id, status, recommendation, summary, error, created_at, updated_at
+		select id, session_id, status, recommendation, summary, error, coalesce(shared_with_candidate, false), shared_at, shared_by, created_at, updated_at
 		from assessment_reports where session_id = $1
 	`, sessionID)
 	r, err := scanReport(row)
