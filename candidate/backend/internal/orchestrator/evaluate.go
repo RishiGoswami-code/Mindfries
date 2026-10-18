@@ -177,19 +177,16 @@ func (o *Orchestrator) Evaluate(ctx context.Context, sessionID string) error {
 	// directly and doesn't — see llm.DetectSteering.
 	integrity = append(integrity, detectSteering(events)...)
 
-	// Moments the candidate's browser flagged live (issue #120), as facts
-	// with their times — for a person to look at, beside their evidence.
+	// Moments the candidate's browser flagged live (issue #120), as facts with
+	// their times — for a person to look at, beside their evidence. Each
+	// flagged moment's screen still is captioned in one batched vision call so
+	// the reviewer reads what was on screen, not just the label. Camera
+	// detection (a phone, a second person, an absent candidate) is done live
+	// and for free in the browser (face-watch.ts, MediaPipe) and arrives here
+	// as flags above — there is no separate report-time webcam vision sweep.
 	if text := o.describedFlagsNote(ctx, sess.ID, events, sess.StartedAt, briefOf(tc)); text != "" {
 		evidence = append(evidence, db.EvidenceItem{Category: "activity_flags", Observation: text})
 		forReport = append(forReport, "Flagged moments (prompts to look, not findings):\n"+text)
-	}
-
-	// What the camera showed, from a sample of the webcam stills — this is what
-	// catches a phone held up to the screen, which leaves no tab, paste or
-	// keypress for the live flags to see.
-	if text := o.cameraObservations(ctx, events, sess.StartedAt); text != "" {
-		evidence = append(evidence, db.EvidenceItem{Category: "camera_observations", Observation: text})
-		forReport = append(forReport, "What the camera showed (prompts to look, not findings):\n"+text)
 	}
 
 	// The command record is the candidate's own shell reporting on itself;

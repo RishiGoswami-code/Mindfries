@@ -22,14 +22,14 @@ func TestDescribeStillLive(t *testing.T) {
 		t.Fatalf("reading test image: %v", err)
 	}
 	agents := NewAgents(NewGeminiClient(key, ""), GeminiAgentModels())
-	desc, err := agents.DescribeStill(context.Background(),
-		ImagePart{MimeType: "image/png", Data: base64.StdEncoding.EncodeToString(raw)},
+	descs, err := agents.DescribeStills(context.Background(),
+		[]LabeledImage{{Label: "a flagged moment", Img: ImagePart{MimeType: "image/png", Data: base64.StdEncoding.EncodeToString(raw)}}},
 		"A Python bug-fix task worked entirely in the workspace. The candidate was not asked to use any outside site or AI chat tool.")
 	if err != nil {
-		t.Fatalf("DescribeStill: %v", err)
+		t.Fatalf("DescribeStills: %v", err)
 	}
-	if strings.TrimSpace(desc) == "" {
-		t.Fatal("empty description")
+	if len(descs) != 1 || strings.TrimSpace(descs[0]) == "" {
+		t.Fatalf("expected one non-empty description, got %v", descs)
 	}
-	t.Logf("DESCRIPTION: %s", desc)
+	t.Logf("DESCRIPTION: %s", descs[0])
 }
