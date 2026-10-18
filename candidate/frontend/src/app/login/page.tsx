@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { LoginBlobs } from "@/components/login/LoginBlobs";
+import { AuthShell } from "@/components/login/AuthShell";
 import { LoginForm } from "@/components/login/LoginForm";
 import { isConfigured, OAUTH_PROVIDER_ORDER } from "@/lib/auth/oauth-providers";
 
@@ -12,8 +12,8 @@ export const dynamic = "force-dynamic";
 
 /**
  * The candidate portal's entry point, shaped after the supplied reference —
- * centred form, no card border, scattered decorative shapes — redrawn in
- * this app's own palette. Real now: LoginForm submits to lib/auth/users.ts's
+ * centred form and scattered decorative shapes, inside AuthShell's soft card
+ * on the dashboard's lavender canvas. Real now: LoginForm submits to lib/auth/users.ts's
  * checkCredentials against candidate_users.
  *
  * The four social buttons are real OAuth now too (lib/auth/oauth-*.ts) —
@@ -41,32 +41,22 @@ export default async function LoginPage({
       : null;
 
   return (
-    <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-[#F6FAFD] px-6 py-16">
-      <LoginBlobs />
-
-      <div className="relative z-10 flex w-full flex-col items-center">
-        <div className="mb-10 flex items-center gap-2.5">
-          {/* eslint-disable-next-line @next/next/no-img-element -- tiny static local SVG, no optimization needed */}
-          <img src="/mindfries-logo.svg" alt="" width={34} height={34} />
-          <span className="text-[22px] font-semibold tracking-tight text-[#0A1931]">Mindfries</span>
-        </div>
-
-        <LoginForm
-          next={safeNext}
-          configuredProviders={configuredProviders}
-          socialError={socialError}
-          notice={
-            reset === "1"
-              ? "Your password has been changed, and every device was signed out. Sign in with the new one."
-              : ended === "1"
-                ? "You've been signed out on every device. Sign in again to continue."
-                : deleted === "1"
-                  ? "Your account and everything in it has been deleted."
-                  : null
-          }
-        />
-      </div>
-    </div>
+    <AuthShell title="Welcome back" subtitle="Sign in to your Mindfries workspace.">
+      <LoginForm
+        next={safeNext}
+        configuredProviders={configuredProviders}
+        socialError={socialError}
+        notice={
+          reset === "1"
+            ? "Your password has been changed, and every device was signed out. Sign in with the new one."
+            : ended === "1"
+              ? "You've been signed out on every device. Sign in again to continue."
+              : deleted === "1"
+                ? "Your account and everything in it has been deleted."
+                : null
+        }
+      />
+    </AuthShell>
   );
 }
 
