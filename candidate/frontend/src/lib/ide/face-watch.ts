@@ -61,7 +61,7 @@ interface VisionModule {
 }
 const importAtRuntime = new Function("url", "return import(url)") as (url: string) => Promise<VisionModule>;
 
-async function loadDetectors(): Promise<{ face: Detector | null; object: ObjectDetector | null }> {
+async function loadDetectors(): Promise<{ face: Detector | null; object: ObjectDetector | null; error?: string }> {
   try {
     const vision = await importAtRuntime(BUNDLE);
     const files = await vision.FilesetResolver.forVisionTasks(WASM);
@@ -80,8 +80,15 @@ async function loadDetectors(): Promise<{ face: Detector | null; object: ObjectD
       categoryAllowlist: ["cell phone"],
     }).catch(() => null);
     return { face, object };
-  } catch {
-    return { face: null, object: null };
+  } catch (err) {
+    // This is the one failure that used to vanish: a blocked CDN, an eval
+    // restriction, a WASM load error — the detectors just quietly never ran
+    // while capture kept working, so a session looked proctored but wasn't
+    // watched. Surface it (console for a live test; the caller also records
+    // it to the session, since devtools are blocked during a real assessment).
+    const reason = err instanceof Error ? err.message : String(err);
+    console.warn("face-watch: the camera detectors could not be loaded —", reason);
+    return { face: null, object: null, error: reason };
   }
 }
 
@@ -95,12 +102,27 @@ function phoneInFrame(detector: ObjectDetector, video: HTMLVideoElement): boolea
   }
 }
 
+/** Told once whether the detectors came up, and why not when they didn't. */
+export type FaceWatchStatus = { ok: true } | { ok: false; reason: string };
+
 /**
- * Watches `video` (a playing element showing the camera) and calls `onEvent`
- * when a moment is worth flagging. Returns the function that stops it.
+ * Watches the camera `stream` and calls `onEvent` when a moment is worth
+ * flagging. `onStatus`, if given, is called once the detectors either load or
+ * fail, so the caller can record whether the session was actually watched.
+ * Returns the function that stops it.
+ *
+ * It reads frames off its own detached <video> rather than borrowing one: the
+ * detection must not depend on another component's element being mounted and
+ * ready at the exact moment this starts.
  */
-export function watchFaces(video: HTMLVideoElement, onEvent: (event: FaceEvent) => void): () => void {
+export function watchFaces(stream: MediaStream, onEvent: (event: FaceEvent) => void, onStatus?: (status: FaceWatchStatus) => void): () => void {
   let stopped = false;
+  const video = document.createElement("video");
+  video.muted = true;
+  video.playsInline = true;
+  video.srcObject = stream;
+  void video.play().catch(() => undefined);
+
   let face: Detector | null = null;
   let object: ObjectDetector | null = null;
   let missing = 0;
@@ -116,7 +138,11 @@ export function watchFaces(video: HTMLVideoElement, onEvent: (event: FaceEvent) 
     }
     face = d.face;
     object = d.object;
-    if (!face && !object) return;
+    if (!face && !object) {
+      onStatus?.({ ok: false, reason: d.error || "the camera detectors could not be loaded" });
+      return;
+    }
+    onStatus?.({ ok: true });
     timer = setInterval(() => {
       if (stopped || document.hidden || video.readyState < 2) return;
       if (face) {
@@ -147,5 +173,6 @@ export function watchFaces(video: HTMLVideoElement, onEvent: (event: FaceEvent) 
     if (timer) clearInterval(timer);
     face?.close();
     object?.close();
+    video.srcObject = null;
   };
 }

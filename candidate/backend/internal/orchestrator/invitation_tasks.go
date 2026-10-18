@@ -34,8 +34,12 @@ const (
 	otherBriefsShown  = 3
 	otherBriefMaxChar = 1200
 	invitationTaskCap = 15 * time.Minute
-	// How many times one attempt writes the task before giving up.
-	generationsPerAttempt = 3
+	// How many times one attempt writes the task before giving up. One: the
+	// task is generated once. If the model returns something that won't parse
+	// or won't verify, the attempt fails and a person is told — the old value
+	// of 3 meant one bad task could cost three full generations before even
+	// counting as a single failed attempt.
+	generationsPerAttempt = 1
 )
 
 // describeFailure is what the agent is told about its last task: why it
@@ -146,16 +150,42 @@ func (o *Orchestrator) prepareNextInvitationTask(ctx context.Context) (bool, tim
 	if err != nil {
 		slog.Error("orchestrator: making an invitation's task", "invitation", job.ID, "attempt", job.Attempts, "error", err)
 		reason := err.Error()
-		if job.Attempts >= db.MaxInvitationTaskAttempts {
-			reason = fmt.Sprintf("Gave up after %d attempts. Last problem: %s", job.Attempts, reason)
+		final := job.Attempts >= db.MaxInvitationTaskAttempts
+		if final {
+			reason = "Task generation failed and will not be retried automatically. " + reason
 		}
 		if ferr := o.DB.FailInvitationTask(context.WithoutCancel(ctx), *job, reason); ferr != nil {
 			slog.Error("orchestrator: recording a failed task", "invitation", job.ID, "error", ferr)
+		}
+		// A task is tried once, so this is final: tell the company/admin so a
+		// person can regenerate or assign one — the candidate is otherwise
+		// stuck with an assessment that never prepares.
+		if final {
+			o.alertTaskFailure(ctx, *job, reason)
 		}
 		return true, 0
 	}
 	slog.Info("orchestrator: invitation task ready", "invitation", job.ID, "took", time.Since(started).Round(time.Second))
 	return true, 0
+}
+
+// alertTaskFailure pushes a failed task to the company/admin by email, so a
+// person can act. Best-effort: when no alert address is set it just logs —
+// loudly, because a silent stuck candidate is the thing this exists to avoid.
+// Its own context, not the worker's, so a cancel on shutdown can't drop it.
+func (o *Orchestrator) alertTaskFailure(ctx context.Context, job db.InvitationTaskJob, reason string) {
+	if o.Notifier == nil || !o.Notifier.Configured() {
+		slog.Warn("orchestrator: a task failed and no alert address is set — set RESEND_API_KEY, RESEND_FROM and TASK_ALERT_EMAIL so the company/admin is told",
+			"invitation", job.ID, "candidate", job.CandidateEmail, "role", job.RoleTitle)
+		return
+	}
+	alertCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 20*time.Second)
+	defer cancel()
+	if err := o.Notifier.TaskFailure(alertCtx, job.ID, job.CompanyName, job.RoleTitle, job.CandidateEmail, reason); err != nil {
+		slog.Error("orchestrator: alerting the company/admin of a failed task", "invitation", job.ID, "error", err)
+		return
+	}
+	slog.Info("orchestrator: alerted the company/admin of a failed task", "invitation", job.ID, "candidate", job.CandidateEmail)
 }
 
 func (o *Orchestrator) makeInvitationTask(ctx context.Context, job db.InvitationTaskJob) error {

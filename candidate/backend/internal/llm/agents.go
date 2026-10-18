@@ -30,7 +30,14 @@ const (
 	reportTokens    = 1500  // a recommendation and a short summary, as JSON
 	assistantTokens = 800   // a concise answer in the workspace chat
 	interviewTokens = 600   // one question
-	taskGenTokens   = 12000 // a brief, a small codebase, and the solution's changed files
+	// A brief, a small codebase, and the solution's changed files. This is the
+	// reply budget; Gemini adds full-thinking room on top (buildGeminiRequest),
+	// and thinking shares the real ceiling with the reply. 12000 left too
+	// little once a heavier task's thinking ran long — real tasks truncated
+	// mid-file and failed to parse. A cap is a ceiling, not a target: small
+	// tasks still stop early, so the extra room only costs anything on the big
+	// tasks that would otherwise fail (and retry) outright.
+	taskGenTokens = 20000
 	rubricTokens    = 2500  // a score and a short reason per criterion, as JSON
 )
 

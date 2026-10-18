@@ -462,11 +462,16 @@ export function IdeShell({ sessionId, candidateName, taskBrief, starterFiles, as
     return watchAudio(camera.stream, (event) => void raiseFlag({ kind: event.kind }, event.clip));
   }, [watching, camera.stream, raiseFlag]);
   useEffect(() => {
-    if (!watching || !cameraStillsRef.current) return;
-    return watchFaces(cameraStillsRef.current.video, (event) =>
-      void raiseFlag({ kind: event.kind, ...(event.kind === "multiple_faces" ? { detail: { faces: event.faces } } : {}) }),
+    if (!watching || !camera.stream) return;
+    return watchFaces(
+      camera.stream,
+      (event) => void raiseFlag({ kind: event.kind, ...(event.kind === "multiple_faces" ? { detail: { faces: event.faces } } : {}) }),
+      // Recorded so a session's trail shows whether the camera detectors
+      // actually ran — the live flags are only as good as this, and there's no
+      // console to read during a real assessment.
+      (status) => telemetryRef.current?.record("proctor_ml", status),
     );
-  }, [watching, raiseFlag]);
+  }, [watching, camera.stream, raiseFlag]);
   // The share stopping is a moment too; the gate below locks the workspace.
   const screenStatus = screen.status;
   useEffect(() => {

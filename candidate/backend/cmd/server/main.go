@@ -17,6 +17,7 @@ import (
 	"github.com/mindfries/candidate-backend/internal/db"
 	"github.com/mindfries/candidate-backend/internal/httpapi"
 	"github.com/mindfries/candidate-backend/internal/llm"
+	"github.com/mindfries/candidate-backend/internal/notify"
 	"github.com/mindfries/candidate-backend/internal/orchestrator"
 	"github.com/mindfries/candidate-backend/internal/sandbox"
 	"github.com/mindfries/candidate-backend/internal/storage"
@@ -60,6 +61,7 @@ func main() {
 	hub := ws.NewHub(cfg.AllowedOrigins)
 	orc := orchestrator.New(database, agents, sandboxClient, hub)
 	orc.Stills = storage.New(cfg.SupabaseURL, cfg.SupabaseServiceKey)
+	orc.Notifier = notify.New(cfg.ResendAPIKey, cfg.ResendFrom, cfg.TaskAlertEmail, os.Getenv("RESEND_API_URL"))
 	orc.Live = llm.NewLiveClient(cfg.GeminiAPIKey, cfg.GeminiLiveModel)
 	orc.SandboxNetwork, orc.SandboxMaxLive = cfg.SandboxNetwork, cfg.SandboxMaxLive
 	orc.RequireVerifiedEmail = cfg.RequireVerifiedEmail

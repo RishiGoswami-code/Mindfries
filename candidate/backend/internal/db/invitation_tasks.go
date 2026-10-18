@@ -22,17 +22,26 @@ type InvitationTaskJob struct {
 	RoleID      *string
 	// RoleTitle is the role's title, or the invitation's own role text for an
 	// invitation that isn't attached to a role.
-	RoleTitle   string
-	Brief       string
-	TaskVariant string
-	TechStack   []string
-	DurationMin int
-	Attempts    int
+	RoleTitle string
+	// CandidateEmail is who the invitation is for — named in the alert sent
+	// when the task can't be generated, so a person knows who is blocked.
+	CandidateEmail string
+	Brief          string
+	TaskVariant    string
+	TechStack      []string
+	DurationMin    int
+	Attempts       int
 }
 
 // MaxInvitationTaskAttempts is how many times a task is tried before the
-// invitation is marked failed for a person to look at.
-const MaxInvitationTaskAttempts = 3
+// invitation is marked failed for a person to look at. One, deliberately:
+// a task is generated exactly once, and if that fails the invitation is
+// marked failed and the company/admin is alerted (prepareNextInvitationTask)
+// rather than the model being paid to try again and again. Retrying was the
+// cost leak — a single doomed task could run up nine full generations and
+// still end with nothing. A real failure is now a person's call, not a
+// standing order to keep spending.
+const MaxInvitationTaskAttempts = 1
 
 // ClaimInvitationTask takes the oldest invitation waiting for a task — or
 // one whose generation was started so long ago that whoever started it must
@@ -56,8 +65,8 @@ func (d *DB) ClaimInvitationTask(ctx context.Context) (*InvitationTaskJob, error
 		set task_status = 'generating', task_started_at = now(), task_attempts = a.task_attempts + 1
 		from next
 		where a.id = next.id
-		returning a.id, a.company_id, a.job_role_id, coalesce(a.role, ''), a.task_attempts
-	`, MaxInvitationTaskAttempts).Scan(&job.ID, &job.CompanyID, &job.RoleID, &job.RoleTitle, &job.Attempts)
+		returning a.id, a.company_id, a.job_role_id, coalesce(a.role, ''), coalesce(a.candidate_email, ''), a.task_attempts
+	`, MaxInvitationTaskAttempts).Scan(&job.ID, &job.CompanyID, &job.RoleID, &job.RoleTitle, &job.CandidateEmail, &job.Attempts)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, nil
 	}
