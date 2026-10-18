@@ -32,6 +32,7 @@ var flagWords = map[string]string{
 	"external_paste":       "Large paste from outside the workspace",
 	"face_missing":         "Nobody in front of the camera",
 	"multiple_faces":       "More than one face on camera",
+	"phone_visible":        "A phone in view of the camera",
 	"voices_detected":      "Voices on the microphone",
 	"loud_noise":           "Loud noise on the microphone",
 	"devtools_attempt":     "Tried to open developer tools",
@@ -76,7 +77,7 @@ func flagMoments(events []db.ActivityEvent, startedAt time.Time) ([]flagMoment, 
 				what += fmt.Sprintf(" (%d characters)", int(chars))
 			}
 		}
-		if p.Kind == "face_missing" || p.Kind == "multiple_faces" {
+		if p.Kind == "face_missing" || p.Kind == "multiple_faces" || p.Kind == "phone_visible" {
 			camera = true
 		}
 		moments = append(moments, flagMoment{at: max(0, when.Sub(startedAt)), what: what, kind: p.Kind, screenPath: p.ScreenPath, eventID: e.ID})
