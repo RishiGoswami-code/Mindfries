@@ -14,11 +14,14 @@ import (
 )
 
 // maxCameraChecks bounds how many webcam stills the vision check looks at in
-// one evaluation — it samples evenly across the session so a brief phone-up is
-// likely caught. Gemini image tokens are cheap, so this is set for coverage
-// (a 20-minute session at 15s snapshots is ~80 stills, sampled down to this),
-// bounded mainly to keep the evaluation's own running time in hand.
-const maxCameraChecks = 40
+// one evaluation. Each check is cheap (a small image, a one-word "OK" for an
+// ordinary frame), so this is set high for coverage, not cost: a brief phone-up
+// is only caught if its still is actually checked, and sampling too hard drops
+// frames twice over (the 15s capture interval, then the downsample). At 15s
+// snapshots this covers a session up to ~22 minutes with every still checked;
+// longer sessions sample more coarsely. The ceiling exists only to keep the
+// evaluation's own running time inside its budget — the checks run in sequence.
+const maxCameraChecks = 90
 
 // cameraObservations looks at a sample of the session's webcam stills and
 // reports what a reviewer should look at — a phone, a second person, an absent
