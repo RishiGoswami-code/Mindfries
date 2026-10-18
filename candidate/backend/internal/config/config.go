@@ -72,6 +72,16 @@ type Config struct {
 	SupabaseURL        string
 	SupabaseServiceKey string
 
+	// ResendAPIKey, ResendFrom and TaskAlertEmail send operational alerts —
+	// right now, a note to the company/admin when a candidate's task could not
+	// be generated (a task is tried once; a failure is a person's call, not a
+	// retry). Same Resend HTTP API the three frontends use. Any of the three
+	// empty means no alert is sent: the failure is still recorded and logged,
+	// so nothing is lost, it just isn't pushed to anyone.
+	ResendAPIKey   string
+	ResendFrom     string
+	TaskAlertEmail string
+
 	// DaytonaAPIKey / DaytonaBaseURL — sandbox orchestration. Empty means
 	// session start still records a real row, but sandbox provisioning
 	// reports itself as not wired up rather than pretending a workspace
@@ -144,6 +154,9 @@ func Load() (Config, error) {
 		GeminiLiveModel:        os.Getenv("GEMINI_LIVE_MODEL"),
 		SupabaseURL:            strings.TrimRight(os.Getenv("SUPABASE_URL"), "/"),
 		SupabaseServiceKey:     os.Getenv("SUPABASE_SERVICE_ROLE_KEY"),
+		ResendAPIKey:           os.Getenv("RESEND_API_KEY"),
+		ResendFrom:             os.Getenv("RESEND_FROM"),
+		TaskAlertEmail:         os.Getenv("TASK_ALERT_EMAIL"),
 		DaytonaAPIKey:          os.Getenv("DAYTONA_API_KEY"),
 		DaytonaBaseURL:         getenv("DAYTONA_BASE_URL", "https://app.daytona.io/api"),
 		SandboxNetwork:         strings.ToLower(getenv("SANDBOX_NETWORK", "open")),
@@ -204,6 +217,9 @@ func (c Config) Warnings() []string {
 	}
 	if c.DaytonaAPIKey == "" {
 		w = append(w, "DAYTONA_API_KEY is not set — sandbox provisioning will answer 'not configured'; sessions still record")
+	}
+	if c.ResendAPIKey == "" || c.ResendFrom == "" || c.TaskAlertEmail == "" {
+		w = append(w, "RESEND_API_KEY / RESEND_FROM / TASK_ALERT_EMAIL are not all set — a task that fails to generate is recorded and logged, but the company/admin is not emailed about it")
 	}
 	return w
 }

@@ -18,6 +18,7 @@ import (
 
 	"github.com/mindfries/candidate-backend/internal/db"
 	"github.com/mindfries/candidate-backend/internal/llm"
+	"github.com/mindfries/candidate-backend/internal/notify"
 	"github.com/mindfries/candidate-backend/internal/sandbox"
 	"github.com/mindfries/candidate-backend/internal/storage"
 	"github.com/mindfries/candidate-backend/internal/verify"
@@ -37,6 +38,10 @@ type Orchestrator struct {
 	// can describe what each flagged moment showed. Nil/unconfigured simply
 	// omits captions; the flags still show their stills to the reviewer.
 	Stills *storage.Client
+	// Notifier alerts the company/admin when a candidate's task couldn't be
+	// generated (a task is tried once, so a failure is final). Nil or
+	// unconfigured means the failure is only recorded and logged, not pushed.
+	Notifier *notify.Mailer
 	// Live is the interviewer's live voice line. Nil or unconfigured means
 	// interviews are held turn by turn through Agents.
 	Live *llm.LiveClient
