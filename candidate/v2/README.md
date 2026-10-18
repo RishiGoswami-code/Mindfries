@@ -1,5 +1,11 @@
 # Candidate panel — v2 (parked, not built)
 
+> **V2 is now specified in [`v2/SPEC.md`](../../v2/SPEC.md); start at
+> [`v2/README.md`](../../v2/README.md).** This folder predates that spec. It
+> refactors V1's *browser* workspace, while V2 moves coding into the
+> candidate's own IDE. Whether any of it carries into V2, as a browser
+> fallback, is still to be decided.
+
 The v2 candidate panel, kept apart from the live one until it's complete.
 **Nothing here is built, run or deployed.** The live candidate portal is still
 `candidate/frontend` (v1), unchanged. What goes into v2 is still to be decided;
