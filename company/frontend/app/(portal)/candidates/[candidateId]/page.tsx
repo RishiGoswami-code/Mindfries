@@ -12,6 +12,7 @@ import { CandidateSnapshot } from "./CandidateSnapshot";
 import { EvidenceList } from "./EvidenceList";
 import { ReviewerDecisionForm } from "./ReviewerDecisionForm";
 import { ReportAutoRefresh } from "./ReportAutoRefresh";
+import { ReportShareControl } from "./ReportShareControl";
 import { ApplicantCard, EmailPanel, InterviewsPanel } from "./HiringPanels";
 import { loadReportActivity } from "@/lib/report/data";
 import { CandidateEvidenceReport } from "@/components/report/CandidateEvidenceReport";
@@ -136,6 +137,16 @@ export default async function CandidateDetailPage({ params }: { params: Promise<
               </span>
             </div>
           </div>
+
+          {report && (
+            <ReportShareControl
+              applicationId={application.id}
+              sharedWithCandidate={report.sharedWithCandidate}
+              sharedAt={report.sharedAt}
+              sharedBy={report.sharedBy}
+              canManage={canReview}
+            />
+          )}
 
           {report?.review && (
             <div className="hair-card p-5">

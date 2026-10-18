@@ -202,6 +202,10 @@ export interface AssessmentReport {
   annotations: ReportAnnotation[];
   /** The reviewer's own decision, when one has been recorded. */
   review: ReportReview | null;
+  /** Whether the report has been shared with the candidate. */
+  sharedWithCandidate?: boolean;
+  sharedAt?: string | null;
+  sharedBy?: string | null;
 }
 
 /** A reviewer's note against the report, or one section of it. Never shown to the candidate. */

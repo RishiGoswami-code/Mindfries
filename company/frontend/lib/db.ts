@@ -621,6 +621,9 @@ export async function getCandidateReport(assessmentId: string | null): Promise<C
             at: reportRow.reviewed_at ?? null,
           }
         : null,
+    sharedWithCandidate: !!reportRow.shared_with_candidate,
+    sharedAt: reportRow.shared_at ?? null,
+    sharedBy: reportRow.shared_by ?? null,
   };
   report.moments = await getMoments(session.id, session.startedAt, citedIds(report.evidence.map((e) => e.observation)));
 
@@ -843,6 +846,30 @@ export async function setReviewerDecision(
     })
     .eq("id", reportId);
   if (missingSchema(error)) throw new Error(NEEDS_0016);
+  if (error) throw error;
+}
+
+/** Shares the final report with the candidate (or revokes access). */
+export async function setReportSharing(
+  companyId: string,
+  applicationId: string,
+  shared: boolean,
+  by: string,
+): Promise<void> {
+  const c = db();
+  if (!c) throw new Error("Supabase not configured");
+  const reportId = await reportIdForApplication(companyId, applicationId);
+  const now = new Date().toISOString();
+  const { error } = await c
+    .from("assessment_reports")
+    .update({
+      shared_with_candidate: shared,
+      shared_at: shared ? now : null,
+      shared_by: shared ? by : null,
+      updated_at: now,
+    })
+    .eq("id", reportId);
+  if (missingSchema(error)) throw new Error("Missing migration 0028_share_report_with_candidate.");
   if (error) throw error;
 }
 

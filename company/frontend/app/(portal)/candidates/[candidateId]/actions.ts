@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { ForbiddenError, requireCompanyPermission } from "@/lib/auth/company-users";
-import { addReportAnnotation, setReviewerDecision } from "@/lib/db";
+import { addReportAnnotation, setReportSharing, setReviewerDecision } from "@/lib/db";
 
 export type ReviewState = { error: string | null; success: boolean };
 
@@ -66,3 +66,24 @@ export async function saveReviewerDecision(applicationId: string, _prev: ReviewS
   revalidatePath(`/candidates/${applicationId}`);
   return { error: null, success: true };
 }
+
+/** Shares the report with the candidate so it becomes visible on their dashboard, or revokes access. */
+export async function toggleReportSharing(
+  applicationId: string,
+  share: boolean,
+): Promise<{ error: string | null; success: boolean }> {
+  let user;
+  try {
+    user = await reviewer();
+  } catch (e) {
+    return { error: e instanceof ForbiddenError ? e.message : "Not signed in.", success: false };
+  }
+  try {
+    await setReportSharing(user.companyId, applicationId, share, user.name || user.email);
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "Couldn't update report visibility — try again.", success: false };
+  }
+  revalidatePath(`/candidates/${applicationId}`);
+  return { error: null, success: true };
+}
+
