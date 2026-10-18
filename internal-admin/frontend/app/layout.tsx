@@ -6,7 +6,7 @@ const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
 const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "Mindfries — Internal Admin",
+  title: { default: "Mindfries Admin", template: "%s · Mindfries Admin" },
   description: "Mindfries team operations: company onboarding, the assessment/game library, and the global session monitor.",
 };
 

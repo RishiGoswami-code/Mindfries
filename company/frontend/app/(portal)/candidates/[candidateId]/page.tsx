@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { currentCompanyUser } from "@/lib/auth/company-users";
 import { can } from "@/lib/auth/permissions";
@@ -15,6 +16,14 @@ import { InterviewTranscript } from "./InterviewTranscript";
 import { ReviewerDecisionForm } from "./ReviewerDecisionForm";
 import { ReportAutoRefresh } from "./ReportAutoRefresh";
 import { ApplicantCard, EmailPanel, InterviewsPanel } from "./HiringPanels";
+
+/** The tab shows the candidate's name. */
+export async function generateMetadata({ params }: { params: Promise<{ candidateId: string }> }): Promise<Metadata> {
+  const user = await currentCompanyUser();
+  if (!user) return { title: "Candidate" };
+  const application = await getApplicationForCompany(user.companyId, (await params).candidateId);
+  return { title: application ? (application.candidateName ?? application.candidateEmail) : "Candidate" };
+}
 
 export const dynamic = "force-dynamic";
 

@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { currentCompanyUser } from "@/lib/auth/company-users";
 import { listJobRoles, stageCountsForRole } from "@/lib/db";
@@ -6,6 +7,8 @@ import { roleStatusTone, stageLabel, stageTone } from "@/lib/format";
 import type { ApplicationStage } from "@/lib/types";
 import { getCompanyAccess, hasHiringAccess, lockedReason } from "@/lib/access";
 import { LockedAction } from "@/components/company/LockedAction";
+
+export const metadata: Metadata = { title: "Job roles" };
 
 export const dynamic = "force-dynamic";
 

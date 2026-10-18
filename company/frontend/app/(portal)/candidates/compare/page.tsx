@@ -1,8 +1,11 @@
+import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { currentCompanyUser } from "@/lib/auth/company-users";
 import { getApplicationForCompany, type CandidateApplicationWithRole } from "@/lib/db";
 import { PageHeader } from "@/components/ui";
 import { CompareTable } from "./CompareTable";
+
+export const metadata: Metadata = { title: "Compare candidates" };
 
 export const dynamic = "force-dynamic";
 

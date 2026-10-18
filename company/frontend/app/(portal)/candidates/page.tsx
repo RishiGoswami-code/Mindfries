@@ -1,9 +1,12 @@
+import type { Metadata } from "next";
 import { currentCompanyUser } from "@/lib/auth/company-users";
 import { listApplicationsForCompany, listJobRoles, type CandidateApplicationWithRole } from "@/lib/db";
 import { PageHeader } from "@/components/ui";
 import { listProfileBadges, type ProfileBadge } from "@/lib/candidate-profile";
 import type { JobRole } from "@/lib/types";
 import { CandidatesBoard } from "./CandidatesBoard";
+
+export const metadata: Metadata = { title: "Candidates" };
 
 export const dynamic = "force-dynamic";
 

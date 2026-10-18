@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { listOnboarded } from "@/lib/db";
 import { CircleCheck, KeyRound, Rocket } from "lucide-react";
 import { PageHeader, Pill } from "@/components/ui";
@@ -5,6 +6,8 @@ import { MetricCard, MetricGrid, Panel, flat } from "@/components/admin/cards";
 import { countWithin, cumulative, DAY, WEEK } from "@/lib/overview";
 import { OnboardForm } from "@/components/admin/OnboardForm";
 import { companyTone, fmtDate, planLabel } from "@/lib/format";
+
+export const metadata: Metadata = { title: "Onboarding" };
 
 export const dynamic = "force-dynamic";
 

@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { listLeads } from "@/lib/db";
 import { Percent, Radar, Reply, Rocket, Send } from "lucide-react";
 import { PageHeader, Pill, Chip } from "@/components/ui";
@@ -7,6 +8,8 @@ import { LeadActions } from "@/components/admin/LeadActions";
 import { fmtDate, leadStageLabel, leadStageTone } from "@/lib/format";
 import { targetsStore } from "@/lib/targets-store";
 import { companyKey } from "@/lib/targets-rules";
+
+export const metadata: Metadata = { title: "Company tracker" };
 
 export const dynamic = "force-dynamic";
 

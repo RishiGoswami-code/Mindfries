@@ -1,7 +1,10 @@
+import type { Metadata } from "next";
 import { listCandidateCards } from "@/lib/candidates";
 import { supabaseReady } from "@/lib/supabase";
 import { PageHeader } from "@/components/ui";
 import { CandidateCard } from "@/components/admin/CandidateCard";
+
+export const metadata: Metadata = { title: "Candidates" };
 
 export const dynamic = "force-dynamic";
 

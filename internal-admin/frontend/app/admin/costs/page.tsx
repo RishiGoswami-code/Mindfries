@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { listOnboarded } from "@/lib/db";
 import { getAiSpend } from "@/lib/ai-spend";
 import { AiSpendPanel } from "@/components/admin/AiSpendPanel";
@@ -6,6 +7,8 @@ import { PageHeader } from "@/components/ui";
 import { MetricCard, MetricGrid, Panel, flat } from "@/components/admin/cards";
 import { cumulativeSum, DAY, WEEK } from "@/lib/overview";
 import { fmtMoney, planLabel, planPrice } from "@/lib/format";
+
+export const metadata: Metadata = { title: "Company costs" };
 
 export const dynamic = "force-dynamic";
 

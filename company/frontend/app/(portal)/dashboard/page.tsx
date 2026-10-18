@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { cache } from "react";
 import { currentCompanyUser } from "@/lib/auth/company-users";
 import { listApplicationsForCompany, listJobRoles, listUpcomingDueDates, type CandidateApplicationWithRole } from "@/lib/db";
@@ -10,6 +11,8 @@ import { TrendChart } from "./TrendChart";
 import { ActivityHeatmap } from "./ActivityHeatmap";
 import { DueDateCalendar } from "./DueDateCalendar";
 import { ActivityFeed } from "./ActivityFeed";
+
+export const metadata: Metadata = { title: "Overview" };
 
 export const dynamic = "force-dynamic";
 

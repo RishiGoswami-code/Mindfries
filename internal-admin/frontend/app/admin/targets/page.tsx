@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { CalendarClock, Crosshair, MessagesSquare, Snowflake, Trophy } from "lucide-react";
 import { PageHeader } from "@/components/ui";
 import { MetricCard, MetricGrid, flat } from "@/components/admin/cards";
@@ -12,6 +13,8 @@ import {
 } from "@/lib/targets-rules";
 import { TEAM_TZ, teamToday } from "@/lib/team-time";
 import type { TargetCompany, TargetStage } from "@/lib/types";
+
+export const metadata: Metadata = { title: "Targets" };
 
 export const dynamic = "force-dynamic";
 

@@ -1,6 +1,9 @@
+import type { Metadata } from "next";
 import { LoginBlobs } from "@/components/login/LoginBlobs";
 import { lookupInvite } from "@/lib/auth/company-users";
 import { SetPasswordForm } from "./SetPasswordForm";
+
+export const metadata: Metadata = { title: "Set your password" };
 
 export const dynamic = "force-dynamic";
 

@@ -1,7 +1,10 @@
+import type { Metadata } from "next";
 import { PageHeader } from "@/components/ui";
 import { currentCompanyUser } from "@/lib/auth/company-users";
 import { getCompanyAccess, hasHiringAccess } from "@/lib/access";
 import { NewRoleForm } from "./NewRoleForm";
+
+export const metadata: Metadata = { title: "Create a role" };
 
 export const dynamic = "force-dynamic";
 

@@ -1,6 +1,9 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { AuthSplit, authLink } from "@/components/login/AuthSplit";
 import { LoginForm } from "./LoginForm";
+
+export const metadata: Metadata = { title: "Sign in" };
 
 export const dynamic = "force-dynamic";
 

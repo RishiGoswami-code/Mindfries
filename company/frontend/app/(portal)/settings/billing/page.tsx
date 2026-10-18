@@ -1,9 +1,12 @@
+import type { Metadata } from "next";
 import { currentCompanyUser } from "@/lib/auth/company-users";
 import { can } from "@/lib/auth/permissions";
 import { getCompanyBilling } from "@/lib/db";
 import { PageHeader, StatCard } from "@/components/ui";
 import { titleCase } from "@/lib/format";
 import { BillingActions } from "./BillingActions";
+
+export const metadata: Metadata = { title: "Billing" };
 
 export const dynamic = "force-dynamic";
 
