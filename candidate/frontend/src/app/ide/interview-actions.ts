@@ -85,6 +85,25 @@ export interface RecordingUpload {
   path: string;
 }
 
+// A bucket is made on first use and exists forever after. Without this guard,
+// createBucket fired on every single upload — every snapshot, every ~15s —
+// and each one came back "already exists" (a 400, unique-constraint on
+// buckets_pkey), spamming the storage logs with a failing call per still.
+// Attempt it at most once per bucket per server process instead; the uploads
+// themselves were never affected either way.
+const ensuredBuckets = new Set<string>();
+async function ensureBucketOnce(
+  storage: NonNullable<ReturnType<typeof db>>["storage"],
+  bucket: string,
+  fileSizeLimit: number,
+): Promise<void> {
+  if (ensuredBuckets.has(bucket)) return;
+  ensuredBuckets.add(bucket);
+  // Result ignored on purpose: "already exists" is the normal answer, and the
+  // signed-URL request that follows is what actually decides success.
+  await storage.createBucket(bucket, { public: false, fileSizeLimit });
+}
+
 /**
  * Hands the browser a one-off signed URL to upload one answer's recording
  * to. The clip goes directly from the browser to storage: routing video
@@ -115,10 +134,7 @@ export async function startRecordingUpload(
   const storage = db()?.storage;
   if (!storage) return { error: "Recording storage isn't configured." };
 
-  // Created on first use. An "already exists" answer is the normal case
-  // every time after that, so only the upload URL request below decides
-  // whether this worked.
-  await storage.createBucket(RECORDINGS_BUCKET, { public: false, fileSizeLimit: MAX_CLIP_BYTES });
+  await ensureBucketOnce(storage, RECORDINGS_BUCKET, MAX_CLIP_BYTES);
 
   const path = `${safeSegment(sessionId)}/q${question}-${Date.now()}.${extension}`;
   const { data, error } = await storage.from(RECORDINGS_BUCKET).createSignedUploadUrl(path);
@@ -172,7 +188,7 @@ export async function startSnapshotUpload(sessionId: string, kind: "camera" | "s
   const storage = db()?.storage;
   if (!storage) return { error: "Snapshot storage isn't configured." };
 
-  await storage.createBucket(SNAPSHOTS_BUCKET, { public: false, fileSizeLimit: MAX_SNAPSHOT_BYTES });
+  await ensureBucketOnce(storage, SNAPSHOTS_BUCKET, MAX_SNAPSHOT_BYTES);
   // Screen stills are kept beside the camera's, named so either can be told
   // apart at a glance (issue #120).
   const path = `${safeSegment(sessionId)}/${kind === "screen" ? "screen-" : kind === "audio" ? "audio-" : ""}${Date.now()}.${kind === "audio" ? "webm" : "jpg"}`;
