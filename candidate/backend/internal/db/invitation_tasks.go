@@ -31,8 +31,14 @@ type InvitationTaskJob struct {
 }
 
 // MaxInvitationTaskAttempts is how many times a task is tried before the
-// invitation is marked failed for a person to look at.
-const MaxInvitationTaskAttempts = 3
+// invitation is marked failed for a person to look at. One, deliberately:
+// a task is generated exactly once, and if that fails the invitation is
+// marked failed and the company/admin is alerted (prepareNextInvitationTask)
+// rather than the model being paid to try again and again. Retrying was the
+// cost leak — a single doomed task could run up nine full generations and
+// still end with nothing. A real failure is now a person's call, not a
+// standing order to keep spending.
+const MaxInvitationTaskAttempts = 1
 
 // ClaimInvitationTask takes the oldest invitation waiting for a task — or
 // one whose generation was started so long ago that whoever started it must

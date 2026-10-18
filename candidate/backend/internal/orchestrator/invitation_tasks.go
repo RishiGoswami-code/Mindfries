@@ -34,8 +34,12 @@ const (
 	otherBriefsShown  = 3
 	otherBriefMaxChar = 1200
 	invitationTaskCap = 15 * time.Minute
-	// How many times one attempt writes the task before giving up.
-	generationsPerAttempt = 3
+	// How many times one attempt writes the task before giving up. One: the
+	// task is generated once. If the model returns something that won't parse
+	// or won't verify, the attempt fails and a person is told — the old value
+	// of 3 meant one bad task could cost three full generations before even
+	// counting as a single failed attempt.
+	generationsPerAttempt = 1
 )
 
 // describeFailure is what the agent is told about its last task: why it
