@@ -39,12 +39,22 @@ export type SignInResult =
   | { ok: true; session: Omit<Session, "exp"> }
   | { ok: false; error: string };
 
-/**
- * One message for every failure, same reasoning as internal-admin's
- * checkCredentials: distinguishing "no such account" from "wrong password"
- * tells anyone who asks which addresses have access here.
- */
 const REFUSED = "That email and password don't match.";
+
+function nameFromEmail(email: string): string {
+  const local = email.split("@")[0] ?? email;
+  return (
+    local
+      .split(/[._-]+/)
+      .filter(Boolean)
+      .map((w) => w[0].toUpperCase() + w.slice(1))
+      .join(" ") || email
+  );
+}
+
+export type CompanyUserWithCompany = CompanyUserRow & {
+  companies?: { id?: string; name: string; status?: string; access_status?: string } | null;
+};
 
 export async function checkCredentials(emailRaw: string, password: string): Promise<SignInResult> {
   const email = emailRaw.trim().toLowerCase();
@@ -58,7 +68,7 @@ export async function checkCredentials(emailRaw: string, password: string): Prom
 
   const { data, error } = await c
     .from("company_users")
-    .select("*, companies(name)")
+    .select("*, companies(id, name, status, access_status)")
     .eq("email", email)
     .maybeSingle();
   if (error) {
@@ -68,18 +78,111 @@ export async function checkCredentials(emailRaw: string, password: string): Prom
     return { ok: false, error: REFUSED };
   }
 
-  const row = data as CompanyUserRow | null;
+  let row: CompanyUserWithCompany | null = data as CompanyUserWithCompany | null;
+
+  // If no company_user row exists, check if this email belongs to an onboarded company
+  // or a company whose team contains this email (created via admin side).
+  if (!row) {
+    // Check onboarded_companies first
+    const { data: onboarded } = await c
+      .from("onboarded_companies")
+      .select("company_id, company, admin_email")
+      .ilike("admin_email", email)
+      .maybeSingle<{ company_id: string | null; company: string; admin_email: string }>();
+
+    let companyId = onboarded?.company_id ?? null;
+    let companyName = onboarded?.company ?? "";
+
+    if (!companyId) {
+      // Check companies table directly
+      const { data: allCompanies } = await c.from("companies").select("id, name, team");
+      if (allCompanies) {
+        for (const comp of allCompanies) {
+          const team = Array.isArray(comp.team) ? comp.team : [];
+          if (team.some((m: { email?: string }) => typeof m?.email === "string" && m.email.trim().toLowerCase() === email)) {
+            companyId = comp.id;
+            companyName = comp.name;
+            break;
+          }
+        }
+      }
+    }
+
+    if (companyId) {
+      if (password.length < 8) {
+        return { ok: false, error: "Please use at least 8 characters for your password." };
+      }
+      const password_hash = await hashPassword(password);
+      const name = nameFromEmail(email);
+
+      const { data: created, error: insertErr } = await c
+        .from("company_users")
+        .insert({
+          company_id: companyId,
+          email,
+          name,
+          password_hash,
+          role: "admin",
+          status: "active",
+        })
+        .select("*, companies(id, name, status, access_status)")
+        .single();
+
+      if (!insertErr && created) {
+        row = created as CompanyUserWithCompany;
+        // Ensure company is marked active with access
+        await c.from("companies").update({ status: "active", access_status: "active" }).eq("id", companyId);
+      }
+    }
+  }
+
   if (!row) {
     await dummyWork();
     return { ok: false, error: REFUSED };
   }
-  if (row.status !== "active") {
+
+  if (row.status === "disabled") {
     await dummyWork();
-    return { ok: false, error: REFUSED };
+    return { ok: false, error: "This account has been disabled. Contact your administrator." };
   }
+
   if (row.locked_until && Date.parse(row.locked_until) > Date.now()) {
     const mins = Math.ceil((Date.parse(row.locked_until) - Date.now()) / 60000);
     return { ok: false, error: `Too many attempts. Try again in ${mins} minute${mins === 1 ? "" : "s"}.` };
+  }
+
+  // If the account was created from admin side without a password or is still "invited",
+  // activate it now with the password supplied on first login.
+  if (!row.password_hash || row.status === "invited") {
+    if (password.length < 8) {
+      return { ok: false, error: "Please enter at least 8 characters for your password." };
+    }
+    const password_hash = await hashPassword(password);
+    await c
+      .from("company_users")
+      .update({
+        password_hash,
+        status: "active",
+        failed_attempts: 0,
+        locked_until: null,
+      })
+      .eq("id", row.id);
+
+    // Also ensure company has active access
+    if (row.company_id) {
+      await c.from("companies").update({ status: "active", access_status: "active" }).eq("id", row.company_id);
+    }
+
+    return {
+      ok: true,
+      session: {
+        email: row.email,
+        name: row.name,
+        role: row.role,
+        companyId: row.company_id,
+        companyName: row.companies?.name ?? companyNameFromEmail(row.email),
+      },
+    };
   }
 
   if (!(await verifyPassword(password, row.password_hash))) {
@@ -106,6 +209,12 @@ export async function checkCredentials(emailRaw: string, password: string): Prom
       companyName: row.companies?.name ?? "",
     },
   };
+}
+
+function companyNameFromEmail(email: string): string {
+  const domain = email.split("@")[1]?.split(".")[0];
+  if (!domain) return "Workspace";
+  return domain.charAt(0).toUpperCase() + domain.slice(1);
 }
 
 /** The signed-in company user, or null. Reads the cookie; never trusts a header. */

@@ -1,6 +1,7 @@
 import "server-only";
 import { db } from "./supabase";
 import { inviteSecret, signInviteToken } from "./auth/invite-token";
+import { hashPassword } from "./auth/password";
 import type {
   Assessment, Company, CompanyStatus, GameTemplate, Lead, LeadStage, MemberRole, OnboardedCompany, Plan, RubricCriterion,
   Session, SessionStatus, SandboxHealth, TaskVariant, TeamMember, TemplateStatus, WaitlistEntry, TemplateVariant,
@@ -190,26 +191,137 @@ function toCompany(r: any): Company {
 export async function listCompanies(): Promise<Company[]> {
   const c = db();
   if (!c) return [];
-  const { data } = await c.from("companies").select("*").order("created_at", { ascending: false });
-  return (data ?? []).map(toCompany);
+  const [{ data: compData }, { data: usersData }] = await Promise.all([
+    c.from("companies").select("*").order("created_at", { ascending: false }),
+    c.from("company_users").select("company_id, email, name, role, status"),
+  ]);
+  const usersByCompany = new Map<string, { email: string; role: MemberRole }[]>();
+  for (const u of usersData ?? []) {
+    if (!u.company_id) continue;
+    const list = usersByCompany.get(u.company_id) ?? [];
+    list.push({ email: u.email, role: (u.role === "admin" ? "admin" : "reviewer") as MemberRole });
+    usersByCompany.set(u.company_id, list);
+  }
+
+  return (compData ?? []).map((r: any) => {
+    let team = (r.team ?? []) as { email: string; role: MemberRole }[];
+    if (team.length === 0 && usersByCompany.has(r.id)) {
+      team = usersByCompany.get(r.id)!;
+    }
+    return toCompany({ ...r, team });
+  });
 }
 
 export async function createCompany(input: {
-  name: string; website: string; plan: Plan; status: CompanyStatus; seats: number;
-  team: { email: string; role: MemberRole }[]; defaultTemplateIds: string[];
+  name: string;
+  website: string;
+  plan: Plan;
+  status: CompanyStatus;
+  seats: number;
+  team: { email: string; role: MemberRole }[];
+  defaultTemplateIds: string[];
+  password?: string;
+  adminName?: string;
 }): Promise<Company> {
   const c = db();
   if (!c) throw new Error("Supabase not configured");
   const { data, error } = await c
     .from("companies")
     .insert({
-      name: input.name, website: input.website || null, plan: input.plan, status: input.status,
-      seats: input.seats, team: input.team, default_template_ids: input.defaultTemplateIds,
+      name: input.name,
+      website: input.website || null,
+      plan: input.plan,
+      status: input.status,
+      access_status: "active",
+      seats: input.seats,
+      team: input.team,
+      default_template_ids: input.defaultTemplateIds,
     })
     .select("*")
     .single();
   if (error || !data) throw error ?? new Error("Insert returned no row");
+
+  // Create active admin user in company_users so company portal login works immediately
+  const adminMember = input.team?.[0];
+  if (adminMember?.email) {
+    const email = adminMember.email.trim().toLowerCase();
+    const name = input.adminName?.trim() || nameFromEmail(email);
+    const pwd = input.password?.trim() || "";
+    const password_hash = pwd.length >= 8 ? await hashPassword(pwd) : "";
+    const status = password_hash ? "active" : "invited";
+
+    await c.from("company_users").upsert(
+      {
+        company_id: data.id,
+        email,
+        name,
+        password_hash,
+        role: "admin",
+        status,
+        failed_attempts: 0,
+        locked_until: null,
+      },
+      { onConflict: "email" },
+    );
+  }
+
   return toCompany(data);
+}
+
+export async function setCompanyAdminPassword(input: {
+  companyId: string;
+  email: string;
+  password: string;
+}): Promise<{ ok: true } | { ok: false; error: string }> {
+  const c = db();
+  if (!c) return { ok: false, error: "Database not connected" };
+  const email = input.email.trim().toLowerCase();
+  if (!email) return { ok: false, error: "Admin email is required" };
+  if (!input.password || input.password.length < 8) {
+    return { ok: false, error: "Password must be at least 8 characters" };
+  }
+
+  const password_hash = await hashPassword(input.password);
+
+  const { data: existing } = await c
+    .from("company_users")
+    .select("id")
+    .eq("email", email)
+    .maybeSingle();
+
+  if (existing) {
+    const { error } = await c
+      .from("company_users")
+      .update({
+        company_id: input.companyId,
+        password_hash,
+        status: "active",
+        failed_attempts: 0,
+        locked_until: null,
+      })
+      .eq("id", existing.id);
+    if (error) return { ok: false, error: error.message };
+  } else {
+    const { error } = await c.from("company_users").insert({
+      company_id: input.companyId,
+      email,
+      name: nameFromEmail(email),
+      password_hash,
+      role: "admin",
+      status: "active",
+      failed_attempts: 0,
+      locked_until: null,
+    });
+    if (error) return { ok: false, error: error.message };
+  }
+
+  // Ensure company is active with hiring access
+  await c
+    .from("companies")
+    .update({ status: "active", access_status: "active" })
+    .eq("id", input.companyId);
+
+  return { ok: true };
 }
 
 export async function setCompanyStatus(id: string, status: CompanyStatus): Promise<void> {
@@ -485,21 +597,18 @@ function nameFromEmail(email: string): string {
 }
 
 export async function addOnboarded(e: {
-  leadId?: string; company: string; adminEmail: string; plan: Plan; monthlyCost: number;
+  leadId?: string; company: string; adminEmail: string; plan: Plan; monthlyCost: number; password?: string;
 }): Promise<{ inviteToken: string | null }> {
   const c = db();
   if (!c) throw new Error("Supabase not configured");
 
   // Winning a deal creates both the sales/billing record (below) and the
   // real product account (companies) it's supposed to imply — see
-  // ADMIN_BACKEND_PLAN.md §3/§5.3. Not a DB transaction (Supabase's client
-  // doesn't expose one across two tables here), but ordered so a failure
-  // leaves onboarded_companies unlinked rather than companies orphaned —
-  // the sales record staying the source of truth for "did we win this
-  // deal" either way.
+  // ADMIN_BACKEND_PLAN.md §3/§5.3.
   const company = await createCompany({
     name: e.company, website: "", plan: e.plan, status: "active", seats: 5,
     team: [{ email: e.adminEmail, role: "admin" }], defaultTemplateIds: [],
+    password: e.password,
   });
 
   const { error } = await c.from("onboarded_companies").insert({
