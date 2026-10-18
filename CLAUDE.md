@@ -39,6 +39,9 @@ candidate/frontend/        Next.js — the candidate portal (PRD §1.6)
                            /onboarding  consent, device check, lobby
                            /dashboard   assessments, activity, setup
                            /ide         the Engineering Workspace; see its own docs
+candidate/v2/              Parked v2 of the candidate panel — not built or
+                           deployed; v1 (candidate/frontend) stays live until
+                           it's done. See its README
 candidate/backend/         Go — the Application API/Orchestrator/Admin
                            Portal API (PRD §2.3); real, not wired up to
                            either frontend yet — see its own README
