@@ -200,8 +200,10 @@ func (c *OpenRouterClient) complete(ctx context.Context, model string, messages 
 	}
 	if c.OnUsage != nil && out.Usage != nil {
 		agent, sessionID := tagsFrom(ctx)
+		company, role, invitation := scopeFrom(ctx)
 		u := Usage{
 			Agent: agent, SessionID: sessionID, Model: model,
+			CompanyID: company, RoleID: role, InvitationID: invitation,
 			PromptTokens: out.Usage.PromptTokens, CompletionTokens: out.Usage.CompletionTokens, CostUSD: out.Usage.Cost,
 		}
 		if out.Usage.PromptTokensDetails != nil {

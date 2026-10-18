@@ -65,6 +65,14 @@ func describeFailure(r verify.Report) string {
 	return b.String()
 }
 
+// deref returns what a non-nil string pointer holds, or "".
+func deref(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
+}
+
 // RunInvitationTaskWorker generates tasks for waiting invitations until ctx
 // ends, one at a time.
 func (o *Orchestrator) RunInvitationTaskWorker(ctx context.Context) {
@@ -190,6 +198,9 @@ func (o *Orchestrator) alertTaskFailure(ctx context.Context, id, company, role, 
 }
 
 func (o *Orchestrator) makeInvitationTask(ctx context.Context, job db.InvitationTaskJob) error {
+	// Attribute the generation call to this invitation (and its role) in the
+	// ai_usage ledger.
+	ctx = llm.WithTaskScope(ctx, deref(job.CompanyID), deref(job.RoleID), job.ID)
 	var others []string
 	if job.RoleID != nil {
 		briefs, err := o.DB.OtherBriefsForRole(ctx, *job.RoleID, job.ID, otherBriefsShown)

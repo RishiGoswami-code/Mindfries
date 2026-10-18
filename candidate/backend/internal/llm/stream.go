@@ -113,8 +113,10 @@ func (c *OpenRouterClient) CompleteQuickStream(ctx context.Context, model string
 		}
 		if chunk.Usage != nil && c.OnUsage != nil {
 			agent, sessionID := tagsFrom(ctx)
+			company, role, invitation := scopeFrom(ctx)
 			c.OnUsage(ctx, Usage{
 				Agent: agent, SessionID: sessionID, Model: model,
+				CompanyID: company, RoleID: role, InvitationID: invitation,
 				PromptTokens: chunk.Usage.PromptTokens, CompletionTokens: chunk.Usage.CompletionTokens, CostUSD: chunk.Usage.Cost,
 			})
 		}

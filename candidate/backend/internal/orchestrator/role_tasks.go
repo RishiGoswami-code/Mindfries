@@ -113,6 +113,8 @@ func (o *Orchestrator) prepareNextRoleTask(ctx context.Context) (bool, time.Dura
 // makeRoleTask generates the one task every candidate invited to this role will
 // be given, from the role's brief, and stores it against the role.
 func (o *Orchestrator) makeRoleTask(ctx context.Context, job db.RoleTaskJob) error {
+	// Attribute the generation call to this role in the ai_usage ledger.
+	ctx = llm.WithTaskScope(ctx, deref(job.CompanyID), job.RoleID, "")
 	notes := strings.TrimSpace(job.Brief)
 	if notes == "" {
 		notes = "No brief was written for this role; build a task that fits the role's title and tech stack."

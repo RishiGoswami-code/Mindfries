@@ -468,31 +468,47 @@ func clipMiddle(text string, max int) string {
 	return strings.Join(append(append(append([]string{}, lines[:head]...), marker), lines[tail:]...), "\n")
 }
 
-// recordUsage is the agents' OnUsage hook: every model call's cost is logged,
-// and — when the call was made for a session — stored on that session's
-// trail as an "ai_cost" event, which is what lets spend be added up per
-// candidate, per assessment and per company.
+// recordUsage is the agents' OnUsage hook: every model call is logged, written
+// to the ai_usage ledger (migration 0029), and — when the call was for a
+// session — also stored on that session's trail as an "ai_cost" event, which
+// is what lets per-candidate spend be read from the trail. The ledger is the
+// one place every call lands, including the sessionless task-generation calls
+// that used to be dropped, so it's visible which role or task spends the API.
 //
-// It deliberately doesn't use the caller's context for the write: the call
-// it's accounting for has already been paid for, and a request that was
-// cancelled a moment later shouldn't lose the record of it.
+// It deliberately doesn't use the caller's context for the write: the call it's
+// accounting for has already been paid for, and a request that was cancelled a
+// moment later shouldn't lose the record of it.
 func (o *Orchestrator) recordUsage(_ context.Context, u llm.Usage) {
 	slog.Info("llm usage", "agent", u.Agent, "model", u.Model, "session", u.SessionID,
+		"role", u.RoleID, "invitation", u.InvitationID,
 		"prompt_tokens", u.PromptTokens, "completion_tokens", u.CompletionTokens,
 		"cached_tokens", u.CachedTokens, "cost_usd", math.Round(u.CostUSD*1e6)/1e6)
-	if u.SessionID == "" || o.DB == nil {
-		return
-	}
-	payload, err := json.Marshal(u)
-	if err != nil {
+	if o.DB == nil {
 		return
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	// Straight to the database, not through RecordEvents: what a call cost
-	// is not something to broadcast into the candidate's own session room.
-	if err := o.DB.InsertActivityEvents(ctx, u.SessionID, []db.NewActivityEvent{{EventType: eventAICost, Payload: payload}}); err != nil {
-		slog.Error("orchestrator: recording model usage failed", "session", u.SessionID, "error", err)
+
+	// Every call, session or not, lands in the ledger.
+	if err := o.DB.InsertAIUsage(ctx, db.AIUsage{
+		Agent: u.Agent, Model: u.Model,
+		PromptTokens: u.PromptTokens, CompletionTokens: u.CompletionTokens, CachedTokens: u.CachedTokens, CostUSD: u.CostUSD,
+		SessionID: u.SessionID, CompanyID: u.CompanyID, RoleID: u.RoleID, InvitationID: u.InvitationID,
+	}); err != nil {
+		slog.Error("orchestrator: recording ai usage failed", "agent", u.Agent, "error", err)
+	}
+
+	// A session call also lands on the session's own trail, where per-candidate
+	// spend is read. Straight to the database, not through RecordEvents: what a
+	// call cost is not something to broadcast into the candidate's session room.
+	if u.SessionID != "" {
+		payload, err := json.Marshal(u)
+		if err != nil {
+			return
+		}
+		if err := o.DB.InsertActivityEvents(ctx, u.SessionID, []db.NewActivityEvent{{EventType: eventAICost, Payload: payload}}); err != nil {
+			slog.Error("orchestrator: recording model usage failed", "session", u.SessionID, "error", err)
+		}
 	}
 }
 
