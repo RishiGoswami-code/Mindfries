@@ -1,8 +1,10 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Camera, CheckCircle2, CircleDashed, Loader2, Mic, Monitor, TriangleAlert, XCircle } from "lucide-react";
-import { Button } from "@/components/ui/Button";
+import clsx from "clsx";
+import { Camera, CheckCircle2, CircleDashed, Loader2, Mic, Monitor, ShieldCheck, TriangleAlert, XCircle } from "lucide-react";
+import { buttonClass } from "@/components/settings/Card";
+import { display } from "@/lib/dashboard/fonts";
 import { browserCapabilities, mediaErrorMessage, summarize, type Capability } from "@/lib/environment-checks";
 import { saveEnvironmentCheck } from "@/lib/setup-actions";
 
@@ -129,22 +131,22 @@ export function EnvironmentCheck({ lastPassedAt }: { lastPassedAt: string | null
   return (
     <div>
       <div className="mt-8 space-y-4">
-        <Row icon={<Camera size={20} />} title="Camera" state={camera} note={cameraNote || "Opens your camera and shows you the picture. A session keeps it on."}>
+        <Row icon={<Camera size={22} strokeWidth={1.8} />} title="Camera" state={camera} note={cameraNote || "Opens your camera and shows you the picture. A session keeps it on."}>
           <video
             ref={videoRef}
             muted
             playsInline
-            className={camera === "pass" ? "mt-3 aspect-video w-full max-w-xs rounded-lg bg-black object-cover" : "hidden"}
+            className={camera === "pass" ? "mt-4 aspect-video w-full max-w-sm rounded-2xl bg-[#16143A] object-cover shadow-[0_14px_30px_-18px_rgba(27,24,64,0.6)]" : "hidden"}
           />
         </Row>
 
-        <Row icon={<Mic size={20} />} title="Microphone" state={mic} note={micNote || "Opens your microphone and shows the level it hears. Used if you take the interview by voice."}>
+        <Row icon={<Mic size={22} strokeWidth={1.8} />} title="Microphone" state={mic} note={micNote || "Opens your microphone and shows the level it hears. Used if you take the interview by voice."}>
           {mic === "pass" && (
-            <div className="mt-3 max-w-xs">
-              <div className="h-2 overflow-hidden rounded-full bg-[#B3CFE5]/40">
-                <div className="h-full rounded-full bg-[#1A9E6B] transition-[width] duration-75" style={{ width: `${Math.min(100, Math.round(level * 160))}%` }} />
+            <div className="mt-4 max-w-sm">
+              <div className="h-2.5 overflow-hidden rounded-full bg-[#EEEBFA]">
+                <div className="h-full rounded-full bg-gradient-to-r from-[#7C5CFC] to-[#5B3BE0] transition-[width] duration-75" style={{ width: `${Math.min(100, Math.round(level * 160))}%` }} />
               </div>
-              <p className="mt-1.5 text-[12px] text-[#4A7FA7]">
+              <p className="mt-2 text-[13px] text-[#5E5A82]">
                 {heard ? "It heard you." : "Say something — the bar should move. If it stays flat, the wrong microphone may be selected."}
               </p>
             </div>
@@ -152,7 +154,7 @@ export function EnvironmentCheck({ lastPassedAt }: { lastPassedAt: string | null
         </Row>
 
         <Row
-          icon={<Monitor size={20} />}
+          icon={<Monitor size={22} strokeWidth={1.8} />}
           title="Browser"
           state={browserState}
           note={
@@ -164,18 +166,18 @@ export function EnvironmentCheck({ lastPassedAt }: { lastPassedAt: string | null
           }
         >
           {capabilities && (
-            <ul className="mt-3 space-y-1">
+            <ul className="mt-4 space-y-2">
               {capabilities.map((c) => (
-                <li key={c.name} className="flex items-start gap-2 text-[12.5px]">
+                <li key={c.name} className="flex items-start gap-2.5 text-[13.5px]">
                   {c.ok ? (
-                    <CheckCircle2 size={14} className="mt-0.5 shrink-0 text-[#1A9E6B]" />
+                    <CheckCircle2 size={16} className="mt-0.5 shrink-0 text-[#1E9A57]" />
                   ) : c.required ? (
-                    <XCircle size={14} className="mt-0.5 shrink-0 text-[#a6203c]" />
+                    <XCircle size={16} className="mt-0.5 shrink-0 text-[#a6203c]" />
                   ) : (
-                    <TriangleAlert size={14} className="mt-0.5 shrink-0 text-[#C26410]" />
+                    <TriangleAlert size={16} className="mt-0.5 shrink-0 text-[#C26410]" />
                   )}
-                  <span className="text-[#0A1931]">
-                    {c.name} <span className="text-[#4A7FA7]">— {c.why}</span>
+                  <span className="text-[#100E2E]">
+                    {c.name} <span className="text-[#6E6A8F]">— {c.why}</span>
                   </span>
                 </li>
               ))}
@@ -184,18 +186,19 @@ export function EnvironmentCheck({ lastPassedAt }: { lastPassedAt: string | null
         </Row>
       </div>
 
-      <div className="mt-6 flex flex-wrap items-center gap-3">
-        <Button type="button" onClick={() => void run()} disabled={running}>
+      <div className="mt-7 flex flex-wrap items-center gap-4">
+        <button type="button" onClick={() => void run()} disabled={running} className={clsx(buttonClass.primary, "h-12 px-7 text-[15px]")}>
+          {running && <Loader2 size={16} className="animate-spin" />}
           {running ? "Checking…" : capabilities ? "Run it again" : "Start the check"}
-        </Button>
+        </button>
         {(camera === "pass" || mic === "pass") && !running && (
-          <button type="button" onClick={release} className="text-[13px] font-medium text-[#4A7FA7] hover:text-[#1A3D63] hover:underline">
+          <button type="button" onClick={release} className="text-[14px] font-medium text-[#5B3BE0] underline-offset-4 hover:underline">
             Turn the camera and microphone off
           </button>
         )}
       </div>
 
-      <p role="status" className="mt-4 text-[13px] leading-relaxed text-[#1A3D63]">
+      <p role="status" className="mt-4 text-[14px] leading-relaxed text-[#2A2654]">
         {saved === "saving" && "Saving the result…"}
         {saved === "passed" && "All three passed. This step is ticked off on your dashboard."}
         {saved === "not-passed" && "Not everything passed yet. Fix what's marked above and run it again — nothing is held against you for trying."}
@@ -203,27 +206,37 @@ export function EnvironmentCheck({ lastPassedAt }: { lastPassedAt: string | null
         {saved === "" && lastPassedAt && `You last passed this check on ${day(lastPassedAt)}. Run it again if you've changed browser, camera or computer since.`}
       </p>
 
-      <p className="mt-6 max-w-lg text-[12px] leading-relaxed text-[#4A7FA7]">
-        Nothing from your camera or microphone leaves this page during the check — the picture and the level are drawn here, in your
-        browser. Only whether each part passed, and your browser&apos;s name, are saved.
-      </p>
+      <div className="mt-7 flex items-start gap-3.5 rounded-2xl bg-[#F6F4FC] p-4">
+        <ShieldCheck size={20} strokeWidth={1.8} className="mt-0.5 shrink-0 text-[#4B2BB8]" />
+        <p className="text-[13.5px] leading-relaxed text-[#5E5A82]">
+          Nothing from your camera or microphone leaves this page during the check — the picture and the level are drawn here, in your
+          browser. Only whether each part passed, and your browser&apos;s name, are saved.
+        </p>
+      </div>
     </div>
   );
 }
 
 function Row({ icon, title, state, note, children }: { icon: React.ReactNode; title: string; state: State; note: string; children?: React.ReactNode }) {
   return (
-    <div className="flex items-start gap-4 rounded-xl border border-[#B3CFE5] bg-white p-4">
-      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#B3CFE5]/30 text-[#1A3D63]">{icon}</span>
+    <div className="flex items-start gap-4 rounded-[22px] border border-white/90 bg-white/70 p-5 shadow-[0_10px_30px_-22px_rgba(76,58,160,0.45)] backdrop-blur sm:gap-5 sm:p-6">
+      <span
+        className={clsx(
+          "flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl",
+          state === "pass" ? "bg-[#D7F3EC] text-[#1E7A5A]" : state === "fail" ? "bg-[#FDE8EC] text-[#DC2643]" : "bg-[#EFEAFD] text-[#5B3BE0]"
+        )}
+      >
+        {icon}
+      </span>
       <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-2">
-          <p className="text-[14px] font-medium text-[#0A1931]">{title}</p>
-          {state === "idle" && <CircleDashed size={15} className="text-[#B3CFE5]" aria-label="Not checked yet" />}
-          {state === "running" && <Loader2 size={15} className="animate-spin text-[#4A7FA7]" aria-label="Checking" />}
-          {state === "pass" && <CheckCircle2 size={15} className="text-[#1A9E6B]" aria-label="Passed" />}
-          {state === "fail" && <XCircle size={15} className="text-[#a6203c]" aria-label="Failed" />}
+        <div className="flex items-center gap-2.5">
+          <p className={clsx(display.className, "text-[21px] leading-tight font-semibold text-[#100E2E]")}>{title}</p>
+          {state === "idle" && <CircleDashed size={17} className="text-[#C9BCF7]" aria-label="Not checked yet" />}
+          {state === "running" && <Loader2 size={17} className="animate-spin text-[#5B3BE0]" aria-label="Checking" />}
+          {state === "pass" && <CheckCircle2 size={17} className="text-[#1E9A57]" aria-label="Passed" />}
+          {state === "fail" && <XCircle size={17} className="text-[#a6203c]" aria-label="Failed" />}
         </div>
-        <p className={state === "fail" ? "mt-0.5 text-[12.5px] text-[#a6203c]" : "mt-0.5 text-[12.5px] text-[#4A7FA7]"}>{note}</p>
+        <p className={state === "fail" ? "mt-1 text-[14px] leading-snug text-[#a6203c]" : "mt-1 text-[14px] leading-snug text-[#5E5A82]"}>{note}</p>
         {children}
       </div>
     </div>
