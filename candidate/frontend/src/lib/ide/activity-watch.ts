@@ -45,6 +45,7 @@ export type FlagKind =
   | "external_paste"
   | "face_missing"
   | "multiple_faces"
+  | "phone_visible"
   | "voices_detected"
   | "loud_noise"
   | "devtools_attempt"
@@ -66,6 +67,7 @@ export const FLAG_NOTICE: Record<FlagKind, string | null> = {
   external_paste: "A large paste from outside the workspace was recorded.",
   face_missing: "The camera can't see you. Stay in front of it — this was recorded.",
   multiple_faces: "More than one person seems to be in view of the camera. This was recorded.",
+  phone_visible: "A phone seems to be in view of the camera. This was recorded.",
   voices_detected: "Voices were picked up by the microphone. A short clip was kept for the hiring team.",
   loud_noise: "A loud noise was picked up by the microphone. A short clip was kept for the hiring team.",
   devtools_attempt: "Developer tools are not available during the assessment. The attempt was recorded.",
