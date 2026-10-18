@@ -1,7 +1,9 @@
 "use client";
 
 import { Clock, Terminal, Bot, GitBranch, ArrowLeft, ArrowRight } from "lucide-react";
-import { Button } from "@/components/ui/Button";
+import clsx from "clsx";
+import { buttonClass } from "@/components/settings/Card";
+import { display } from "@/lib/dashboard/fonts";
 
 export interface LobbyAssessment {
   role: string;
@@ -56,25 +58,30 @@ export function LobbyStep({ assessment, onBack, onEnter, pending, error }: Lobby
     <div className="space-y-6">
       {/* Header */}
       <div>
-        <p className="text-xs font-semibold uppercase tracking-widest text-[#4A7FA7]">Step 3 — Ready</p>
-        <h1 className="mt-1.5 text-2xl font-semibold tracking-tight text-[#0A1931]">
+        <p className="flex items-center gap-4 text-[13px] font-medium tracking-[0.28em] text-[#6E6A8F] uppercase">
+          Step 3 — Ready <span className="h-px w-9 bg-[#C9BCF7]" />
+        </p>
+        <h1 className={clsx(display.className, "mt-3 text-[34px] leading-[1.05] font-semibold tracking-tight text-[#100E2E] sm:text-[40px]")}>
           You&apos;re good to go
         </h1>
-        <p className="mt-2 text-sm leading-relaxed text-[#4A7FA7]">
+        <p className="mt-2.5 text-[15.5px] leading-relaxed text-[#5E5A82]">
           Read through what to expect, then enter the workspace when you&apos;re ready.
         </p>
       </div>
 
       {/* Assessment card */}
-      <div className="rounded-2xl border border-[#1A3D63] bg-[#0A1931] p-5 text-[#F6FAFD]">
-        <p className="text-xs font-semibold uppercase tracking-widest text-[#4A7FA7]">Your assessment</p>
-        <h2 className="mt-2 text-lg font-semibold leading-snug">{assessment.role}</h2>
-        <p className="mt-0.5 text-sm text-[#B3CFE5]">{assessment.company}</p>
-        <div className="mt-4 flex flex-wrap gap-2">
+      <div className="relative isolate overflow-hidden rounded-[22px] bg-[#16143A] p-6 text-white shadow-[0_20px_44px_-24px_rgba(27,24,64,0.6)] sm:p-7">
+        <div aria-hidden className="absolute inset-0 -z-10 bg-[radial-gradient(120%_140%_at_100%_100%,#3B2C86_0%,#221C58_38%,#16143A_70%)]" />
+        <p className="flex items-center gap-4 text-[12.5px] font-medium tracking-[0.28em] text-[#D6D0F2] uppercase">
+          Your assessment <span className="h-px w-9 bg-[#8C85B8]" />
+        </p>
+        <h2 className={clsx(display.className, "mt-3 text-[30px] leading-tight font-medium tracking-tight")}>{assessment.role}</h2>
+        <p className="mt-1 text-[15px] text-[#E4E0F7]">{assessment.company}</p>
+        <div className="mt-5 flex flex-wrap gap-2">
           {assessment.tags.map((tag) => (
             <span
               key={tag}
-              className="rounded-md bg-[#1A3D63] px-2.5 py-1 text-xs font-medium text-[#B3CFE5]"
+              className="rounded-full bg-white/10 px-3.5 py-1.5 text-[13px] font-medium text-[#E4E0F7] ring-1 ring-white/15"
             >
               {tag}
             </span>
@@ -83,15 +90,15 @@ export function LobbyStep({ assessment, onBack, onEnter, pending, error }: Lobby
       </div>
 
       {/* Rules */}
-      <div className="rounded-2xl border border-[#B3CFE5] bg-white divide-y divide-[#B3CFE5]/60">
+      <div className="divide-y divide-[#ECE9F6] rounded-[22px] border border-white/90 bg-white/70 shadow-[0_10px_30px_-22px_rgba(76,58,160,0.45)] backdrop-blur">
         {RULES.map(({ icon: Icon, title, body }) => (
-          <div key={title} className="flex items-start gap-3 p-4">
-            <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[#B3CFE5]/30">
-              <Icon size={15} className="text-[#1A3D63]" />
+          <div key={title} className="flex items-start gap-4 px-5 py-4">
+            <div className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#EFEAFD]">
+              <Icon size={18} strokeWidth={1.8} className="text-[#5B3BE0]" />
             </div>
             <div>
-              <p className="text-sm font-semibold text-[#0A1931]">{title}</p>
-              <p className="mt-0.5 text-xs leading-relaxed text-[#4A7FA7]">{body}</p>
+              <p className="text-[15px] font-semibold text-[#100E2E]">{title}</p>
+              <p className="mt-0.5 text-[14px] leading-relaxed text-[#5E5A82]">{body}</p>
             </div>
           </div>
         ))}
@@ -102,43 +109,42 @@ export function LobbyStep({ assessment, onBack, onEnter, pending, error }: Lobby
           isn't left wondering whether the button worked — or whether the
           clock is already running against them. */}
       {pending && (
-        <p role="status" className="rounded-lg border border-[#B3CFE5] bg-white px-4 py-3 text-center text-sm text-[#1A3D63]">
+        <p role="status" className="rounded-2xl border border-[#E4E0F2] bg-white/80 px-5 py-3.5 text-center text-[14px] leading-relaxed text-[#2A2654]">
           Preparing your workspace — setting up your machine and putting the task on it. This usually takes 10–15 seconds, and your
           time starts only once the workspace opens.
         </p>
       )}
 
       {error && (
-        <p className="rounded-lg border border-[#E4A0A0] bg-[#FBEAEA] px-4 py-3 text-center text-sm font-medium text-[#8A2C2C]">
+        <p className="rounded-2xl border border-[#F4D3DA] bg-[#FDF1F3] px-5 py-3.5 text-center text-[14px] font-medium text-[#a6203c]">
           {error}
         </p>
       )}
 
       {/* Final CTA note */}
-      <p className="text-center text-xs text-[#4A7FA7]">
-        The timer starts when you click <strong className="text-[#0A1931]">Enter Workspace</strong>.
+      <p className="text-center text-[13.5px] text-[#5E5A82]">
+        The timer starts when you click <strong className="text-[#100E2E]">Enter Workspace</strong>.
         Take a moment and enter only when you&apos;re ready.
       </p>
 
       {/* Navigation */}
       <div className="flex items-center justify-between">
-        <Button tone="ghost" type="button" onClick={onBack} disabled={pending}>
-          <ArrowLeft size={15} />
+        <button type="button" onClick={onBack} disabled={pending} className={clsx(buttonClass.quiet, "h-11 px-4 text-[14px]")}>
+          <ArrowLeft size={16} />
           Back
-        </Button>
+        </button>
         {/* The one button that costs something to press — the timer starts
             here — so it gets the largest size on the flow. */}
-        <Button
+        <button
           id="enter-workspace"
           type="button"
-          size="lg"
           onClick={onEnter}
           disabled={pending}
-          style={pending ? { "--btn-bg": "#4A7FA7" } as React.CSSProperties : undefined}
+          className="inline-flex h-14 shrink-0 items-center justify-center gap-3 rounded-2xl bg-gradient-to-r from-[#7C5CFC] to-[#5B3BE0] px-9 text-[17px] font-semibold text-white shadow-[0_14px_30px_-14px_rgba(91,59,224,0.8)] transition-[transform,opacity] hover:-translate-y-px disabled:cursor-wait disabled:opacity-60 disabled:hover:translate-y-0"
         >
           {pending ? "Preparing…" : "Enter Workspace"}
-          {!pending && <ArrowRight size={15} />}
-        </Button>
+          {!pending && <ArrowRight size={18} />}
+        </button>
       </div>
     </div>
   );
