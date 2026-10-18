@@ -39,6 +39,13 @@ candidate/frontend/        Next.js — the candidate portal (PRD §1.6)
                            /onboarding  consent, device check, lobby
                            /dashboard   assessments, activity, setup
                            /ide         the Engineering Workspace; see its own docs
+candidate/v2/              A parked refactor of V1's browser workspace, from
+                           before the V2 spec — not built or deployed; see
+                           its README and v2/README.md
+v2/                        Mindfries V2: SPEC.md is the product spec (source
+                           of truth for V2); README.md maps it onto this repo.
+                           Specification only — V1 stays the live product and
+                           is not changed for V2
 candidate/backend/         Go — the Application API/Orchestrator/Admin
                            Portal API (PRD §2.3); real, not wired up to
                            either frontend yet — see its own README
