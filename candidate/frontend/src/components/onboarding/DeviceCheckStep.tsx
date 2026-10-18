@@ -2,8 +2,9 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Camera, CheckCircle2, AlertTriangle, ArrowRight, ArrowLeft, RefreshCcw } from "lucide-react";
-import { Button } from "@/components/ui/Button";
 import clsx from "clsx";
+import { buttonClass } from "@/components/settings/Card";
+import { display } from "@/lib/dashboard/fonts";
 
 type CheckStatus = "requesting" | "ok" | "denied" | "unavailable";
 
@@ -73,16 +74,18 @@ export function DeviceCheckStep({ onBack, onContinue }: DeviceCheckStepProps) {
     <div className="space-y-6">
       {/* Header */}
       <div>
-        <p className="text-xs font-semibold uppercase tracking-widest text-[#4A7FA7]">Step 2 — Device Check</p>
-        <h1 className="mt-1.5 text-2xl font-semibold tracking-tight text-[#0A1931]">Camera check</h1>
-        <p className="mt-2 text-sm leading-relaxed text-[#4A7FA7]">
+        <p className="flex items-center gap-4 text-[13px] font-medium tracking-[0.28em] text-[#6E6A8F] uppercase">
+          Step 2 — Device check <span className="h-px w-9 bg-[#C9BCF7]" />
+        </p>
+        <h1 className={clsx(display.className, "mt-3 text-[34px] leading-[1.05] font-semibold tracking-tight text-[#100E2E] sm:text-[40px]")}>Camera check</h1>
+        <p className="mt-2.5 text-[15.5px] leading-relaxed text-[#5E5A82]">
           The workspace requires your camera throughout the session. Let&apos;s make sure it&apos;s working before the timer starts.
         </p>
       </div>
 
       {/* Camera preview card */}
-      <div className="overflow-hidden rounded-2xl border border-[#B3CFE5] bg-[#0A1931]">
-        <div className="relative aspect-video w-full bg-[#0A1931]">
+      <div className="overflow-hidden rounded-[22px] border border-white/90 bg-[#16143A] shadow-[0_20px_44px_-24px_rgba(27,24,64,0.6)]">
+        <div className="relative aspect-video w-full bg-[radial-gradient(120%_140%_at_100%_100%,#3B2C86_0%,#221C58_38%,#16143A_70%)]">
           {/* Live preview */}
           <video
             ref={videoRef}
@@ -100,22 +103,22 @@ export function DeviceCheckStep({ onBack, onContinue }: DeviceCheckStepProps) {
             <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-center px-8">
               {status === "requesting" ? (
                 <>
-                  <Camera size={32} className="text-[#4A7FA7] animate-pulse" />
-                  <p className="text-sm text-[#B3CFE5]">Waiting for permission…</p>
+                  <Camera size={32} className="text-[#B6A4F8] animate-pulse" />
+                  <p className="text-[14px] text-[#D6D0F2]">Waiting for permission…</p>
                 </>
               ) : status === "denied" ? (
                 <>
-                  <AlertTriangle size={32} className="text-[#E06C75]" />
-                  <p className="text-sm text-[#F6FAFD]">Camera access was denied</p>
-                  <p className="text-xs text-[#B3CFE5]">
+                  <AlertTriangle size={32} className="text-[#F49AAB]" />
+                  <p className="text-[15px] font-semibold text-white">Camera access was denied</p>
+                  <p className="text-[13px] text-[#D6D0F2]">
                     Allow camera access in your browser settings, then try again.
                   </p>
                 </>
               ) : (
                 <>
-                  <AlertTriangle size={32} className="text-[#E06C75]" />
-                  <p className="text-sm text-[#F6FAFD]">No camera found</p>
-                  <p className="text-xs text-[#B3CFE5]">
+                  <AlertTriangle size={32} className="text-[#F49AAB]" />
+                  <p className="text-[15px] font-semibold text-white">No camera found</p>
+                  <p className="text-[13px] text-[#D6D0F2]">
                     Connect a camera to continue. If you&apos;re on a laptop, check that the camera is not covered.
                   </p>
                 </>
@@ -126,24 +129,24 @@ export function DeviceCheckStep({ onBack, onContinue }: DeviceCheckStepProps) {
           {/* Status badge */}
           {isOk && (
             <div className="absolute bottom-3 left-3 flex items-center gap-1.5 rounded-full bg-black/50 px-2.5 py-1 text-xs text-white backdrop-blur">
-              <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-[#3E8E6E]" />
+              <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-[#5BD49B]" />
               Camera live
             </div>
           )}
         </div>
 
         {/* Footer of the card */}
-        <div className="flex items-center justify-between border-t border-[#1A3D63] px-4 py-3">
+        <div className="flex items-center justify-between border-t border-white/10 px-5 py-3.5">
           <div className="flex items-center gap-2">
             {isOk ? (
               <>
-                <CheckCircle2 size={16} className="text-[#3E8E6E]" />
-                <span className="text-xs font-medium text-[#B3CFE5]">Camera ready</span>
+                <CheckCircle2 size={16} className="text-[#5BD49B]" />
+                <span className="text-[13px] font-medium text-[#E4E0F7]">Camera ready</span>
               </>
             ) : (
               <>
-                <Camera size={16} className="text-[#B3CFE5]/60" />
-                <span className="text-xs text-[#B3CFE5]/60">
+                <Camera size={16} className="text-[#D6D0F2]/60" />
+                <span className="text-[13px] text-[#D6D0F2]/70">
                   {status === "requesting" ? "Requesting…" : "Camera not detected"}
                 </span>
               </>
@@ -153,7 +156,7 @@ export function DeviceCheckStep({ onBack, onContinue }: DeviceCheckStepProps) {
             <button
               type="button"
               onClick={retryCamera}
-              className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs text-[#B3CFE5] transition-colors hover:bg-[#1A3D63]"
+              className="flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-[13px] font-medium text-[#E4E0F7] transition-colors hover:bg-white/10"
             >
               <RefreshCcw size={13} />
               Try again
@@ -163,21 +166,21 @@ export function DeviceCheckStep({ onBack, onContinue }: DeviceCheckStepProps) {
       </div>
 
       {/* Checklist */}
-      <div className="rounded-2xl border border-[#B3CFE5] bg-white p-4">
-        <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-[#4A7FA7]">Requirements</p>
-        <ul className="space-y-2">
+      <div className="rounded-[22px] border border-white/90 bg-white/70 p-5 shadow-[0_10px_30px_-22px_rgba(76,58,160,0.45)] backdrop-blur">
+        <p className="mb-3.5 text-[12.5px] font-medium tracking-[0.2em] text-[#6E6A8F] uppercase">Requirements</p>
+        <ul className="space-y-2.5">
           {[
             { label: "Camera visible and working", met: isOk },
             { label: "Browser has camera permission", met: isOk },
             { label: "You are visible in the preview", met: isOk },
           ].map((item) => (
-            <li key={item.label} className="flex items-center gap-2.5 text-xs">
+            <li key={item.label} className="flex items-center gap-3 text-[14px]">
               {item.met ? (
-                <CheckCircle2 size={15} className="shrink-0 text-[#3E8E6E]" />
+                <CheckCircle2 size={18} className="shrink-0 text-[#1E9A57]" />
               ) : (
-                <span className="h-3.5 w-3.5 shrink-0 rounded-full border-2 border-[#B3CFE5]" />
+                <span className="h-[18px] w-[18px] shrink-0 rounded-full border-2 border-[#C9BCF7]" />
               )}
-              <span className={item.met ? "text-[#0A1931]" : "text-[#4A7FA7]"}>{item.label}</span>
+              <span className={item.met ? "font-medium text-[#100E2E]" : "text-[#5E5A82]"}>{item.label}</span>
             </li>
           ))}
         </ul>
@@ -185,14 +188,14 @@ export function DeviceCheckStep({ onBack, onContinue }: DeviceCheckStepProps) {
 
       {/* Navigation */}
       <div className="flex items-center justify-between">
-        <Button tone="ghost" type="button" onClick={onBack}>
-          <ArrowLeft size={15} />
+        <button type="button" onClick={onBack} className={clsx(buttonClass.quiet, "h-11 px-4 text-[14px]")}>
+          <ArrowLeft size={16} />
           Back
-        </Button>
-        <Button id="device-check-continue" type="button" disabled={!isOk} onClick={onContinue}>
+        </button>
+        <button id="device-check-continue" type="button" disabled={!isOk} onClick={onContinue} className={clsx(buttonClass.primary, "h-11 px-6 text-[15px]")}>
           Continue
-          <ArrowRight size={15} />
-        </Button>
+          <ArrowRight size={16} />
+        </button>
       </div>
     </div>
   );
