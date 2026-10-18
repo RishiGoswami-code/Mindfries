@@ -187,7 +187,7 @@ export function CandidateEvidenceReport({
             </div>
           </div>
 
-          <div className="grid gap-6 xl:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
+          <div className="grid gap-6 xl:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)] xl:items-start">
             <div className="space-y-6">
               <Panel
                 icon={<Code2 size={20} />}
@@ -295,26 +295,7 @@ export function CandidateEvidenceReport({
             </Panel>
           )}
 
-          {/* Quick jump cards */}
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 print:hidden">
-            {SECTIONS.filter((s) => s.id !== "summary").map((s) => (
-              <button
-                key={s.id}
-                type="button"
-                onClick={() => setActiveSection(s.id)}
-                className="flex items-center gap-3 rounded-2xl border border-hair bg-surface p-4 text-left shadow-sm transition-all hover:bg-surface-2 hover:border-hair-bright cursor-pointer"
-              >
-                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#f4f0ff] text-[#7c3aed]">
-                  <s.icon size={19} />
-                </span>
-                <span className="min-w-0 flex-1">
-                  <span className="block text-[14px] font-bold text-ink">{s.label}</span>
-                  <span className="block truncate text-[12px] text-dim">{s.blurb}</span>
-                </span>
-                <ChevronRight size={16} className="text-faint" />
-              </button>
-            ))}
-          </div>
+
         </div>
       )}
 
