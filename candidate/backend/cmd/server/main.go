@@ -75,9 +75,11 @@ func main() {
 	// orchestrator/abandoned.go.
 	go orc.RunAbandonedSweep(ctx, time.Minute)
 
-	// Each new invitation's own task is generated here — see
-	// orchestrator/invitation_tasks.go.
+	// A role's task is generated once, when the role is created or edited, and
+	// shared by everyone invited to it — orchestrator/role_tasks.go. The
+	// invitation worker still runs for invitations that have no role.
 	orc.Verifier = verify.FromEnv(sandboxClient)
+	go orc.RunRoleTaskWorker(ctx)
 	go orc.RunInvitationTaskWorker(ctx)
 	// Reports the AI service held up are written once it allows.
 	go orc.RunReportRetrySweep(ctx)

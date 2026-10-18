@@ -161,7 +161,7 @@ func (o *Orchestrator) prepareNextInvitationTask(ctx context.Context) (bool, tim
 		// person can regenerate or assign one — the candidate is otherwise
 		// stuck with an assessment that never prepares.
 		if final {
-			o.alertTaskFailure(ctx, *job, reason)
+			o.alertTaskFailure(ctx, job.ID, job.CompanyName, job.RoleTitle, job.CandidateEmail, reason)
 		}
 		return true, 0
 	}
@@ -171,21 +171,22 @@ func (o *Orchestrator) prepareNextInvitationTask(ctx context.Context) (bool, tim
 
 // alertTaskFailure pushes a failed task to the company/admin by email, so a
 // person can act. Best-effort: when no alert address is set it just logs —
-// loudly, because a silent stuck candidate is the thing this exists to avoid.
+// loudly, because a silently stuck candidate is the thing this exists to avoid.
 // Its own context, not the worker's, so a cancel on shutdown can't drop it.
-func (o *Orchestrator) alertTaskFailure(ctx context.Context, job db.InvitationTaskJob, reason string) {
+// candidateEmail is empty for a role-level task (it belongs to no one candidate).
+func (o *Orchestrator) alertTaskFailure(ctx context.Context, id, company, role, candidateEmail, reason string) {
 	if o.Notifier == nil || !o.Notifier.Configured() {
 		slog.Warn("orchestrator: a task failed and no alert address is set — set RESEND_API_KEY, RESEND_FROM and TASK_ALERT_EMAIL so the company/admin is told",
-			"invitation", job.ID, "candidate", job.CandidateEmail, "role", job.RoleTitle)
+			"id", id, "candidate", candidateEmail, "role", role)
 		return
 	}
 	alertCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 20*time.Second)
 	defer cancel()
-	if err := o.Notifier.TaskFailure(alertCtx, job.ID, job.CompanyName, job.RoleTitle, job.CandidateEmail, reason); err != nil {
-		slog.Error("orchestrator: alerting the company/admin of a failed task", "invitation", job.ID, "error", err)
+	if err := o.Notifier.TaskFailure(alertCtx, id, company, role, candidateEmail, reason); err != nil {
+		slog.Error("orchestrator: alerting the company/admin of a failed task", "id", id, "error", err)
 		return
 	}
-	slog.Info("orchestrator: alerted the company/admin of a failed task", "invitation", job.ID, "candidate", job.CandidateEmail)
+	slog.Info("orchestrator: alerted the company/admin of a failed task", "id", id, "candidate", candidateEmail)
 }
 
 func (o *Orchestrator) makeInvitationTask(ctx context.Context, job db.InvitationTaskJob) error {
@@ -217,37 +218,44 @@ func (o *Orchestrator) makeInvitationTask(ctx context.Context, job db.Invitation
 		DurationMin: job.DurationMin, Notes: notes,
 		DifferentFrom: strings.Join(others, "\n\n---\n\n"),
 	}
-	// A task that ran and behaved wrongly — tests that pass on the buggy
-	// code, or fail on the solution — is not given to anyone. It is written
-	// again, with the agent told what went wrong, a few times before this
-	// attempt gives up. One that couldn't be run at all is kept, and its
-	// verification says so.
+	task, report, err := o.generateVerifiedTask(ctx, spec, "invitation "+job.ID)
+	if err != nil {
+		return err
+	}
+	_, err = o.DB.SaveInvitationTask(ctx, job, db.InvitationTask{
+		Name: job.RoleTitle, TaskVariant: job.TaskVariant, TechStack: job.TechStack, DurationMin: job.DurationMin,
+		TaskBrief: task.TaskBrief, StarterFiles: task.StarterFiles, SolutionFiles: task.SolutionFiles, Verification: report,
+	})
+	return err
+}
+
+// generateVerifiedTask asks the Task Generation agent for a task from spec and
+// runs it to check it behaves as a task must — the tests fail on the starter
+// code for the planted reason and pass once the solution is in place — writing
+// it again, up to generationsPerAttempt times, if it doesn't. A task that
+// couldn't be run at all is kept, its verification saying so; one that ran and
+// behaved wrongly is not given to anyone. label is only for logging.
+func (o *Orchestrator) generateVerifiedTask(ctx context.Context, spec llm.TaskSpec, label string) (llm.GeneratedTask, verify.Report, error) {
 	var task llm.GeneratedTask
 	var report verify.Report
 	for try := 1; ; try++ {
 		var err error
 		task, err = o.Agents.GenerateTask(ctx, spec)
 		if err != nil {
-			return fmt.Errorf("the model didn't return a usable task: %w", err)
+			return task, report, fmt.Errorf("the model didn't return a usable task: %w", err)
 		}
 		report = verify.Check(ctx, o.Verifier, verify.Task{
 			StarterFiles:        task.StarterFiles,
 			SolutionFiles:       task.SolutionFiles,
-			ExpectStarterToPass: strings.Contains(strings.ToLower(job.TaskVariant), "refactor"),
+			ExpectStarterToPass: strings.Contains(strings.ToLower(spec.TaskVariant), "refactor"),
 		})
 		if report.Status != verify.Failed {
-			break
+			return task, report, nil
 		}
-		slog.Info("orchestrator: a generated task didn't check out; writing it again", "invitation", job.ID, "try", try, "reason", report.Reason)
+		slog.Info("orchestrator: a generated task didn't check out; writing it again", "task", label, "try", try, "reason", report.Reason)
 		if try == generationsPerAttempt {
-			return fmt.Errorf("the generated task didn't check out: %s", report.Reason)
+			return task, report, fmt.Errorf("the generated task didn't check out: %s", report.Reason)
 		}
 		spec.PreviousAttempt = describeFailure(report)
 	}
-
-	_, err := o.DB.SaveInvitationTask(ctx, job, db.InvitationTask{
-		Name: job.RoleTitle, TaskVariant: job.TaskVariant, TechStack: job.TechStack, DurationMin: job.DurationMin,
-		TaskBrief: task.TaskBrief, StarterFiles: task.StarterFiles, SolutionFiles: task.SolutionFiles, Verification: report,
-	})
-	return err
 }
