@@ -26,7 +26,7 @@ export async function loadNotifications(): Promise<BellItem[]> {
 
   const [invites, sessions, state] = await Promise.all([
     c.from("assessments").select("id, role, status, accepted_at, created_at, due_date, company_id, companies(name)").eq("candidate_email", candidate.email),
-    c.from("sessions").select("id, assessment_id, assessment_reports(status, updated_at)").eq("candidate_id", candidate.id),
+    c.from("sessions").select("id, assessment_id, assessment_reports(status, shared_with_candidate, updated_at)").eq("candidate_id", candidate.id),
     c.from("candidate_notification_state").select("key, read_at, dismissed_at").eq("candidate_id", candidate.id),
   ]);
 
@@ -43,10 +43,9 @@ export async function loadNotifications(): Promise<BellItem[]> {
 
   const reportFacts: ReportFact[] = [];
   for (const s of (sessions.data ?? []) as any[]) {
-    // One report per session; the relation comes back as an object or a
-    // one-element list depending on how the key is inferred.
+    // One report per session; only notify if shared by the company.
     const report = Array.isArray(s.assessment_reports) ? s.assessment_reports[0] : s.assessment_reports;
-    if (!report) continue;
+    if (!report || !report.shared_with_candidate) continue;
     reportFacts.push({ sessionId: s.id, role: (s.assessment_id && roleOf.get(s.assessment_id)) || null, status: report.status, updatedAt: report.updated_at });
   }
 

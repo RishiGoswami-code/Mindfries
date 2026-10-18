@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import {
-  addOnboarded, addWaitlist, waitlistActivity, createCompany, listCompanyRoles, markInvitationEmailedByToken, type CompanyRole, createInvitation, createTemplate, recordEmailEvent, setCompanyStatus,
+  addOnboarded, addWaitlist, waitlistActivity, createCompany, setCompanyAdminPassword, listCompanyRoles, markInvitationEmailedByToken, type CompanyRole, createInvitation, createTemplate, recordEmailEvent, setCompanyStatus,
   setLeadStage, setTemplateStatus,
 } from "@/lib/db";
 import { mailerReady, sendMail, NOTIFY_EMAIL } from "@/lib/mailer";
@@ -63,7 +63,7 @@ export async function changeLeadStage(leadId: string, stage: LeadStage): Promise
 // to generate one unconditionally, pointing at a URL
 // (https://app.mindfries.com) that didn't exist. Not before now.
 export async function onboardCompany(input: {
-  leadId?: string; company: string; adminEmail: string; plan: Plan; monthlyCost: number; targetId?: string;
+  leadId?: string; company: string; adminEmail: string; plan: Plan; monthlyCost: number; targetId?: string; password?: string;
 }): Promise<Result> {
   try {
     await requireAdminRole();
@@ -71,7 +71,7 @@ export async function onboardCompany(input: {
 
     const { inviteToken } = await addOnboarded({
       leadId: input.leadId, company: input.company, adminEmail: input.adminEmail,
-      plan: input.plan, monthlyCost: input.monthlyCost,
+      plan: input.plan, monthlyCost: input.monthlyCost, password: input.password,
     });
 
     const portalUrl = process.env.COMPANY_PORTAL_URL;
@@ -188,20 +188,34 @@ export async function toggleTemplateStatus(id: string, status: TemplateStatus): 
   }
 }
 
-// Company Onboarding, wired for real (ADMIN_BACKEND_PLAN.md §5.1) — this
-// used to be a client component's local useState, persisting nothing.
+// Company Onboarding, wired for real (ADMIN_BACKEND_PLAN.md §5.1)
 export async function onboardCompanyAccount(input: {
   name: string; website: string; plan: Plan; status: CompanyStatus; seats: number;
   team: { email: string; role: MemberRole }[]; defaultTemplateIds: string[];
+  password?: string; adminName?: string;
 }): Promise<{ ok: true; company: Company } | { ok: false; error: string }> {
   try {
     await requireAdminRole();
     if (!input.name.trim()) throw new Error("Company name is required");
-    // Returned so the client can show the row under its real id — inviting a
-    // candidate sends that id, and an invented one fails the FK on job_roles.
     const company = await createCompany(input);
     revalidatePath("/admin/companies");
     return { ok: true, company };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+export async function setCompanyPasswordAction(input: {
+  companyId: string;
+  email: string;
+  password: string;
+}): Promise<Result> {
+  try {
+    await requireAdminRole();
+    const res = await setCompanyAdminPassword(input);
+    if (!res.ok) throw new Error(res.error);
+    revalidatePath("/admin/companies");
+    return { ok: true };
   } catch (e) {
     return fail(e);
   }

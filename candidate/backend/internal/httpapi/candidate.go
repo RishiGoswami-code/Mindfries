@@ -449,11 +449,13 @@ func (s *Server) handleSubmit(w http.ResponseWriter, r *http.Request) {
 }
 
 type reportResponse struct {
-	Status         string             `json:"status"`
-	Recommendation *string            `json:"recommendation,omitempty"`
-	Summary        *string            `json:"summary,omitempty"`
-	Error          *string            `json:"error,omitempty"`
-	Evidence       []evidenceItemView `json:"evidence,omitempty"`
+	Status              string             `json:"status"`
+	Recommendation      *string            `json:"recommendation,omitempty"`
+	Summary             *string            `json:"summary,omitempty"`
+	Error               *string            `json:"error,omitempty"`
+	Evidence            []evidenceItemView `json:"evidence,omitempty"`
+	SharedWithCandidate bool               `json:"sharedWithCandidate"`
+	SharedAt            *string            `json:"sharedAt,omitempty"`
 }
 
 type evidenceItemView struct {
@@ -479,18 +481,34 @@ func (s *Server) handleGetReport(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	resp := reportResponse{Status: report.Status, Recommendation: report.Recommendation, Summary: report.Summary, Error: report.Error}
-	if report.Status == "ready" {
-		items, err := s.db.GetEvidenceItems(r.Context(), report.ID)
-		if err != nil {
-			slog.Error("handleGetReport: evidence", "error", err)
-			writeError(w, http.StatusInternalServerError, "could not load evidence")
-			return
-		}
-		for _, it := range items {
-			resp.Evidence = append(resp.Evidence, evidenceItemView{Category: it.Category, Observation: it.Observation})
+	resp := reportResponse{
+		Status:              report.Status,
+		SharedWithCandidate: report.SharedWithCandidate,
+	}
+	if report.SharedAt != nil {
+		formatted := report.SharedAt.Format(time.RFC3339)
+		resp.SharedAt = &formatted
+	}
+
+	// Confidentiality boundary: Only return recommendation, summary, and evidence observations
+	// if the hiring company has explicitly released the report to the candidate.
+	if report.SharedWithCandidate {
+		resp.Recommendation = report.Recommendation
+		resp.Summary = report.Summary
+		resp.Error = report.Error
+		if report.Status == "ready" {
+			items, err := s.db.GetEvidenceItems(r.Context(), report.ID)
+			if err != nil {
+				slog.Error("handleGetReport: evidence", "error", err)
+				writeError(w, http.StatusInternalServerError, "could not load evidence")
+				return
+			}
+			for _, it := range items {
+				resp.Evidence = append(resp.Evidence, evidenceItemView{Category: it.Category, Observation: it.Observation})
+			}
 		}
 	}
+
 	writeJSON(w, http.StatusOK, resp)
 }
 

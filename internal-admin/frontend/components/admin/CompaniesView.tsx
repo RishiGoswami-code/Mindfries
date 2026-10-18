@@ -8,7 +8,7 @@ import { countWithin, cumulative, DAY, WEEK } from "@/lib/overview";
 import type { Company, GameTemplate, MemberRole, Plan } from "@/lib/types";
 import { Button, Field, Input, Modal, PageHeader, Pill, Select } from "@/components/ui";
 import { companyTone, fmtDate, planLabel } from "@/lib/format";
-import { companyRoles, inviteCandidate, onboardCompanyAccount, setCompanyStatusAction } from "@/app/admin/actions";
+import { companyRoles, inviteCandidate, onboardCompanyAccount, setCompanyPasswordAction, setCompanyStatusAction } from "@/app/admin/actions";
 import type { CompanyRole } from "@/lib/db";
 import { toast } from "@/components/admin/toast";
 
@@ -41,8 +41,14 @@ export function CompaniesView({
   const [plan, setPlan] = useState<Plan>("starter");
   const [seats, setSeats] = useState(5);
   const [emails, setEmails] = useState("");
+  const [password, setPassword] = useState("");
   const [defaults, setDefaults] = useState<string[]>([]);
   const [activateNow, setActivateNow] = useState(true);
+
+  // password management for existing company
+  const [passwordCompany, setPasswordCompany] = useState<Company | null>(null);
+  const [passwordEmail, setPasswordEmail] = useState("");
+  const [newPassword, setNewPassword] = useState("");
 
   function reset() {
     setName("");
@@ -50,12 +56,36 @@ export function CompaniesView({
     setPlan("starter");
     setSeats(5);
     setEmails("");
+    setPassword("");
     setDefaults([]);
     setActivateNow(true);
   }
 
   function toggleDefault(id: string) {
     setDefaults((d) => (d.includes(id) ? d.filter((x) => x !== id) : [...d, id]));
+  }
+
+  function openSetPassword(c: Company) {
+    setPasswordCompany(c);
+    setPasswordEmail(c.team[0]?.email ?? "");
+    setNewPassword("");
+  }
+
+  function handleSavePassword() {
+    if (!passwordCompany || !passwordEmail.trim() || newPassword.length < 8) return;
+    start(async () => {
+      const res = await setCompanyPasswordAction({
+        companyId: passwordCompany.id,
+        email: passwordEmail.trim(),
+        password: newPassword.trim(),
+      });
+      if (!res.ok) {
+        toast.error("Couldn't set password", res.error);
+        return;
+      }
+      toast.success("Password set successfully", `${passwordEmail} can now sign in at Company Portal`);
+      setPasswordCompany(null);
+    });
   }
 
   function onboard() {
@@ -75,6 +105,7 @@ export function CompaniesView({
       seats,
       team,
       defaultTemplateIds: defaults,
+      password: password.trim() || undefined,
     };
     start(async () => {
       const res = await onboardCompanyAccount(input);
@@ -225,6 +256,14 @@ export function CompaniesView({
                     <td className="px-5 py-4 text-right">
                       <div className="flex justify-end gap-2">
                         <button
+                          onClick={() => openSetPassword(c)}
+                          disabled={pending}
+                          title="Set or reset company login password"
+                          className="rounded-lg border border-hair px-3 py-1.5 text-xs font-semibold text-dim hover:border-hair-bright hover:text-ink disabled:opacity-50"
+                        >
+                          Password
+                        </button>
+                        <button
                           onClick={() => openInvite(c)}
                           disabled={pending}
                           className="rounded-lg border border-hair px-3 py-1.5 text-xs font-semibold text-dim hover:border-hair-bright hover:text-ink disabled:opacity-50"
@@ -298,6 +337,14 @@ export function CompaniesView({
               rows={3}
               placeholder={"admin@acme.io\nreviewer@acme.io"}
               className="w-full rounded-xl border border-hair bg-surface-2 px-3 py-2 text-sm outline-none transition focus:border-accent focus:bg-surface"
+            />
+          </Field>
+          <Field label="Initial Admin Password" hint="Optional (min 8 chars). If set, admin can sign in immediately at /login.">
+            <Input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="Min 8 characters"
             />
           </Field>
           <Field label="Default assessment templates" hint="What this company can pick from on day one.">
@@ -426,6 +473,44 @@ export function CompaniesView({
             </p>
           </div>
         )}
+      </Modal>
+
+      <Modal
+        open={passwordCompany !== null}
+        onClose={() => setPasswordCompany(null)}
+        title={passwordCompany ? `Set login password — ${passwordCompany.name}` : "Set login password"}
+        footer={
+          <>
+            <Button variant="ghost" onClick={() => setPasswordCompany(null)}>
+              Cancel
+            </Button>
+            <Button onClick={handleSavePassword} disabled={pending || !passwordEmail.trim() || newPassword.length < 8}>
+              {pending ? "Saving…" : "Save password"}
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-dim">
+            Directly configure the password for this company&apos;s administrator. They can sign in immediately at the Company Portal.
+          </p>
+          <Field label="Admin email">
+            <Input
+              type="email"
+              value={passwordEmail}
+              onChange={(e) => setPasswordEmail(e.target.value)}
+              placeholder="admin@company.com"
+            />
+          </Field>
+          <Field label="New password" hint="Minimum 8 characters">
+            <Input
+              type="password"
+              value={newPassword}
+              onChange={(e) => setNewPassword(e.target.value)}
+              placeholder="••••••••"
+            />
+          </Field>
+        </div>
       </Modal>
     </>
   );

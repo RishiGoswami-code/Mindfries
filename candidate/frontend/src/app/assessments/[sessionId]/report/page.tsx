@@ -6,17 +6,17 @@ import {
   ArrowLeft,
   ArrowRight,
   Bot,
+  CheckCircle2,
   ChevronRight,
   Clock,
   Code2,
-  ExternalLink,
   FileText,
-  Flag,
   Folder,
   Lightbulb,
   ListChecks,
   MessageSquare,
   Play,
+  Sparkles,
   SquareTerminal,
   UserRound,
   Workflow,
@@ -25,9 +25,9 @@ import {
 import { CandidateShell } from "@/components/dashboard/CandidateShell";
 import { ReportAutoRefresh } from "@/components/assessments/ReportAutoRefresh";
 import { DownloadButton } from "@/components/report/DownloadButton";
-import { DiffView, FlagList, Observations, Panel, Pill, TestResults, Timeline } from "@/components/report/Parts";
+import { DiffView, Observations, Panel, Pill, TestResults, Timeline } from "@/components/report/Parts";
 import { LocalTime } from "@/components/jobs/LocalTime";
-import { BackendAuthError, BackendError, getSession, getSessionReport, sessionEventsOrUndefined, type EvidenceItemView, type ReportView } from "@/lib/backend/client";
+import { BackendAuthError, BackendError, getSession, getSessionReport, sessionEventsOrUndefined, type EvidenceItemView, type ReportView, type SessionView } from "@/lib/backend/client";
 import { currentCandidate } from "@/lib/auth/users";
 import { getProfile } from "@/lib/profile/actions";
 import { loadReportActivity, type ReportActivity } from "@/lib/report/data";
@@ -67,10 +67,10 @@ const SECTIONS: Array<{ id: Section; label: string; icon: LucideIcon; blurb: str
   { id: "artifacts", label: "Artifacts", icon: Folder, blurb: "Your files as you left them" },
 ];
 
-/** Which agents' observations each tab shows. */
+/** Which agents' observations each tab shows — integrity/proctoring flags are kept strictly on the company side. */
 const CATEGORIES: Record<Exclude<Section, "summary" | "artifacts">, string[]> = {
   code: ["code_evaluation", "provenance", "rubric"],
-  workflow: ["workflow", "activity_flags", "integrity"],
+  workflow: ["workflow", "integrity"],
   reasoning: ["reasoning", "ai_usage"],
   interview: ["interview", "interview_status"],
 };
@@ -87,14 +87,14 @@ async function loadReportData(sessionId: string) {
 }
 
 /**
- * The evidence report for one session: what the evaluation agents observed,
- * and beside it what the workspace recorded — the files changed, the test
- * runs, the commands, the moments that were flagged, and when each
- * happened. Six tabs (?section=), the Summary first.
+ * The evidence report for one session.
  *
- * The agents' recommendation and observations come from the backend; the
- * rest is read straight from the session's activity trail
- * (lib/report/data.ts). Nothing on the page is a number someone typed in.
+ * When the candidate submits an assessment, reports are kept strictly on the
+ * company side until the hiring team reviews and explicitly releases them.
+ * If not yet shared, the candidate sees the Under Review / Submission Received view.
+ *
+ * Once shared by the company, the candidate can view the evaluation and feedback.
+ * Internal proctoring flags and reviewer notes always remain hidden from candidates.
  */
 export default async function SessionReportPage({ params, searchParams }: { params: Promise<{ sessionId: string }>; searchParams: Promise<{ section?: string }> }) {
   const [{ sessionId }, { section: wanted }] = await Promise.all([params, searchParams]);
@@ -102,6 +102,20 @@ export default async function SessionReportPage({ params, searchParams }: { para
 
   const [{ session, report }, viewer, profile] = await Promise.all([loadReportData(sessionId), currentCandidate(), getProfile()]);
   const activity = viewer ? await loadReportActivity(sessionId, viewer.id, session.startedAt) : null;
+
+  // Confidentiality gate: If the hiring team has not released the report to the candidate,
+  // show the reassuring "Under Review / Submission Received" state.
+  if (!report.sharedWithCandidate) {
+    return (
+      <SubmissionPendingView
+        session={session}
+        activity={activity}
+        profile={profile}
+        viewerName={viewer?.name}
+      />
+    );
+  }
+
   const isTerminal = report.status === "ready" || report.status === "failed";
   const evidence = report.status === "ready" ? (report.evidence ?? []) : [];
   const href = (s: Section) => `/assessments/${encodeURIComponent(sessionId)}/report${s === "summary" ? "" : `?section=${s}`}`;
@@ -115,8 +129,12 @@ export default async function SessionReportPage({ params, searchParams }: { para
           <Link href="/assessments" className="inline-flex items-center gap-1.5 text-[13.5px] text-[#4C4874] hover:text-[#100E2E] print:hidden">
             <ArrowLeft size={15} /> All assessments
           </Link>
-          <p className="mt-3 text-[13px] font-semibold tracking-[0.12em] text-[#6E6A8F] uppercase">Evidence report</p>
-          <h1 className={clsx(display.className, "mt-1 text-[38px] leading-tight font-semibold tracking-[-0.02em] text-[#100E2E] sm:text-[46px]")}>Session {session.startedAt.slice(0, 10)}</h1>
+          <div className="mt-3 flex items-center gap-2">
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-[#E3F7EC] px-3 py-1 text-[11.5px] font-semibold tracking-wide text-[#14693a] uppercase">
+              <CheckCircle2 size={13} /> Shared by Company
+            </span>
+          </div>
+          <h1 className={clsx(display.className, "mt-1.5 text-[38px] leading-tight font-semibold tracking-[-0.02em] text-[#100E2E] sm:text-[46px]")}>Session {session.startedAt.slice(0, 10)}</h1>
           <p className="mt-1.5 flex flex-wrap gap-x-2.5 text-[15px] text-[#6E6A8F]">
             <span>{session.durationMin} min assessment</span>
             <span aria-hidden>·</span>
@@ -133,6 +151,15 @@ export default async function SessionReportPage({ params, searchParams }: { para
         </div>
         <DownloadButton />
       </header>
+
+      {/* Shared announcement banner */}
+      <div className="mt-4 flex items-center gap-3 rounded-2xl border border-[#CDEBD9] bg-[#F1FAF4] px-4 py-3 text-[14px] text-[#14693a]">
+        <CheckCircle2 size={18} className="shrink-0 text-[#1A9E6B]" />
+        <span>
+          <strong>Report released:</strong> The hiring team has reviewed your submission and shared this assessment report with you
+          {report.sharedAt ? <> on <LocalTime iso={report.sharedAt} /></> : ""}.
+        </span>
+      </div>
 
       <nav className="mt-6 flex gap-1 overflow-x-auto rounded-[20px] border border-white/90 bg-white/70 px-2 shadow-[0_10px_30px_-24px_rgba(76,58,160,0.45)] backdrop-blur [scrollbar-width:none] print:hidden" aria-label="Report sections">
         {SECTIONS.map(({ id, label, icon: Icon }) => (
@@ -175,15 +202,152 @@ function pick(evidence: EvidenceItemView[], section: keyof typeof CATEGORIES) {
 
 const notReady = "The evaluation hasn't finished, so there are no observations here yet.";
 
+// ── Submission Pending View (Shown before Company Releases Report) ────────────
+
+function SubmissionPendingView({
+  session,
+  activity,
+  profile,
+  viewerName,
+}: {
+  session: SessionView;
+  activity: ReportActivity | null;
+  profile: any;
+  viewerName?: string;
+}) {
+  const trail = activity?.trail;
+  const lastTests = trail?.lastTests ?? null;
+
+  return (
+    <CandidateShell sessionName={viewerName} profile={profile}>
+      <header className="mt-6 flex flex-col gap-5 px-1 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0">
+          <Link href="/assessments" className="inline-flex items-center gap-1.5 text-[13.5px] text-[#4C4874] hover:text-[#100E2E]">
+            <ArrowLeft size={15} /> All assessments
+          </Link>
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-[#EFEAFD] px-3 py-1 text-[11.5px] font-semibold tracking-wide text-[#4B2BB8] uppercase">
+              <CheckCircle2 size={13} /> Submission Received
+            </span>
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-[#FFF8EC] px-3 py-1 text-[11.5px] font-semibold tracking-wide text-[#B45309] uppercase">
+              <Clock size={13} /> Under Review
+            </span>
+          </div>
+          <h1 className={clsx(display.className, "mt-2 text-[36px] leading-tight font-semibold tracking-[-0.02em] text-[#100E2E] sm:text-[44px]")}>
+            Assessment Submitted
+          </h1>
+          <p className="mt-1.5 flex flex-wrap gap-x-2.5 text-[15px] text-[#6E6A8F]">
+            <span>{session.durationMin} min assessment</span>
+            <span aria-hidden>·</span>
+            <span>Session {session.id.slice(0, 8)}</span>
+            {activity?.trail.lastAt && (
+              <>
+                <span aria-hidden>·</span>
+                <span>Submitted <LocalTime iso={activity.trail.lastAt} /></span>
+              </>
+            )}
+          </p>
+        </div>
+      </header>
+
+      <div className="mt-6 rounded-[24px] border border-white/90 bg-white/80 p-6 shadow-[0_12px_36px_-24px_rgba(76,58,160,0.35)] backdrop-blur sm:p-8">
+        <div className="flex flex-col gap-6 sm:flex-row sm:items-start">
+          <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-[#EFEAFD] to-[#E2D9FC] text-[#5B3BE0] shadow-sm">
+            <Sparkles size={28} />
+          </span>
+          <div className="min-w-0 flex-1">
+            <h2 className="text-[22px] font-bold tracking-tight text-[#100E2E]">
+              Thank you for completing your assessment!
+            </h2>
+            <p className="mt-2 text-[15px] leading-relaxed text-[#4C4874]">
+              Your code, test runs, and interview answers have been safely received and delivered to the hiring team.
+            </p>
+            <div className="mt-4 rounded-2xl border border-[#F1EDFC] bg-[#FAF9FE] p-4 text-[14px] leading-relaxed text-[#5E5A82]">
+              <p className="font-semibold text-[#100E2E]">What happens next?</p>
+              <p className="mt-1">
+                The hiring team is reviewing your assessment. To ensure a fair and comprehensive evaluation, detailed assessment reports remain private to the company until they are ready to release them.
+              </p>
+              <p className="mt-2">
+                Once the company finishes reviewing your submission and releases the report, your evaluation results and feedback will become visible right here. You will also receive an in-app notification on your dashboard.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div className="mt-8 border-t border-[#F0EEF7] pt-6">
+          <p className="text-[13px] font-semibold tracking-wider text-[#6E6A8F] uppercase">
+            Submission overview
+          </p>
+          <div className="mt-3 grid grid-cols-2 gap-4 sm:grid-cols-4">
+            <div className="rounded-2xl border border-[#ECE9F6] bg-white p-4 shadow-sm">
+              <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#EAF1FE] text-[#2F6BDE]">
+                <Clock size={18} />
+              </span>
+              <p className="mt-3 text-[13px] text-[#6E6A8F]">Time worked</p>
+              <p className="mt-0.5 text-[20px] font-bold text-[#100E2E]">{trail?.workMinutes ?? session.elapsedMin} min</p>
+              <p className="text-[12px] text-[#8A86A8]">of {session.durationMin} min allowed</p>
+            </div>
+
+            <div className="rounded-2xl border border-[#ECE9F6] bg-white p-4 shadow-sm">
+              <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#EFEAFD] text-[#5B3BE0]">
+                <FileText size={18} />
+              </span>
+              <p className="mt-3 text-[13px] text-[#6E6A8F]">Files modified</p>
+              <p className="mt-0.5 text-[20px] font-bold text-[#100E2E]">{activity?.diffs.length ?? trail?.editedPaths.length ?? 0}</p>
+              <p className="text-[12px] text-[#8A86A8]">changes recorded</p>
+            </div>
+
+            <div className="rounded-2xl border border-[#ECE9F6] bg-white p-4 shadow-sm">
+              <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#E3F7EC] text-[#1A9E6B]">
+                <Play size={18} />
+              </span>
+              <p className="mt-3 text-[13px] text-[#6E6A8F]">Test runs</p>
+              <p className="mt-0.5 text-[20px] font-bold text-[#100E2E]">
+                {lastTests && lastTests.passed !== null ? `${lastTests.passed} passed` : "Completed"}
+              </p>
+              <p className="text-[12px] text-[#8A86A8]">
+                {lastTests?.failed ? `${lastTests.failed} failing` : "tests recorded"}
+              </p>
+            </div>
+
+            <div className="rounded-2xl border border-[#ECE9F6] bg-white p-4 shadow-sm">
+              <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#EFEAFD] text-[#5B3BE0]">
+                <MessageSquare size={18} />
+              </span>
+              <p className="mt-3 text-[13px] text-[#6E6A8F]">Interview</p>
+              <p className="mt-0.5 text-[20px] font-bold text-[#100E2E]">Recorded</p>
+              <p className="text-[12px] text-[#8A86A8]">answers submitted</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="mt-8 flex flex-wrap items-center gap-3 border-t border-[#F0EEF7] pt-6">
+          <Link
+            href="/assessments"
+            className="inline-flex items-center gap-2 rounded-full bg-[#1F1B4D] px-5 py-2.5 text-[14px] font-semibold text-white transition-opacity hover:opacity-90"
+          >
+            Back to assessments
+          </Link>
+          <Link
+            href="/dashboard"
+            className="inline-flex items-center gap-2 rounded-full border border-[#DCD6F4] bg-white px-5 py-2.5 text-[14px] font-semibold text-[#2A2654] transition-colors hover:bg-[#FAF9FE]"
+          >
+            Candidate dashboard
+          </Link>
+        </div>
+      </div>
+    </CandidateShell>
+  );
+}
+
 // ── Summary ────────────────────────────────────────────────────────────────
 
 function Summary({ report, activity, durationMin, href }: { report: ReportView; activity: ReportActivity | null; durationMin: number; href: (s: Section) => string }) {
   const trail = activity?.trail;
   const top = activity?.diffs[0];
-  const pasteInto = top ? trail?.pastes.filter((p) => p.external && p.target.replace(/^\/+/, "") === top.path && p.chars >= 200) : [];
-  const pastedLines = (pasteInto ?? []).reduce((n, p) => n + p.lines, 0);
   const lastTests = trail?.lastTests ?? null;
   const incomplete = report.status === "ready" ? (report.evidence ?? []).filter((e) => e.category === "incomplete") : [];
+  const cleanTimeline = (trail?.timeline ?? []).filter((t) => t.tone !== "flag");
 
   const tiles: Array<{ icon: LucideIcon; label: string; value: React.ReactNode; note?: React.ReactNode; tint: string; href?: string }> = [
     { icon: Clock, label: "Time worked", value: `${trail?.workMinutes ?? 0} min`, note: `of ${durationMin} allowed`, tint: "bg-[#EAF1FE] text-[#2F6BDE]" },
@@ -203,16 +367,11 @@ function Summary({ report, activity, durationMin, href }: { report: ReportView; 
     },
     { icon: SquareTerminal, label: "Terminal commands", value: trail?.terminalCommands ?? 0, tint: "bg-[#EFEAFD] text-[#5B3BE0]" },
     {
-      icon: Flag,
-      label: "Workspace activity",
-      value: (
-        <span className={clsx("inline-flex items-center gap-2", trail?.flags.length ? "text-[#DC2643]" : "text-[#14693a]")}>
-          {trail?.flags.length ? <Flag size={18} className="fill-current" /> : null}
-          {trail?.flags.length ? `${trail.flags.length} ${trail.flags.length === 1 ? "flag" : "flags"}` : "No flags"}
-        </span>
-      ),
-      tint: "bg-[#EAF1FE] text-[#2F6BDE]",
-      href: href("workflow"),
+      icon: CheckCircle2,
+      label: "Report status",
+      value: "Released",
+      note: "Shared by company",
+      tint: "bg-[#E3F7EC] text-[#1A9E6B]",
     },
   ];
 
@@ -270,12 +429,11 @@ function Summary({ report, activity, durationMin, href }: { report: ReportView; 
                   <span className="mr-1 inline-flex items-center gap-2 text-[15px] font-medium text-[#100E2E]">
                     <FileText size={17} /> {top.path}
                   </span>
-                  {pastedLines > 0 && <Pill tone="red">Large external paste detected</Pill>}
                   <Pill tone="green">+{top.added} lines</Pill>
                   <Pill tone="red">-{top.removed} lines</Pill>
                   {(activity?.diffs.length ?? 0) > 1 && <Pill tone="gray">+{activity!.diffs.length - 1} more files</Pill>}
                 </div>
-                <DiffView diff={top} window={14} pasteBadge={pastedLines > 0 ? <Pill tone="green">+{pastedLines} lines pasted</Pill> : undefined} />
+                <DiffView diff={top} window={14} />
               </>
             )}
           </Panel>
@@ -287,9 +445,9 @@ function Summary({ report, activity, durationMin, href }: { report: ReportView; 
 
         <div className="min-w-0 space-y-5">
           <Panel icon={<Workflow size={21} />} title="Session timeline">
-            {trail && trail.timeline.length > 0 ? (
+            {cleanTimeline.length > 0 ? (
               <>
-                <Timeline items={shortTimeline(trail.timeline).items} />
+                <Timeline items={shortTimeline(cleanTimeline).items} />
                 <Link href={href("workflow")} className="mt-2 inline-flex items-center gap-1.5 text-[13.5px] font-medium text-[#5B3BE0] hover:underline print:hidden">
                   Full timeline <ArrowRight size={14} />
                 </Link>
@@ -298,17 +456,21 @@ function Summary({ report, activity, durationMin, href }: { report: ReportView; 
               <p className="text-[14px] text-[#6E6A8F]">No activity was recorded for this session.</p>
             )}
           </Panel>
-          <Panel
-            icon={<Flag size={20} />}
-            title={
-              <span className="inline-flex items-center gap-2.5">
-                Flags
-                {trail && trail.flags.length > 0 && <span className="flex h-6 min-w-6 items-center justify-center rounded-full bg-[#DC2643] px-1.5 text-[12.5px] font-semibold text-white">{trail.flags.length}</span>}
-              </span>
-            }
-          >
-            <FlagList flags={trail?.flags.slice(0, 4) ?? []} href={href("workflow")} />
-            <p className="mt-2 text-[12.5px] text-[#8A86A8]">A flag is a moment for the hiring team to look at, not a decision.</p>
+
+          <Panel icon={<SquareTerminal size={20} />} title="Session highlights">
+            <dl className="grid grid-cols-2 gap-3 text-[14px]">
+              {[
+                ["Terminal commands", trail?.terminalCommands ?? 0],
+                ["Test runs", trail?.testRuns.length ?? 0],
+                ["Time worked", `${trail?.workMinutes ?? 0} min`],
+                ["Questions to assistant", trail?.assistant.filter((t) => t.role === "candidate").length ?? 0],
+              ].map(([k, v]) => (
+                <div key={String(k)} className="rounded-xl bg-[#FAF9FE] px-3 py-2.5">
+                  <dt className="text-[12.5px] text-[#6E6A8F]">{k}</dt>
+                  <dd className="text-[17px] font-semibold text-[#100E2E] tabular-nums">{v}</dd>
+                </div>
+              ))}
+            </dl>
           </Panel>
         </div>
       </div>
@@ -347,7 +509,6 @@ function RecommendationCard({ report }: { report: ReportView }) {
           <p className="text-[16px] font-semibold text-[#100E2E]">{copy.title}</p>
         </div>
         <p className="mt-2 text-[14px] leading-relaxed text-[#5E5A82]">{report.status === "failed" ? (report.error ?? "No reason was recorded.") : copy.body}</p>
-        {report.status === "failed" && <p className="mt-2 text-[12.5px] text-[#8A86A8]">Nothing was scored, because evaluation couldn&apos;t run. What the workspace recorded is still shown.</p>}
       </div>
     );
   }
@@ -385,7 +546,7 @@ function RecommendationCard({ report }: { report: ReportView }) {
           <p className={clsx("mt-1 line-clamp-5 text-[14px] leading-relaxed", tone === "bad" ? "text-[#8F1D33]" : "text-[#4C4874]")}>{report.summary.replace(/ ?\[E\d+\]/g, "")}</p>
         </div>
       )}
-      <p className="mt-3 text-[12px] text-[#8A86A8]">Written by the evaluation agents from the evidence. The hiring team makes the decision.</p>
+      <p className="mt-3 text-[12px] text-[#8A86A8]">Evaluation summary shared by the hiring team.</p>
     </div>
   );
 }
@@ -444,6 +605,7 @@ function CodeSection({ activity, evidence, ready }: { activity: ReportActivity |
 
 function WorkflowSection({ activity, evidence, ready }: { activity: ReportActivity | null; evidence: EvidenceItemView[]; ready: boolean }) {
   const trail = activity?.trail;
+  const cleanTimeline = (trail?.timeline ?? []).filter((t) => t.tone !== "flag");
   return (
     <div className="grid gap-5 xl:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)]">
       <div className="min-w-0 space-y-5">
@@ -451,14 +613,10 @@ function WorkflowSection({ activity, evidence, ready }: { activity: ReportActivi
           <Observations items={pick(evidence, "workflow")} empty={ready ? "The workflow evaluation recorded no observations." : notReady} />
         </Panel>
         <Panel icon={<Clock size={20} />} title="Full timeline">
-          {trail && trail.timeline.length > 0 ? <Timeline items={trail.timeline} /> : <p className="text-[14px] text-[#6E6A8F]">No activity was recorded.</p>}
+          {cleanTimeline.length > 0 ? <Timeline items={cleanTimeline} /> : <p className="text-[14px] text-[#6E6A8F]">No activity was recorded.</p>}
         </Panel>
       </div>
       <div className="min-w-0 space-y-5">
-        <Panel icon={<Flag size={20} />} title={`Flags (${trail?.flags.length ?? 0})`}>
-          <FlagList flags={trail?.flags ?? []} />
-          <p className="mt-2 text-[12.5px] text-[#8A86A8]">Each was recorded with a camera and screen still for the hiring team. A flag is a moment to look at, not a decision.</p>
-        </Panel>
         <Panel icon={<SquareTerminal size={20} />} title="At a glance">
           <dl className="grid grid-cols-2 gap-3 text-[14px]">
             {[
@@ -526,9 +684,8 @@ function InterviewSection({ activity, evidence, ready }: { activity: ReportActiv
 
 function ArtifactsSection({ activity }: { activity: ReportActivity | null }) {
   const files = activity?.finalFiles ? Object.entries(activity.finalFiles).sort(([a], [b]) => a.localeCompare(b)) : [];
-  const m = activity?.trail.media;
   return (
-    <div className="grid gap-5 xl:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">
+    <div className="max-w-4xl">
       <Panel icon={<Folder size={20} />} title={`Your files (${files.length})`}>
         {files.length === 0 ? (
           <p className="text-[14px] text-[#6E6A8F]">No saved copy of your files was recorded.</p>
@@ -553,15 +710,6 @@ function ArtifactsSection({ activity }: { activity: ReportActivity | null }) {
             </div>
           </>
         )}
-      </Panel>
-      <Panel icon={<ExternalLink size={19} />} title="Recordings kept">
-        <ul className="space-y-2.5 text-[14px] text-[#2A2654]">
-          <li>{m?.cameraStills ?? 0} camera stills</li>
-          <li>{m?.screenStills ?? 0} screen stills</li>
-          <li>{m?.audioClips ?? 0} microphone clips</li>
-          <li>{m?.interviewRecordings ?? 0} interview answers recorded</li>
-        </ul>
-        <p className="mt-3 text-[12.5px] text-[#8A86A8]">These are kept for the hiring team, as the recording policy you agreed to describes.</p>
       </Panel>
     </div>
   );

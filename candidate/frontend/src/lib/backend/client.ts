@@ -111,6 +111,8 @@ export interface AssessmentView {
   sessionId?: string;
   /** Set for a company's invitation to this candidate — see Assessment in lib/dashboard/data.ts. */
   invitation?: { accepted: boolean; declined: boolean };
+  /** True when the company has released the report to the candidate. */
+  reportShared?: boolean;
 }
 
 export interface SessionView {
@@ -138,6 +140,8 @@ export interface ReportView {
   summary?: string;
   error?: string;
   evidence?: EvidenceItemView[];
+  sharedWithCandidate?: boolean;
+  sharedAt?: string;
 }
 
 export interface NewActivityEvent {
@@ -202,9 +206,28 @@ async function withInvitationAnswers(rows: AssessmentView[], email: string | und
     .eq("candidate_email", email.trim().toLowerCase());
   if (error || !data) return rows;
   const answers = new Map(data.map((r) => [r.id as string, { accepted: !!r.accepted_at, declined: !!r.declined_at }]));
+  const sessionIds = rows.map((r) => r.sessionId).filter((id): id is string => !!id);
+  const sharedMap = new Map<string, boolean>();
+  if (sessionIds.length > 0) {
+    const { data: reportRows } = await c
+      .from("assessment_reports")
+      .select("session_id, shared_with_candidate")
+      .in("session_id", sessionIds);
+    if (reportRows) {
+      for (const r of reportRows) {
+        sharedMap.set(r.session_id, !!r.shared_with_candidate);
+      }
+    }
+  }
+
   return rows.map((row) => {
     const invitation = answers.get(row.id);
-    return invitation ? { ...row, invitation } : row;
+    const reportShared = row.sessionId ? sharedMap.get(row.sessionId) : undefined;
+    return {
+      ...row,
+      ...(invitation ? { invitation } : {}),
+      ...(reportShared !== undefined ? { reportShared } : {}),
+    };
   });
 }
 
@@ -436,7 +459,69 @@ export async function interviewStep(sessionId: string, input: InterviewInput = {
 }
 
 export async function getSessionReport(sessionId: string): Promise<ReportView> {
-  return request<ReportView>(`/api/v1/sessions/${encodeURIComponent(sessionId)}/report`);
+  const c = db();
+  let dbReport: {
+    id: string;
+    status: string;
+    recommendation: string | null;
+    summary: string | null;
+    error: string | null;
+    shared_with_candidate: boolean | null;
+    shared_at: string | null;
+  } | null = null;
+  let dbEvidence: EvidenceItemView[] = [];
+
+  if (c && /^[0-9a-f-]{36}$/i.test(sessionId)) {
+    const { data } = await c
+      .from("assessment_reports")
+      .select("id, status, recommendation, summary, error, shared_with_candidate, shared_at")
+      .eq("session_id", sessionId)
+      .maybeSingle();
+    if (data) {
+      dbReport = data;
+      if (data.shared_with_candidate && data.id) {
+        const { data: evRows } = await c
+          .from("evidence_items")
+          .select("category, observation")
+          .eq("report_id", data.id)
+          .order("created_at", { ascending: true });
+        if (evRows) {
+          dbEvidence = evRows.map((e: any) => ({
+            category: e.category,
+            observation: e.observation,
+          }));
+        }
+      }
+    }
+  }
+
+  let backendReport: ReportView | null = null;
+  if (backendReady()) {
+    try {
+      backendReport = await request<ReportView>(`/api/v1/sessions/${encodeURIComponent(sessionId)}/report`);
+    } catch (err) {
+      if (err instanceof BackendAuthError) throw err;
+    }
+  }
+
+  // The database `shared_with_candidate` column is the authoritative flag set by company portal.
+  const isShared = dbReport ? !!dbReport.shared_with_candidate : !!backendReport?.sharedWithCandidate;
+  const status = (backendReport?.status ?? dbReport?.status ?? "pending") as ReportView["status"];
+  const recommendation = isShared ? (backendReport?.recommendation ?? dbReport?.recommendation ?? undefined) : undefined;
+  const summary = isShared ? (backendReport?.summary ?? dbReport?.summary ?? undefined) : undefined;
+  const error = isShared ? (backendReport?.error ?? dbReport?.error ?? undefined) : undefined;
+  const sharedAt = dbReport?.shared_at ?? backendReport?.sharedAt ?? undefined;
+  const evidence = isShared ? (backendReport?.evidence && backendReport.evidence.length > 0 ? backendReport.evidence : dbEvidence) : [];
+
+  return {
+    status,
+    recommendation,
+    summary,
+    error,
+    evidence,
+    sharedWithCandidate: isShared,
+    sharedAt,
+  };
 }
 
 export interface SessionAssessmentView {

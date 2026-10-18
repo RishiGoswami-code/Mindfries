@@ -120,7 +120,7 @@ function AssessmentAction({ assessment }: { assessment: Assessment }) {
   if (status === "submitted" && sessionId)
     return (
       <ActionLink href={`/assessments/${encodeURIComponent(sessionId)}/report`} subtle>
-        View report
+        {assessment.reportShared ? "View report" : "Under review"}
       </ActionLink>
     );
   return null;

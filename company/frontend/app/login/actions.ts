@@ -5,6 +5,8 @@ import { redirect } from "next/navigation";
 import { checkCredentials } from "@/lib/auth/company-users";
 import { SESSION_COOKIE, SESSION_MAX_AGE, signSession, sessionSecret } from "@/lib/auth/session";
 
+// Server action verifying credentials against company_users / onboarded companies
+
 // A server action is a public HTTP endpoint, so everything here is treated
 // as coming from anyone: inputs are capped before they reach the database,
 // and the only thing that decides the outcome is checkCredentials.

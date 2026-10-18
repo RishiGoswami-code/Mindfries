@@ -7,15 +7,15 @@ import { listApplicationEmails, listInterviews } from "@/lib/hiring";
 import { getCandidateProfile } from "@/lib/candidate-profile";
 import { EmptyState, PageHeader, Pill } from "@/components/ui";
 import { fmtDate, recommendationLabel, sessionStatusTone, stageLabel, stageTone } from "@/lib/format";
-import { CameraTimeline } from "./CameraTimeline";
-import { FlaggedMoments } from "./FlaggedMoments";
 import { CandidateProfileCard } from "./CandidateProfileCard";
 import { CandidateSnapshot } from "./CandidateSnapshot";
 import { EvidenceList } from "./EvidenceList";
-import { InterviewTranscript } from "./InterviewTranscript";
 import { ReviewerDecisionForm } from "./ReviewerDecisionForm";
 import { ReportAutoRefresh } from "./ReportAutoRefresh";
+import { ReportShareControl } from "./ReportShareControl";
 import { ApplicantCard, EmailPanel, InterviewsPanel } from "./HiringPanels";
+import { loadReportActivity } from "@/lib/report/data";
+import { CandidateEvidenceReport } from "@/components/report/CandidateEvidenceReport";
 
 /** The tab shows the candidate's name. */
 export async function generateMetadata({ params }: { params: Promise<{ candidateId: string }> }): Promise<Metadata> {
@@ -43,6 +43,11 @@ export default async function CandidateDetailPage({ params }: { params: Promise<
     listInterviews(user.companyId, application.id),
     listApplicationEmails(user.companyId, application.id),
   ]);
+
+  const activity = session
+    ? await loadReportActivity(session.id, session.startedAt, null, application.assessmentId)
+    : null;
+
   const closed = application.stage === "withdrawn" || application.stage === "declined";
   const pending = report?.status === "pending" || report?.status === "generating";
   const canReview = can("candidate:stage", user.role);
@@ -133,42 +138,55 @@ export default async function CandidateDetailPage({ params }: { params: Promise<
             </div>
           </div>
 
-          {!report || pending ? (
-            <EmptyState
-              title={report?.status === "generating" ? "Generating report…" : "Report not started yet"}
-              hint="This refreshes automatically once it's ready."
+          {report && (
+            <ReportShareControl
+              applicationId={application.id}
+              sharedWithCandidate={report.sharedWithCandidate}
+              sharedAt={report.sharedAt}
+              sharedBy={report.sharedBy}
+              canManage={canReview}
             />
-          ) : report.status === "failed" ? (
-            <div className="hair-card p-5 text-sm text-[#a6203c]">
-              Report failed to generate{report.error ? `: ${report.error}` : "."}
-            </div>
-          ) : (
-            <div className="space-y-4">
-              <div className="hair-card p-5">
-                <div className="eyebrow">AI recommendation</div>
-                <div className="mt-2 text-xl font-extrabold tracking-tight">
-                  {report.recommendation ? (recommendationLabel[report.recommendation] ?? report.recommendation) : "—"}
-                </div>
-                {report.summary && <p className="mt-3 text-sm text-dim">{report.summary}</p>}
+          )}
 
-                {report.review && (
-                  <div className="mt-4 border-t border-hair pt-4">
-                    <div className="eyebrow">Reviewer&apos;s decision</div>
-                    <div className="mt-2 text-lg font-extrabold tracking-tight">
-                      {report.review.recommendation ? (recommendationLabel[report.review.recommendation] ?? report.review.recommendation) : "Not decided"}
-                    </div>
-                    {report.review.note && <p className="mt-2 text-sm whitespace-pre-line">{report.review.note}</p>}
-                    {report.review.by && (
-                      <p className="mt-2 text-xs text-faint">
-                        {report.review.by}
-                        {report.review.at ? ` · ${fmtDate(report.review.at)}` : ""}
-                      </p>
-                    )}
-                  </div>
-                )}
-                {canReview && <ReviewerDecisionForm applicationId={application.id} review={report.review} />}
+          {report?.review && (
+            <div className="hair-card p-5">
+              <div className="eyebrow">Reviewer&apos;s decision</div>
+              <div className="mt-2 text-lg font-extrabold tracking-tight">
+                {report.review.recommendation ? (recommendationLabel[report.review.recommendation] ?? report.review.recommendation) : "Not decided"}
               </div>
+              {report.review.note && <p className="mt-2 text-sm whitespace-pre-line text-dim">{report.review.note}</p>}
+              {report.review.by && (
+                <p className="mt-2 text-xs text-faint">
+                  {report.review.by}
+                  {report.review.at ? ` · ${fmtDate(report.review.at)}` : ""}
+                </p>
+              )}
+            </div>
+          )}
 
+          {canReview && report && (
+            <div className="hair-card p-5">
+              <div className="eyebrow">Review candidate</div>
+              <div className="mt-2">
+                <ReviewerDecisionForm applicationId={application.id} review={report.review} />
+              </div>
+            </div>
+          )}
+
+          {/* Full candidate evidence report with all tabs, diffs, timeline, interview video/audio replay, artifacts, and proctoring snapshots */}
+          <CandidateEvidenceReport
+            session={session}
+            report={report}
+            activity={activity}
+            interview={interview}
+            camera={camera}
+            screen={screen}
+            flags={flags}
+          />
+
+          {report && report.evidence.length > 0 && (
+            <div className="space-y-4 pt-4 border-t border-hair">
+              <div className="eyebrow">Evidence citations & annotations</div>
               <EvidenceList
                 applicationId={application.id}
                 evidence={report.evidence}
@@ -179,15 +197,10 @@ export default async function CandidateDetailPage({ params }: { params: Promise<
             </div>
           )}
 
-          <InterviewTranscript exchanges={interview} />
-
-          <FlaggedMoments flags={flags} screen={screen} />
-
-          <CameraTimeline camera={camera} />
-
           {pending && <ReportAutoRefresh />}
         </>
       )}
     </div>
   );
 }
+
