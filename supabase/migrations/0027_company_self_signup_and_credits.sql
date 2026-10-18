@@ -83,6 +83,7 @@ begin
   if p_amount is null or p_amount < 1 then raise exception 'AMOUNT_MUST_BE_POSITIVE'; end if;
   update companies
      set access_status = 'active',
+         status = case when status = 'onboarding' then 'active' else status end,
          credits = coalesce(credits, 0) + p_amount,
          plan = coalesce(nullif(p_plan, ''), plan)
    where id = p_company
