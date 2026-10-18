@@ -36,6 +36,10 @@ const (
 	// retention. Where a picture is stored isn't something the candidate did.
 	eventCameraSnapshot        = "camera_snapshot"
 	eventCameraSnapshotExpired = "camera_snapshot_expired"
+	// The candidate's own closing reflection — posted by their browser at the
+	// end (lib/ide, the reflection step). Its own evidence section, read
+	// separately by the Reflection agent, so it's kept out of the trail below.
+	eventReflection = "reflection"
 )
 
 // Evaluate runs the Code Evaluation, Reasoning, Workflow and Interview
@@ -125,6 +129,12 @@ func (o *Orchestrator) Evaluate(ctx context.Context, sessionID string) error {
 	run("reasoning", "Reasoning", func() (string, error) { return o.Agents.AnalyzeReasoning(ctx, trail) })
 	run("workflow", "Workflow", func() (string, error) { return o.Agents.AnalyzeWorkflow(ctx, trail) })
 	run("interview", "Interview", func() (string, error) { return o.Agents.AnalyzeInterview(ctx, work, interviewTranscript(events)) })
+	// The candidate's own closing reflection — did this task let them show
+	// their strengths, and if not, what would. Context for the team, never a
+	// mark against them: the heading says so, and so does the agent's prose.
+	run("reflection", "The candidate's reflection (context for the hiring team, not a mark for or against the candidate)", func() (string, error) {
+		return o.Agents.AnalyzeReflection(ctx, briefOf(tc), reflectionText(events))
+	})
 
 	if serviceStop != nil {
 		slog.Warn("orchestrator: the AI service stopped the evaluation; it will be run again", "session", sessionID, "error", serviceStop)
@@ -248,6 +258,24 @@ func (o *Orchestrator) Evaluate(ctx context.Context, sessionID string) error {
 	}
 	o.broadcast(sessionID, "report_ready", map[string]string{"sessionId": sessionID, "reportId": report.ID})
 	return nil
+}
+
+// reflectionText returns the candidate's closing reflection — the last one
+// they posted, if they posted more than one — or "" if they left none.
+func reflectionText(events []db.ActivityEvent) string {
+	text := ""
+	for _, e := range events {
+		if e.EventType != eventReflection {
+			continue
+		}
+		var p struct {
+			Text string `json:"text"`
+		}
+		if json.Unmarshal(e.Payload, &p) == nil {
+			text = strings.TrimSpace(p.Text)
+		}
+	}
+	return text
 }
 
 // detectSteering runs llm.DetectSteering over everything the candidate
@@ -377,7 +405,7 @@ func digestEvents(events []db.ActivityEvent, starter map[string]string) (work st
 				latest = &snap
 			}
 			continue
-		case eventInterview, eventAICost, eventInterviewRecording, eventRecordingExpired, eventVariantAssigned, eventCameraSnapshot, eventCameraSnapshotExpired:
+		case eventInterview, eventAICost, eventInterviewRecording, eventRecordingExpired, eventVariantAssigned, eventCameraSnapshot, eventCameraSnapshotExpired, eventReflection:
 			continue
 		case "git":
 			var p struct {
