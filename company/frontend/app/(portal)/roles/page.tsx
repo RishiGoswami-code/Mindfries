@@ -4,6 +4,8 @@ import { listJobRoles, stageCountsForRole } from "@/lib/db";
 import { EmptyState, LinkButton, PageHeader, Pill } from "@/components/ui";
 import { roleStatusTone, stageLabel, stageTone } from "@/lib/format";
 import type { ApplicationStage } from "@/lib/types";
+import { getCompanyAccess, hasHiringAccess, lockedReason } from "@/lib/access";
+import { LockedAction } from "@/components/company/LockedAction";
 
 export const dynamic = "force-dynamic";
 
@@ -19,10 +21,17 @@ export default async function RolesPage() {
   const user = await currentCompanyUser();
   const roles = user ? await listJobRoles(user.companyId) : [];
   const counts = await Promise.all(roles.map((r) => stageCountsForRole(r.id)));
+  const access = user ? await getCompanyAccess(user.companyId) : null;
+  const newRole =
+    access && !hasHiringAccess(access) ? (
+      <LockedAction label="New role" reason={lockedReason(access) ?? ""} />
+    ) : (
+      <LinkButton href="/roles/new" size="sm">New role</LinkButton>
+    );
 
   return (
     <div className="space-y-6">
-      <PageHeader eyebrow="Roles" title="Job roles" action={<LinkButton href="/roles/new" size="sm">New role</LinkButton>}>
+      <PageHeader eyebrow="Roles" title="Job roles" action={newRole}>
         Every role you&apos;re hiring for, and where its pipeline stands.
       </PageHeader>
 
@@ -30,7 +39,7 @@ export default async function RolesPage() {
         <EmptyState
           title="No roles yet"
           hint="Create your first role to start building a pipeline. Attaching an assessment template comes later — a role works without one for now."
-          action={<LinkButton href="/roles/new" size="sm">New role</LinkButton>}
+          action={newRole}
         />
       ) : (
         <div className="hair-card divide-y divide-hair">

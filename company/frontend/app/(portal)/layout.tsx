@@ -1,6 +1,8 @@
 import { redirect } from "next/navigation";
 import { currentCompanyUser } from "@/lib/auth/company-users";
 import { Sidebar } from "@/components/company/Sidebar";
+import { AccessBanner } from "@/components/company/AccessBanner";
+import { getCompanyAccess } from "@/lib/access";
 
 /**
  * Wraps every signed-in page (/dashboard, /roles, /candidates, /settings/*)
@@ -17,14 +19,20 @@ import { Sidebar } from "@/components/company/Sidebar";
 export default async function PortalLayout({ children }: { children: React.ReactNode }) {
   const user = await currentCompanyUser();
   if (!user) redirect("/login");
+  // Read on every request rather than carried in the session: a Mindfries
+  // admin granting access should show on the next page load, not the next sign-in.
+  const access = await getCompanyAccess(user.companyId);
 
   return (
     <div className="min-h-screen">
-      <Sidebar user={{ name: user.name, email: user.email, role: user.role, companyName: user.companyName }} />
+      <Sidebar user={{ name: user.name, email: user.email, role: user.role, companyName: user.companyName }} access={access} />
       {/* No left padding below md: the sidebar is an off-canvas drawer there, not a
           permanent rail. pt-16 clears the fixed hamburger button in that same range. */}
       <main className="pt-16 md:pt-0 md:pl-64">
-        <div className="mx-auto max-w-6xl px-8 py-8">{children}</div>
+        <div className="mx-auto max-w-6xl px-8 py-8">
+          <AccessBanner access={access} />
+          {children}
+        </div>
       </main>
     </div>
   );

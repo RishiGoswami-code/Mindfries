@@ -2,6 +2,8 @@ import { cache } from "react";
 import { currentCompanyUser } from "@/lib/auth/company-users";
 import { listApplicationsForCompany, listJobRoles, listUpcomingDueDates, type CandidateApplicationWithRole } from "@/lib/db";
 import { supabaseReady } from "@/lib/supabase";
+import { getCompanyAccess, hasHiringAccess, lockedReason } from "@/lib/access";
+import { LockedAction } from "@/components/company/LockedAction";
 import { EmptyState, LinkButton, PageHeader, Panel, StatCard } from "@/components/ui";
 import type { DueCandidate, JobRole } from "@/lib/types";
 import { TrendChart } from "./TrendChart";
@@ -42,6 +44,13 @@ export default async function OverviewPage() {
   const completed = applications.filter((a) => a.completedAt !== null);
   const readyForReview = applications.filter((a) => a.stage === "completed");
   const asOf = getAsOf();
+  const access = user ? await getCompanyAccess(user.companyId) : null;
+  const newRole =
+    access && !hasHiringAccess(access) ? (
+      <LockedAction label="New role" reason={lockedReason(access) ?? ""} />
+    ) : (
+      <LinkButton href="/roles/new" size="sm">New role</LinkButton>
+    );
   const createdAtDates = applications.map((a) => a.createdAt);
 
   return (
@@ -62,7 +71,7 @@ export default async function OverviewPage() {
         <EmptyState
           title="No roles yet"
           hint="Create your first role to start building a pipeline."
-          action={<LinkButton href="/roles/new" size="sm">New role</LinkButton>}
+          action={newRole}
         />
       ) : (
         <>
