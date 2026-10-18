@@ -1,7 +1,10 @@
+import type { Metadata } from "next";
 import { listCompanies, listTemplates } from "@/lib/db";
 import { companies as mockCompanies, templates as mockTemplates, SAMPLE_AS_OF } from "@/lib/mock-data";
 import { supabaseReady } from "@/lib/supabase";
 import { CompaniesView } from "@/components/admin/CompaniesView";
+
+export const metadata: Metadata = { title: "Companies" };
 
 export const dynamic = "force-dynamic";
 

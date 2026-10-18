@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Pill } from "@/components/ui";
@@ -10,6 +11,8 @@ import { isMissingTables, targetsStore } from "@/lib/targets-store";
 import { SchemaNotice } from "@/components/admin/targets/SchemaNotice";
 import { addWorkingDays, channelLabel, dueLabel, FOLLOW_UP_WORKING_DAYS, isGoingCold, stageLabel, websiteHost, whenLabel } from "@/lib/targets-rules";
 import { TEAM_TZ, teamToday } from "@/lib/team-time";
+
+export const metadata: Metadata = { title: "Target" };
 
 export const dynamic = "force-dynamic";
 

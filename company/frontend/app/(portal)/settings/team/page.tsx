@@ -1,8 +1,11 @@
+import type { Metadata } from "next";
 import { currentCompanyUser } from "@/lib/auth/company-users";
 import { can } from "@/lib/auth/permissions";
 import { listCompanyUsers } from "@/lib/db";
 import { PageHeader } from "@/components/ui";
 import { TeamRoster } from "./TeamRoster";
+
+export const metadata: Metadata = { title: "Team" };
 
 export const dynamic = "force-dynamic";
 

@@ -48,9 +48,13 @@ internal-admin/frontend/   Next.js — Mindfries' own ops portal (PRD §1.11)
                            Lead Tracker server logic lives in its route handlers
 internal-admin/backend/    Planned FastAPI "Admin API" — not built yet
 company/frontend/          Next.js — the Company Portal (PRD §1.4); see
-                           IMPLEMENTATION.md for the build plan. No signup —
-                           ops creates the first login from internal-admin's
-                           onboarding flow, which emails a /set-password link.
+                           IMPLEMENTATION.md for the build plan. A company can
+                           sign itself up at /signup: it starts with access
+                           pending and 0 credits until an admin grants credits
+                           in internal-admin's /admin/access (1 credit = 1
+                           candidate invited). Ops can still onboard a company
+                           from internal-admin, which emails a /set-password
+                           link; those companies aren't metered.
 company/backend/           Go — roles/candidates/team CRUD plus real Stripe
                            billing; only the billing routes are wired up to
                            company/frontend (see ARCHITECTURE.md for why)

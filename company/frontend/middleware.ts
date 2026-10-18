@@ -9,7 +9,7 @@ import { readSession, SESSION_COOKIE, sessionSecret } from "@/lib/auth/session";
 // Fails closed: no SESSION_SECRET means no valid session, which means
 // nobody gets in.
 
-const PUBLIC_PATHS = ["/login", "/set-password"];
+const PUBLIC_PATHS = ["/login", "/signup", "/set-password"];
 
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
@@ -17,8 +17,8 @@ export async function middleware(req: NextRequest) {
   const isPublic = PUBLIC_PATHS.some((p) => pathname === p || pathname.startsWith(`${p}/`));
 
   if (session) {
-    // Someone already signed in has no use for the login page.
-    if (pathname === "/login") return NextResponse.redirect(new URL("/dashboard", req.url));
+    // Someone already signed in has no use for the login or sign-up page.
+    if (pathname === "/login" || pathname === "/signup") return NextResponse.redirect(new URL("/dashboard", req.url));
     return NextResponse.next();
   }
 
@@ -38,5 +38,5 @@ export async function middleware(req: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/dashboard/:path*", "/dashboard", "/roles/:path*", "/roles", "/candidates/:path*", "/candidates", "/settings/:path*", "/login", "/set-password"],
+  matcher: ["/dashboard/:path*", "/dashboard", "/roles/:path*", "/roles", "/candidates/:path*", "/candidates", "/settings/:path*", "/login", "/signup", "/set-password"],
 };

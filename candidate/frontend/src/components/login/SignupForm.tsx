@@ -3,15 +3,15 @@
 import { useActionState } from "react";
 import { useFormStatus } from "react-dom";
 import Link from "next/link";
-import { Button } from "@/components/ui/Button";
+import { authInput, authLink, authSubmit } from "./AuthShell";
 import { signUp, type SignUpState } from "@/app/signup/actions";
 
 function Submit() {
   const { pending } = useFormStatus();
   return (
-    <Button type="submit" tone="primary" size="lg" className="w-full !rounded-full" disabled={pending}>
+    <button type="submit" className={authSubmit} disabled={pending}>
       {pending ? "Creating account…" : "Create account"}
-    </Button>
+    </button>
   );
 }
 
@@ -20,8 +20,8 @@ export function SignupForm({ next = "" }: { next?: string }) {
   const [state, action] = useActionState<SignUpState, FormData>(signUp, { error: null });
 
   return (
-    <div className="w-full max-w-sm">
-      <form action={action} className="space-y-3.5">
+    <div className="w-full">
+      <form action={action} className="space-y-4">
         {/* Where to go once the account exists — an invitation's own page,
             usually. The action only follows a path on this site. */}
         {next && <input type="hidden" name="next" value={next} />}
@@ -32,7 +32,7 @@ export function SignupForm({ next = "" }: { next?: string }) {
           autoComplete="name"
           autoFocus
           placeholder="Full name"
-          className="w-full rounded-xl border border-[#B3CFE5] bg-white px-4 py-3 text-[14px] text-[#0A1931] outline-none transition placeholder:text-[#4A7FA7]/70 focus:border-[#1A3D63]"
+          className={authInput}
         />
         <input
           name="email"
@@ -40,7 +40,7 @@ export function SignupForm({ next = "" }: { next?: string }) {
           required
           autoComplete="username"
           placeholder="you@company.com"
-          className="w-full rounded-xl border border-[#B3CFE5] bg-white px-4 py-3 text-[14px] text-[#0A1931] outline-none transition placeholder:text-[#4A7FA7]/70 focus:border-[#1A3D63]"
+          className={authInput}
         />
         <input
           name="password"
@@ -49,7 +49,7 @@ export function SignupForm({ next = "" }: { next?: string }) {
           minLength={8}
           autoComplete="new-password"
           placeholder="Password (at least 8 characters)"
-          className="w-full rounded-xl border border-[#B3CFE5] bg-white px-4 py-3 text-[14px] text-[#0A1931] outline-none transition placeholder:text-[#4A7FA7]/70 focus:border-[#1A3D63]"
+          className={authInput}
         />
         <input
           name="confirm"
@@ -58,20 +58,20 @@ export function SignupForm({ next = "" }: { next?: string }) {
           minLength={8}
           autoComplete="new-password"
           placeholder="Confirm password"
-          className="w-full rounded-xl border border-[#B3CFE5] bg-white px-4 py-3 text-[14px] text-[#0A1931] outline-none transition placeholder:text-[#4A7FA7]/70 focus:border-[#1A3D63]"
+          className={authInput}
         />
 
         {state.error && (
-          <p role="alert" className="text-center text-[12.5px] text-[#a6203c]">
+          <p role="alert" className="text-center text-[13.5px] text-[#a6203c]">
             {state.error}
           </p>
         )}
 
         <Submit />
 
-        <p className="text-center text-[12px] text-[#4A7FA7]">
+        <p className="text-center text-[13.5px] text-[#5E5A82]">
           Already have an account?{" "}
-          <Link href={next ? `/login?next=${encodeURIComponent(next)}` : "/login"} className="font-medium text-[#1A3D63] hover:underline">
+          <Link href={next ? `/login?next=${encodeURIComponent(next)}` : "/login"} className={authLink}>
             Sign in
           </Link>
         </p>

@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { listWaitlist } from "@/lib/db";
 import { Building2, CalendarDays, UserPlus } from "lucide-react";
 import { PageHeader } from "@/components/ui";
@@ -6,6 +7,8 @@ import { countWithin, cumulative, DAY, perBucket, WEEK } from "@/lib/overview";
 import { todayIn } from "@/lib/targets-rules";
 import { TEAM_TZ } from "@/lib/team-time";
 import { fmtDate } from "@/lib/format";
+
+export const metadata: Metadata = { title: "Waitlist" };
 
 export const dynamic = "force-dynamic";
 

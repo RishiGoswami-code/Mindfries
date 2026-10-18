@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireCompanyPermission, ForbiddenError } from "@/lib/auth/company-users";
 import { createJobRole, TASK_VARIANTS } from "@/lib/db";
+import { requireHiringAccess } from "@/lib/access";
 import type { TaskVariant } from "@/lib/types";
 
 const text = (v: unknown, max: number) => (typeof v === "string" ? v.slice(0, max).trim() : "");
@@ -16,6 +17,11 @@ export async function createRole(_prev: CreateRoleState, form: FormData): Promis
     companyId = (await requireCompanyPermission("role:write")).companyId;
   } catch (e) {
     return { error: e instanceof ForbiddenError ? e.message : "Not signed in." };
+  }
+  try {
+    await requireHiringAccess(companyId);
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "Your account doesn't have access yet." };
   }
 
   const title = text(form.get("title"), 200);

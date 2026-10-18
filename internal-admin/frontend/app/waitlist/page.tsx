@@ -1,6 +1,6 @@
 import { WaitlistForm } from "@/components/admin/WaitlistForm";
 
-export const metadata = { title: "Join the Mindfries waitlist" };
+export const metadata = { title: { absolute: "Join the Mindfries waitlist" } };
 
 export default function PublicWaitlistPage() {
   return (

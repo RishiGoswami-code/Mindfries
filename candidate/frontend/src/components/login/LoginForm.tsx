@@ -3,7 +3,7 @@
 import { useActionState, useState } from "react";
 import { useFormStatus } from "react-dom";
 import Link from "next/link";
-import { Button } from "@/components/ui/Button";
+import { authInput, authLink, authSubmit } from "./AuthShell";
 import { GithubMark, GitlabMark, GoogleMark, LinkedinMark } from "@/components/icons/BrandIcon";
 import { signIn, type LoginState } from "@/app/login/actions";
 import type { OAuthProviderId } from "@/lib/auth/oauth-providers";
@@ -20,9 +20,9 @@ const SUPPORT_EMAIL = "officemindfries@gmail.com";
 function Submit() {
   const { pending } = useFormStatus();
   return (
-    <Button type="submit" tone="primary" size="lg" className="w-full !rounded-full" disabled={pending}>
-      {pending ? "Signing in…" : "Login"}
-    </Button>
+    <button type="submit" className={authSubmit} disabled={pending}>
+      {pending ? "Signing in…" : "Sign in"}
+    </button>
   );
 }
 
@@ -52,13 +52,13 @@ export function LoginForm({
   const [socialNotice, setSocialNotice] = useState<string | null>(socialError);
 
   return (
-    <div className="w-full max-w-sm">
+    <div className="w-full">
       {notice && (
-        <p role="status" className="mb-4 rounded-xl border border-[#c5ecd5] bg-[#effbf4] px-4 py-2.5 text-center text-[12.5px] text-[#14693a]">
+        <p role="status" className="mb-5 rounded-2xl border border-[#CDEFE0] bg-[#EAFAF6] px-4 py-3 text-center text-[13.5px] text-[#1E7A5A]">
           {notice}
         </p>
       )}
-      <form action={action} className="space-y-3.5">
+      <form action={action} className="space-y-4">
         {next && <input type="hidden" name="next" value={next} />}
 
         <input
@@ -68,7 +68,7 @@ export function LoginForm({
           autoComplete="username"
           autoFocus
           placeholder="you@company.com"
-          className="w-full rounded-xl border border-[#B3CFE5] bg-white px-4 py-3 text-[14px] text-[#0A1931] outline-none transition placeholder:text-[#4A7FA7]/70 focus:border-[#1A3D63]"
+          className={authInput}
         />
         <input
           name="password"
@@ -76,45 +76,45 @@ export function LoginForm({
           required
           autoComplete="current-password"
           placeholder="Password"
-          className="w-full rounded-xl border border-[#B3CFE5] bg-white px-4 py-3 text-[14px] text-[#0A1931] outline-none transition placeholder:text-[#4A7FA7]/70 focus:border-[#1A3D63]"
+          className={authInput}
         />
 
         {state.error && (
-          <p role="alert" className="text-center text-[12.5px] text-[#a6203c]">
+          <p role="alert" className="text-center text-[13.5px] text-[#a6203c]">
             {state.error}
           </p>
         )}
 
-        <p className="text-center text-[12.5px] text-[#4A7FA7]">
-          <Link href="/forgot-password" className="hover:text-[#1A3D63] hover:underline">
+        <p className="text-center text-[13.5px] text-[#6E6A8F]">
+          <Link href="/forgot-password" className={authLink}>
             Forgot your password?
           </Link>
           {" · "}
-          <a href={`mailto:${SUPPORT_EMAIL}`} className="hover:text-[#1A3D63] hover:underline">
+          <a href={`mailto:${SUPPORT_EMAIL}`} className={authLink}>
             Something else
           </a>
         </p>
 
         <Submit />
 
-        <p className="text-center text-[12px] text-[#4A7FA7]">
+        <p className="text-center text-[13.5px] text-[#5E5A82]">
           Need an account?{" "}
-          <Link href="/signup" className="font-medium text-[#1A3D63] hover:underline">
+          <Link href="/signup" className={authLink}>
             Sign up
           </Link>
         </p>
       </form>
 
       <div className="my-6 flex items-center gap-3">
-        <span className="h-px flex-1 bg-[#B3CFE5]" />
-        <span className="text-[11.5px] font-medium text-[#4A7FA7]">Or continue with</span>
-        <span className="h-px flex-1 bg-[#B3CFE5]" />
+        <span className="h-px flex-1 bg-[#E4E0F2]" />
+        <span className="text-[12.5px] font-medium text-[#6E6A8F]">Or continue with</span>
+        <span className="h-px flex-1 bg-[#E4E0F2]" />
       </div>
 
       <div className="grid grid-cols-2 gap-2.5">
         {SOCIAL.map(({ id, label, icon: Icon }) => {
           const buttonClass =
-            "flex items-center justify-center gap-2 rounded-xl border border-[#B3CFE5] bg-white py-2.5 text-[13px] font-medium text-[#0A1931] transition-colors hover:bg-[#B3CFE5]/15";
+            "flex h-11 items-center justify-center gap-2 rounded-xl border border-[#E4E0F2] bg-white text-[14px] font-medium text-[#1B1840] shadow-[0_2px_6px_-4px_rgba(27,24,64,0.3)] transition-colors hover:bg-[#F6F4FC]";
           if (configuredProviders.includes(id)) {
             const href = `/api/auth/oauth/${id}/start${next ? `?next=${encodeURIComponent(next)}` : ""}`;
             return (
@@ -139,7 +139,7 @@ export function LoginForm({
       </div>
 
       {socialNotice && (
-        <p role="status" className="mt-3 text-center text-[12px] text-[#4A7FA7]">
+        <p role="status" className="mt-3 text-center text-[13px] text-[#5E5A82]">
           {socialNotice}
         </p>
       )}

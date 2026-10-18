@@ -31,7 +31,14 @@ function initials(name: string): string {
   return ((w[0]?.[0] ?? "?") + (w[1]?.[0] ?? w[0]?.[1] ?? "")).toUpperCase();
 }
 
-export function Sidebar({ user }: { user: { name: string; email: string; role: CompanyRole; companyName: string } }) {
+export function Sidebar({
+  user,
+  access,
+}: {
+  user: { name: string; email: string; role: CompanyRole; companyName: string };
+  /** The company's hiring access and credit balance (lib/access.ts). credits null: not metered, so no card. */
+  access?: { status: "pending" | "active" | "declined"; credits: number | null };
+}) {
   const path = usePathname();
   const [open, setOpen] = useState(false);
   const isActive = (href: string) => path === href || path.startsWith(`${href}/`);
@@ -117,6 +124,17 @@ export function Sidebar({ user }: { user: { name: string; email: string; role: C
           })}
         </ul>
       </nav>
+
+      {access && access.credits !== null && (
+        <div className="mx-3 mb-3 rounded-2xl bg-[#F6F4FC] px-4 py-3.5">
+          <div className="flex items-center justify-between gap-2">
+            <span className="eyebrow">Credits</span>
+            {access.status !== "active" && <span className="text-[11.5px] font-semibold text-[#8A5A0B]">Awaiting access</span>}
+          </div>
+          <div className="mt-1 text-[28px] leading-none font-extrabold tracking-tight text-ink tabular-nums">{access.credits}</div>
+          <div className="mt-1.5 text-xs text-dim">1 credit per candidate invited</div>
+        </div>
+      )}
 
       <div className="border-t border-hair p-3">
         <div className="flex items-center gap-3 rounded-xl px-2.5 py-2">

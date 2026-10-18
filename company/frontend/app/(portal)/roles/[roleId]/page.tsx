@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { currentCompanyUser } from "@/lib/auth/company-users";
@@ -14,6 +15,14 @@ import { JobPostingForm } from "./JobPostingForm";
 import { InviteCandidateForm } from "./InviteCandidateForm";
 import { PipelineList } from "./PipelineList";
 import { RoleStatusToggle } from "./RoleStatusToggle";
+
+/** The tab shows the role's own title. */
+export async function generateMetadata({ params }: { params: Promise<{ roleId: string }> }): Promise<Metadata> {
+  const user = await currentCompanyUser();
+  if (!user) return { title: "Role" };
+  const role = await getJobRole(user.companyId, (await params).roleId);
+  return { title: role?.title ?? "Role" };
+}
 
 export const dynamic = "force-dynamic";
 

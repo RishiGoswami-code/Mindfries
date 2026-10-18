@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ExternalLink } from "lucide-react";
@@ -6,6 +7,8 @@ import { PageHeader, Pill } from "@/components/ui";
 import { Avatar, RECOMMENDATION } from "@/components/admin/CandidateCard";
 import { GithubMark, GitlabMark, LinkedinMark } from "@/components/BrandMarks";
 import { fmtDate, titleCase } from "@/lib/format";
+
+export const metadata: Metadata = { title: "Candidate" };
 
 export const dynamic = "force-dynamic";
 

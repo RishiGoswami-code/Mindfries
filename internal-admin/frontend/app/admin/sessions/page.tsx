@@ -1,8 +1,11 @@
+import type { Metadata } from "next";
 import { listSessions } from "@/lib/db";
 import { sessions as mockSessions } from "@/lib/mock-data";
 import { SAMPLE_AS_OF } from "@/lib/mock-data";
 import { supabaseReady } from "@/lib/supabase";
 import { SessionsView } from "@/components/admin/SessionsView";
+
+export const metadata: Metadata = { title: "Sessions" };
 
 export const dynamic = "force-dynamic";
 

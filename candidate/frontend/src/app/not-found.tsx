@@ -1,5 +1,9 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import clsx from "clsx";
+import { Compass } from "lucide-react";
+import { AuthShell, authSubmit } from "@/components/login/AuthShell";
+import { display } from "@/lib/dashboard/fonts";
 
 export const metadata: Metadata = { title: "Not found · Mindfries" };
 
@@ -13,18 +17,20 @@ export const metadata: Metadata = { title: "Not found · Mindfries" };
  */
 export default function NotFound() {
   return (
-    <main className="flex min-h-screen flex-col items-center justify-center bg-[#F6FAFD] px-6 text-center">
-      <p className="text-[13px] font-semibold tracking-[0.18em] text-[#4A7FA7] uppercase">Mindfries</p>
-      <h1 className="mt-4 text-[26px] font-semibold tracking-tight text-[#0A1931]">We couldn&apos;t find that page</h1>
-      <p className="mt-2 max-w-md text-sm leading-relaxed text-[#4A7FA7]">
-        The link may be mistyped, or it points at something that isn&apos;t part of your account. Your assessments and reports are all on your dashboard.
-      </p>
-      <Link
-        href="/dashboard"
-        className="mt-6 inline-flex items-center justify-center rounded-xl bg-[#1A3D63] px-5 py-2.5 text-[13px] font-semibold text-[#F6FAFD] transition-opacity hover:opacity-90"
-      >
-        Go to your dashboard
-      </Link>
-    </main>
+    <AuthShell>
+      <div className="text-center">
+        <span className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-[#EFEAFD] text-[#5B3BE0]">
+          <Compass size={26} strokeWidth={1.8} />
+        </span>
+        <h1 className={clsx(display.className, "mt-5 text-[30px] leading-tight font-semibold tracking-tight text-[#100E2E]")}>We couldn&apos;t find that page</h1>
+        <p className="mt-2 text-[14.5px] leading-relaxed text-[#5E5A82]">
+          The link may be mistyped, or it points at something that isn&apos;t part of your account. Your assessments and reports are all on your
+          dashboard.
+        </p>
+        <Link href="/dashboard" className={clsx(authSubmit, "mt-6")}>
+          Go to your dashboard
+        </Link>
+      </div>
+    </AuthShell>
   );
 }

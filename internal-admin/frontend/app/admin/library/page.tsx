@@ -1,8 +1,11 @@
+import type { Metadata } from "next";
 import { listTemplates } from "@/lib/db";
 import { templates as mockTemplates } from "@/lib/mock-data";
 import { SAMPLE_AS_OF } from "@/lib/mock-data";
 import { supabaseReady } from "@/lib/supabase";
 import { LibraryView } from "@/components/admin/LibraryView";
+
+export const metadata: Metadata = { title: "Game library" };
 
 export const dynamic = "force-dynamic";
 

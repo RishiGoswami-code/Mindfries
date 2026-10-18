@@ -3,7 +3,8 @@
 import { useEffect, useRef, useState } from "react";
 import { Loader2, Pencil, X } from "lucide-react";
 import clsx from "clsx";
-import { Button } from "@/components/ui/Button";
+import { buttonClass } from "@/components/settings/Card";
+import { display, ui } from "@/lib/dashboard/fonts";
 import { saveIdentity } from "@/lib/profile/actions";
 import { usePreviewMode } from "./PreviewMode";
 import type { SavedIdentity } from "@/lib/profile/types";
@@ -112,27 +113,36 @@ export function EditProfileModal({ savedIdentity }: { savedIdentity: SavedIdenti
       </button>
 
       {open && (
-        <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-[#0A1931]/45 p-4 py-10 backdrop-blur-[2px]" onClick={() => setOpen(false)}>
+        <div
+          className={clsx(ui.className, "fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-[#1B1840]/40 p-4 py-10 backdrop-blur-[3px]")}
+          onClick={() => setOpen(false)}
+        >
           <div
             role="dialog"
             aria-modal="true"
             aria-label="Edit profile"
             onClick={(e) => e.stopPropagation()}
-            className="w-full max-w-xl overflow-hidden rounded-2xl bg-white shadow-[0_30px_60px_-20px_rgba(10,25,49,0.45)]"
+            className="w-full max-w-xl overflow-hidden rounded-[24px] bg-[#FBFAFE] text-[#1B1840] shadow-[0_40px_90px_-30px_rgba(27,24,64,0.55)]"
           >
-            <div className="flex items-center justify-between border-b border-[#B3CFE5] px-6 py-4">
-              <h2 className="text-[17px] font-semibold text-[#0A1931]">Edit profile</h2>
+            <div className="flex items-start gap-4 px-6 pt-6 pb-4 sm:px-7">
+              <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-[#EFEAFD] text-[#5B3BE0]">
+                <Pencil size={21} strokeWidth={1.9} />
+              </span>
+              <div className="min-w-0 flex-1">
+                <h2 className={clsx(display.className, "text-[24px] leading-tight font-semibold text-[#100E2E]")}>Edit profile</h2>
+                <p className="mt-1 text-[14px] text-[#5E5A82]">What hiring teams see at the top of your profile.</p>
+              </div>
               <button
                 type="button"
                 onClick={() => setOpen(false)}
                 aria-label="Close"
-                className="rounded-lg p-1.5 text-[#4A7FA7] transition-colors hover:bg-[#B3CFE5]/30 hover:text-[#1A3D63]"
+                className="-mt-1 -mr-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[#2A2654] transition-colors hover:bg-[#EEEBFA]"
               >
-                <X size={18} />
+                <X size={20} />
               </button>
             </div>
 
-            <div className="max-h-[70vh] overflow-y-auto px-6 py-5">
+            <div className="max-h-[65vh] overflow-y-auto px-6 pt-2 pb-5 sm:px-7">
               {/* ── Fields ──────────────────────────────────────────────── */}
               <div className="grid grid-cols-2 gap-4">
                 <Field label="Name">
@@ -160,8 +170,8 @@ export function EditProfileModal({ savedIdentity }: { savedIdentity: SavedIdenti
                 </Field>
 
                 <div className="col-span-2">
-                  <span className="mb-1.5 block text-xs font-semibold text-[#4A7FA7]">Open to</span>
-                  <div className="flex flex-wrap gap-1.5">
+                  <span className="mb-2 block text-[13px] font-medium text-[#2A2654]">Open to</span>
+                  <div className="flex flex-wrap gap-2">
                     {["Remote", "Hybrid", "Onsite"].map((opt) => {
                       const on = form.openTo.includes(opt);
                       return (
@@ -170,8 +180,10 @@ export function EditProfileModal({ savedIdentity }: { savedIdentity: SavedIdenti
                           type="button"
                           onClick={() => set("openTo", on ? form.openTo.filter((o) => o !== opt) : [...form.openTo, opt])}
                           className={clsx(
-                            "rounded-full border px-3 py-1.5 text-[12.5px] font-medium transition-colors",
-                            on ? "border-[#1A3D63] bg-[#1A3D63] text-white" : "border-[#B3CFE5] bg-white text-[#4A7FA7] hover:bg-[#B3CFE5]/20"
+                            "rounded-full border px-4 py-2 text-[13.5px] font-medium transition-colors",
+                            on
+                              ? "border-[#5B3BE0] bg-[#5B3BE0] text-white shadow-[0_6px_16px_-8px_rgba(91,59,224,0.7)]"
+                              : "border-[#DCD7EE] bg-white text-[#2A2654] hover:border-[#C9BCF7] hover:bg-[#F6F4FC]"
                           )}
                         >
                           {opt}
@@ -188,10 +200,10 @@ export function EditProfileModal({ savedIdentity }: { savedIdentity: SavedIdenti
                       onChange={(e) => set("bio", e.target.value)}
                       rows={4}
                       maxLength={500}
-                      className={clsx(inputCls, "resize-none")}
+                      className={clsx(inputCls, "h-auto resize-none py-2.5 leading-relaxed")}
                     />
                   </Field>
-                  <p className="mt-1 text-right text-[11px] text-[#4A7FA7]">{form.bio.length}/500</p>
+                  <p className="mt-1.5 text-right text-[12px] text-[#6E6A8F] tabular-nums">{form.bio.length}/500</p>
                 </div>
               </div>
 
@@ -199,19 +211,19 @@ export function EditProfileModal({ savedIdentity }: { savedIdentity: SavedIdenti
               {saveError && <p className="mt-3 text-[12.5px] text-[#a6203c]">{saveError}</p>}
             </div>
 
-            <div className="flex items-center justify-end gap-2 border-t border-[#B3CFE5] px-6 py-4">
-              <Button tone="ghost" size="sm" onClick={() => setOpen(false)}>
+            <div className="flex items-center justify-end gap-2 border-t border-[#ECE9F6] px-6 py-4 sm:px-7">
+              <button type="button" onClick={() => setOpen(false)} className={clsx(buttonClass.quiet, "h-10")}>
                 Cancel
-              </Button>
-              <Button tone="primary" size="sm" onClick={save} disabled={saving}>
+              </button>
+              <button type="button" onClick={save} disabled={saving} className={buttonClass.primary}>
                 {saving ? (
                   <>
-                    <Loader2 size={13} className="animate-spin" /> Saving…
+                    <Loader2 size={15} className="animate-spin" /> Saving…
                   </>
                 ) : (
                   "Save changes"
                 )}
-              </Button>
+              </button>
             </div>
           </div>
         </div>
@@ -221,12 +233,12 @@ export function EditProfileModal({ savedIdentity }: { savedIdentity: SavedIdenti
 }
 
 const inputCls =
-  "w-full rounded-lg border border-[#B3CFE5] bg-white px-3 py-2 text-[13.5px] text-[#0A1931] outline-none transition focus:border-[#1A3D63]";
+  "h-11 w-full rounded-xl border border-[#DCD7EE] bg-white px-3.5 text-[14.5px] text-[#100E2E] outline-none transition focus:border-[#7C5CFC]";
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <label className="block">
-      <span className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold text-[#4A7FA7]">
+      <span className="mb-1.5 flex items-center gap-1.5 text-[13px] font-medium text-[#2A2654]">
         {label}
       </span>
       {children}

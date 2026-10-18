@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { Box, Radio, TriangleAlert, Users } from "lucide-react";
 import { companies as mockCompanies, templates as mockTemplates, sessions as mockSessions, SAMPLE_AS_OF } from "@/lib/mock-data";
 import { listCompanies, listSessions, listTemplates } from "@/lib/db";
@@ -9,6 +10,8 @@ import { VARIANT, avatarFor, initials } from "@/components/admin/visuals";
 import { ago, countWithin, cumulative, DAY, HOUR, perBucket, WEEK } from "@/lib/overview";
 import { todayIn } from "@/lib/targets-rules";
 import { TEAM_TZ } from "@/lib/team-time";
+
+export const metadata: Metadata = { title: "Overview" };
 
 export const dynamic = "force-dynamic";
 

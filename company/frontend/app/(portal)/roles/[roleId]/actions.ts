@@ -9,6 +9,10 @@ import { inviteLink } from "@/lib/invite-link";
 import { invitationMail } from "@/lib/invitation-mail";
 import { mailerReady, sendMail } from "@/lib/mailer";
 import { candidateWantsEmail } from "@/lib/candidate-settings";
+import { refundCredit, spendCredit, type Spend } from "@/lib/access";
+
+/** What a successful invitation says about credits: nothing for an unmetered company. */
+const creditNote = (s: Spend) => (s.metered ? ` 1 credit used — ${s.left} left.` : "");
 
 const text = (v: unknown, max: number) => (typeof v === "string" ? v.slice(0, max).trim() : "");
 const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
@@ -46,10 +50,21 @@ export async function inviteCandidate(roleId: string, _prev: InviteCandidateStat
   const candidateName = text(form.get("candidateName"), 200) || undefined;
   const dueDate = text(form.get("dueDate"), 10) || undefined;
 
+  // 1 credit per candidate invited, taken before the invitation is made and
+  // given back if it can't be.
+  let spent: Spend;
+  try {
+    spent = await spendCredit(companyId);
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "Couldn't check your credits — try again.", success: false };
+  }
+
   let notice: string;
   let link: string | undefined;
+  let invited = false;
   try {
     const application = await inviteCandidateToRole({ companyId, jobRoleId: roleId, candidateEmail: email, candidateName, dueDate });
+    invited = true;
     link = inviteLink(application.invite?.token) ?? undefined;
 
     // The invitation exists from here on, and shows on the candidate's
@@ -73,6 +88,7 @@ export async function inviteCandidate(roleId: string, _prev: InviteCandidateStat
       }
     }
   } catch (e) {
+    if (!invited && spent.metered) await refundCredit(companyId);
     return { error: e instanceof Error ? e.message : "Couldn't invite that candidate — try again.", success: false };
   }
 
@@ -80,7 +96,7 @@ export async function inviteCandidate(roleId: string, _prev: InviteCandidateStat
   revalidatePath("/roles");
   revalidatePath("/candidates");
   revalidatePath("/dashboard");
-  return { error: null, success: true, notice, link };
+  return { error: null, success: true, notice: notice + creditNote(spent), link };
 }
 
 export type RoleBriefState = { error: string | null; saved: boolean };
@@ -291,10 +307,15 @@ export async function inviteApplicantToAssessment(roleId: string, applicationId:
   }
   const dueDate = text(form.get("dueDate"), 10) || undefined;
   let notice: string;
+  let spent: Spend = { metered: false };
+  let invited = false;
   try {
     const application = await getApplicationForCompany(session.companyId, applicationId);
     if (!application) return { error: "Candidate not found.", notice: null };
+    // 1 credit per candidate invited, given back if the invitation can't be made.
+    spent = await spendCredit(session.companyId);
     const { assessmentId, inviteToken } = await inviteApplicant(session.companyId, applicationId, dueDate);
+    invited = true;
     const link = inviteLink(inviteToken);
     const portal = process.env.CANDIDATE_PORTAL_URL?.replace(/\/+$/, "");
     if (!mailerReady() || !portal || !link) {
@@ -314,11 +335,12 @@ export async function inviteApplicantToAssessment(roleId: string, applicationId:
       }
     }
   } catch (e) {
+    if (!invited && spent.metered) await refundCredit(session.companyId);
     return { error: e instanceof Error ? e.message : "Couldn't invite them — try again.", notice: null };
   }
   revalidatePath(`/roles/${roleId}`);
   revalidatePath("/candidates");
   revalidatePath(`/candidates/${applicationId}`);
   revalidatePath("/dashboard");
-  return { error: null, notice };
+  return { error: null, notice: notice + creditNote(spent) };
 }
