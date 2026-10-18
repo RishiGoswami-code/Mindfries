@@ -141,7 +141,8 @@ export function SubmitConfirmDialog({
 }: {
   theme: IdeTheme;
   onCancel: () => void;
-  onConfirm: () => void;
+  /** The candidate's optional closing reflection goes up with the confirmation. */
+  onConfirm: (reflection: string) => void;
   /** The work is being submitted as it stands, with no going back to it — the session ran out of time, or the interview is over. */
   timeUp?: boolean;
   /** Confirming leads to the interview rather than straight to submission. */
@@ -152,6 +153,7 @@ export function SubmitConfirmDialog({
   error?: string;
 }) {
   const palette = idePalette(theme);
+  const [reflection, setReflection] = useState("");
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
@@ -195,6 +197,28 @@ export function SubmitConfirmDialog({
                   starts — you can&apos;t return to the editor afterwards.
                 </p>
               )}
+              <label htmlFor="reflection" className={clsx("mt-4 block text-xs font-medium", palette.text)}>
+                Before you go — optional
+              </label>
+              <p className={clsx("mt-1 text-xs", palette.textMuted)}>
+                Did this task let you show what you&apos;re actually good at? If a different kind of
+                problem would show your strengths better, describe it — and how you&apos;d approach
+                it. The hiring team reads this; it only ever helps you, never counts against you.
+              </p>
+              <textarea
+                id="reflection"
+                value={reflection}
+                onChange={(e) => setReflection(e.target.value.slice(0, 4000))}
+                disabled={pending}
+                rows={4}
+                placeholder="Optional — leave blank if you've nothing to add."
+                className={clsx(
+                  "mt-2 w-full resize-y rounded-md border px-2.5 py-2 text-xs disabled:opacity-50",
+                  palette.border,
+                  palette.appBg,
+                  palette.text
+                )}
+              />
             </>
           )}
           {error && (
@@ -217,7 +241,7 @@ export function SubmitConfirmDialog({
           )}
           <button
             type="button"
-            onClick={onConfirm}
+            onClick={() => onConfirm(reflection.trim())}
             disabled={pending}
             className="flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium text-white hover:opacity-90 disabled:opacity-60"
             style={{ backgroundColor: STATUS_BAR_BG }}

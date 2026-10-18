@@ -604,6 +604,9 @@ export function IdeShell({ sessionId, candidateName, taskBrief, starterFiles, as
     setSubmitError(undefined);
     startSubmitTransition(async () => {
       await sandboxFlushRef.current();
+      // Make sure everything buffered — the closing reflection most of all —
+      // reaches the backend before it reads the session to evaluate it.
+      await telemetryRef.current?.flush();
       const result = await submitAssessment(sessionId, currentSnapshot());
       // A successful call redirects and never returns here.
       if (result?.error) setSubmitError(result.error);
@@ -1191,7 +1194,7 @@ export function IdeShell({ sessionId, candidateName, taskBrief, starterFiles, as
             setSubmitting(false);
             setSubmitError(undefined);
           }}
-          onConfirm={() => {
+          onConfirm={(reflection) => {
             if (!sessionId) {
               // No tracked session for this workspace (backend wasn't
               // configured when it was entered, or /ide was opened
@@ -1204,6 +1207,9 @@ export function IdeShell({ sessionId, candidateName, taskBrief, starterFiles, as
               setSubmitted(true);
               return;
             }
+            // The candidate's own closing words, if any — recorded before the
+            // submit below flushes telemetry and triggers evaluation.
+            if (reflection) telemetryRef.current?.record("reflection", { text: reflection });
             if (interviewed || !INTERVIEW_ENABLED) {
               // Already interviewed, or the interview is disabled for this
               // pilot — submit directly instead of opening the interviewer.
