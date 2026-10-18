@@ -40,6 +40,10 @@ const (
 	// end (lib/ide, the reflection step). Its own evidence section, read
 	// separately by the Reflection agent, so it's kept out of the trail below.
 	eventReflection = "reflection"
+	// Whether the in-browser camera detectors loaded for this session. Platform
+	// bookkeeping about the proctoring itself, not something the candidate did,
+	// so it stays out of the trail.
+	eventProctorML = "proctor_ml"
 )
 
 // Evaluate runs the Code Evaluation, Reasoning, Workflow and Interview
@@ -405,7 +409,7 @@ func digestEvents(events []db.ActivityEvent, starter map[string]string) (work st
 				latest = &snap
 			}
 			continue
-		case eventInterview, eventAICost, eventInterviewRecording, eventRecordingExpired, eventVariantAssigned, eventCameraSnapshot, eventCameraSnapshotExpired, eventReflection:
+		case eventInterview, eventAICost, eventInterviewRecording, eventRecordingExpired, eventVariantAssigned, eventCameraSnapshot, eventCameraSnapshotExpired, eventReflection, eventProctorML:
 			continue
 		case "git":
 			var p struct {
