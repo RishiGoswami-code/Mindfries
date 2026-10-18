@@ -123,6 +123,9 @@ function toJobRole(r: any): JobRole {
     // Absent before migration 0022 has run.
     assessmentBrief: r.assessment_brief ?? "",
     taskVariant: TASK_VARIANTS.includes(r.task_variant) ? r.task_variant : "bug_fix",
+    // Absent before migration 0028 has run: treat as a legacy role with no role-level task.
+    taskStatus: ["none", "pending", "generating", "ready", "failed"].includes(r.task_status) ? r.task_status : "none",
+    taskError: r.task_error ?? null,
     // Absent before migration 0025 has run: an unlisted role with an empty posting.
     posting: {
       listed: r.listed === true,
@@ -195,13 +198,20 @@ export async function getJobRole(companyId: string, roleId: string): Promise<Job
   return data ? toJobRole(data) : null;
 }
 
-/** What a role's assessment tests: the brief each candidate's own task is generated from, and the kind of task. */
+/**
+ * What a role's assessment tests: the brief its one shared task is generated
+ * from, and the kind of task. Saving the brief regenerates the role's task
+ * (task_status back to 'pending'), so an edited description produces a new task
+ * — the old template_id stays until the new one is ready, so candidates already
+ * invited keep the task they were given (their assessments copied it at invite
+ * time; only future invites get the new one).
+ */
 export async function setJobRoleBrief(companyId: string, roleId: string, brief: string, taskVariant: TaskVariant): Promise<void> {
   const c = db();
   if (!c) throw new Error("Supabase not configured");
   const { error } = await c
     .from("job_roles")
-    .update({ assessment_brief: brief || null, task_variant: taskVariant })
+    .update({ assessment_brief: brief || null, task_variant: taskVariant, task_status: "pending", task_attempts: 0, task_error: null })
     .eq("company_id", companyId)
     .eq("id", roleId);
   if (error) throw error;
@@ -384,6 +394,48 @@ export async function listApplicationsForRole(roleId: string): Promise<Candidate
  * `assessments` row unlinked rather than the invite silently not
  * happening at all.
  */
+/**
+ * The task state a new invitation to a role starts in. The task is generated
+ * once per role now (migration 0028), so an invitation inherits it rather than
+ * generating its own:
+ *   - role has a ready task  → inherit it: template set, 'ready', no "preparing"
+ *   - role's task is being made → wait: no template yet, 'pending'; the backend
+ *     fills it in when the role's task is ready (SaveRoleTask backfills)
+ *   - legacy role with no role-level task ('none') → start one now, so this and
+ *     every future invite share one task instead of each generating its own
+ *   - role's task failed → block: the company has to fix the brief first
+ */
+async function roleInviteTask(
+  c: NonNullable<ReturnType<typeof db>>,
+  companyId: string,
+  roleId: string,
+): Promise<{ templateId: string | null; taskStatus: "ready" | "pending" }> {
+  const { data: role } = await c
+    .from("job_roles")
+    .select("template_id, task_status")
+    .eq("company_id", companyId)
+    .eq("id", roleId)
+    .maybeSingle();
+  if (!role) throw new Error("Role not found");
+  if (role.task_status === "failed") {
+    throw new Error("This role's assessment task couldn't be generated. Edit the role's brief and save it to regenerate the task before inviting candidates.");
+  }
+  if (role.template_id && role.task_status === "ready") {
+    return { templateId: role.template_id, taskStatus: "ready" };
+  }
+  if (role.task_status === "none") {
+    // A role from before role-level tasks: start generating one now, guarded so
+    // concurrent invites don't each kick it off.
+    await c
+      .from("job_roles")
+      .update({ task_status: "pending", task_attempts: 0, task_error: null })
+      .eq("company_id", companyId)
+      .eq("id", roleId)
+      .eq("task_status", "none");
+  }
+  return { templateId: null, taskStatus: "pending" };
+}
+
 export async function inviteCandidateToRole(input: {
   companyId: string;
   jobRoleId: string;
@@ -396,16 +448,17 @@ export async function inviteCandidateToRole(input: {
 
   const role = await getJobRole(input.companyId, input.jobRoleId);
   if (!role) throw new Error("Role not found");
+  const task = await roleInviteTask(c, input.companyId, input.jobRoleId);
 
   const { data: assessment, error: assessmentError } = await c
     .from("assessments")
     .insert({
       company_id: input.companyId,
-      // No task yet: candidate/backend writes one for this candidate from
-      // the role's brief (migration 0022) and links it here.
-      template_id: null,
+      // Inherited from the role's one shared task (migration 0028): set when the
+      // role already has it, filled in by the backend when it's still being made.
+      template_id: task.templateId,
       job_role_id: input.jobRoleId,
-      task_status: "pending",
+      task_status: task.taskStatus,
       invited_by: "company",
       candidate_email: input.candidateEmail,
       candidate_name: input.candidateName || null,
@@ -428,7 +481,100 @@ export async function inviteCandidateToRole(input: {
     .select("*")
     .single();
   if (error || !data) throw error ?? new Error("Insert returned no row");
-  return { ...toApplication(data), invite: { token: assessment.invite_token ?? null, taskStatus: "pending", taskError: null } };
+  return { ...toApplication(data), invite: { token: assessment.invite_token ?? null, taskStatus: task.taskStatus, taskError: null } };
+}
+
+/**
+ * Invites a list of candidates to one role at once — the point of per-role
+ * tasks: the company gives a list instead of filling the form per person, and
+ * they all share the role's one task. Emails already invited to this role are
+ * skipped (reported back), not re-invited. Returns what was invited and what
+ * was skipped and why.
+ */
+export async function bulkInviteCandidatesToRole(input: {
+  companyId: string;
+  jobRoleId: string;
+  candidates: { email: string; name?: string }[];
+  dueDate?: string;
+}): Promise<{ invited: CandidateApplication[]; skipped: { email: string; reason: string }[] }> {
+  const c = db();
+  if (!c) throw new Error("Supabase not configured");
+
+  const role = await getJobRole(input.companyId, input.jobRoleId);
+  if (!role) throw new Error("Role not found");
+  // Decided once: every candidate in this batch shares the role's one task.
+  const task = await roleInviteTask(c, input.companyId, input.jobRoleId);
+
+  const skipped: { email: string; reason: string }[] = [];
+  // Normalise, validate and de-duplicate the list itself.
+  const byEmail = new Map<string, { email: string; name?: string }>();
+  for (const cand of input.candidates) {
+    const email = cand.email.trim().toLowerCase();
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
+      skipped.push({ email: cand.email, reason: "not a valid email" });
+      continue;
+    }
+    if (byEmail.has(email)) continue; // same email twice in the list
+    byEmail.set(email, { email, name: cand.name?.trim() || undefined });
+  }
+
+  // Skip anyone already invited to this role.
+  if (byEmail.size > 0) {
+    const { data: existing } = await c
+      .from("candidate_applications")
+      .select("candidate_email")
+      .eq("job_role_id", input.jobRoleId)
+      .in("candidate_email", [...byEmail.keys()]);
+    for (const row of existing ?? []) {
+      const email = (row.candidate_email ?? "").toLowerCase();
+      if (byEmail.delete(email)) skipped.push({ email, reason: "already invited to this role" });
+    }
+  }
+
+  const toInvite = [...byEmail.values()];
+  if (toInvite.length === 0) return { invited: [], skipped };
+
+  const { data: assessments, error: aErr } = await c
+    .from("assessments")
+    .insert(
+      toInvite.map((cand) => ({
+        company_id: input.companyId,
+        template_id: task.templateId,
+        job_role_id: input.jobRoleId,
+        task_status: task.taskStatus,
+        invited_by: "company",
+        candidate_email: cand.email,
+        candidate_name: cand.name || null,
+        role: role.title,
+        due_date: input.dueDate || null,
+      })),
+    )
+    .select("id, invite_token, candidate_email");
+  if (aErr || !assessments) throw aErr ?? new Error("Insert returned no rows");
+
+  const { data: apps, error: appErr } = await c
+    .from("candidate_applications")
+    .insert(
+      assessments.map((a) => {
+        const cand = toInvite.find((t) => t.email === (a.candidate_email ?? "").toLowerCase());
+        return {
+          job_role_id: input.jobRoleId,
+          assessment_id: a.id,
+          candidate_email: a.candidate_email,
+          candidate_name: cand?.name || null,
+          stage: "invited" as const,
+        };
+      }),
+    )
+    .select("*");
+  if (appErr || !apps) throw appErr ?? new Error("Insert returned no rows");
+
+  const tokenByEmail = new Map(assessments.map((a) => [(a.candidate_email ?? "").toLowerCase(), a.invite_token ?? null]));
+  const invited = apps.map((a) => ({
+    ...toApplication(a),
+    invite: { token: tokenByEmail.get((a.candidate_email ?? "").toLowerCase()) ?? null, taskStatus: task.taskStatus, taskError: null },
+  }));
+  return { invited, skipped };
 }
 
 /**

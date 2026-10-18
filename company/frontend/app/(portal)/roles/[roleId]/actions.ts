@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { ForbiddenError, requireCompanyPermission } from "@/lib/auth/company-users";
-import { bulkSetApplicationStage, getApplicationForCompany, getJobRole, inviteCandidateToRole, markInvitationEmailed, retryInvitationTask, setApplicationStage, setJobRoleAssistant, setJobRoleBrief, setJobRoleInterview, setJobRoleStatus, TASK_VARIANTS } from "@/lib/db";
+import { bulkInviteCandidatesToRole, bulkSetApplicationStage, getApplicationForCompany, getJobRole, inviteCandidateToRole, markInvitationEmailed, retryInvitationTask, setApplicationStage, setJobRoleAssistant, setJobRoleBrief, setJobRoleInterview, setJobRoleStatus, TASK_VARIANTS } from "@/lib/db";
 import type { ApplicationStage, EmploymentType, TaskVariant, WorkMode } from "@/lib/types";
 import { EMPLOYMENT_TYPES, WORK_MODES, inviteApplicant, setJobPosting } from "@/lib/hiring";
 import { inviteLink } from "@/lib/invite-link";
@@ -97,6 +97,136 @@ export async function inviteCandidate(roleId: string, _prev: InviteCandidateStat
   revalidatePath("/candidates");
   revalidatePath("/dashboard");
   return { error: null, success: true, notice: notice + creditNote(spent), link };
+}
+
+/** Splits a pasted list into candidates: one per line or comma, each an email or "Name <email>". */
+function parseCandidateList(raw: string): { email: string; name?: string }[] {
+  const out: { email: string; name?: string }[] = [];
+  for (const piece of raw.split(/[\n,;]+/)) {
+    const token = piece.trim();
+    if (!token) continue;
+    // "Name <email@x.com>" or "email@x.com".
+    const angle = token.match(/^(.*?)<([^>]+)>$/);
+    if (angle) {
+      out.push({ email: angle[2].trim().toLowerCase(), name: angle[1].trim() || undefined });
+    } else {
+      out.push({ email: token.toLowerCase() });
+    }
+  }
+  return out;
+}
+
+export type BulkInviteState = {
+  error: string | null;
+  success: boolean;
+  /** A human summary of what happened: invited, emailed, skipped. */
+  summary?: string;
+};
+
+/**
+ * Invites a whole list of candidates to one role at once — the point of
+ * per-role tasks: give a list instead of filling the form per person, and they
+ * all share the role's one task (no per-candidate generation, no "preparing").
+ * Bound to roleId in the form, like inviteCandidate. One credit per candidate
+ * actually invited; credits are refunded for anyone skipped.
+ */
+export async function bulkInviteCandidates(roleId: string, _prev: BulkInviteState, form: FormData): Promise<BulkInviteState> {
+  let companyId: string;
+  let companyName: string;
+  try {
+    const session = await requireCompanyPermission("candidate:invite");
+    companyId = session.companyId;
+    companyName = session.companyName;
+  } catch (e) {
+    return { error: e instanceof ForbiddenError ? e.message : "Not signed in.", success: false };
+  }
+
+  const dueDate = text(form.get("dueDate"), 10) || undefined;
+  const parsed = parseCandidateList(text(form.get("candidates"), 20000));
+  if (parsed.length === 0) return { error: "Add at least one candidate email.", success: false };
+
+  // Validate and de-duplicate the list before spending anything.
+  const seen = new Set<string>();
+  const valid: { email: string; name?: string }[] = [];
+  const skips: string[] = [];
+  for (const cand of parsed) {
+    if (!EMAIL_RE.test(cand.email)) {
+      skips.push(`${cand.email} (not a valid email)`);
+      continue;
+    }
+    if (seen.has(cand.email)) continue;
+    seen.add(cand.email);
+    valid.push(cand);
+  }
+  if (valid.length === 0) return { error: "None of those were valid email addresses.", success: false };
+
+  // One credit per candidate, spent up front; stop when the company runs out so
+  // we never invite more than it has paid for.
+  let metered = false;
+  let spent = 0;
+  const affordable: { email: string; name?: string }[] = [];
+  for (const cand of valid) {
+    try {
+      const s = await spendCredit(companyId);
+      if (s.metered) {
+        metered = true;
+        spent++;
+      }
+      affordable.push(cand);
+    } catch (e) {
+      skips.push(`${valid.length - affordable.length} more (${e instanceof Error ? e.message : "out of credits"})`);
+      break;
+    }
+  }
+  if (affordable.length === 0) {
+    return { error: "Couldn't invite anyone. " + skips.join("; "), success: false };
+  }
+
+  let result: Awaited<ReturnType<typeof bulkInviteCandidatesToRole>>;
+  try {
+    result = await bulkInviteCandidatesToRole({ companyId, jobRoleId: roleId, candidates: affordable, dueDate });
+  } catch (e) {
+    if (metered) for (let i = 0; i < spent; i++) await refundCredit(companyId);
+    return { error: e instanceof Error ? e.message : "Couldn't send the invitations — try again.", success: false };
+  }
+
+  // Refund credits for anyone the invite itself skipped (already invited).
+  if (metered) for (let i = 0; i < result.skipped.length; i++) await refundCredit(companyId);
+
+  // Email everyone invited — best effort; the invitation shows on their
+  // dashboard whether or not the mail reaches them.
+  let emailed = 0;
+  const portal = process.env.CANDIDATE_PORTAL_URL?.replace(/\/+$/, "");
+  if (mailerReady() && portal) {
+    const role = await getJobRole(companyId, roleId);
+    for (const app of result.invited) {
+      const link = inviteLink(app.invite?.token);
+      if (!link) continue;
+      if (!(await candidateWantsEmail(app.candidateEmail, "invitations"))) continue;
+      try {
+        await sendMail({ to: app.candidateEmail, ...invitationMail({ link, companyName, roleTitle: role?.title ?? "a role", candidateName: app.candidateName ?? undefined, dueDate }) });
+        if (app.assessmentId) await markInvitationEmailed(companyId, app.assessmentId);
+        emailed++;
+      } catch {
+        // shows on their dashboard regardless
+      }
+    }
+  }
+
+  revalidatePath(`/roles/${roleId}`);
+  revalidatePath("/roles");
+  revalidatePath("/candidates");
+  revalidatePath("/dashboard");
+
+  const allSkips = [...result.skipped.map((s) => `${s.email} (${s.reason})`), ...skips];
+  const parts = [`Invited ${result.invited.length} candidate${result.invited.length === 1 ? "" : "s"} — they share this role's task, ready now`];
+  if (emailed) parts.push(`emailed ${emailed}`);
+  if (allSkips.length) parts.push(`skipped ${allSkips.length}: ${allSkips.join(", ")}`);
+  if (metered) {
+    const used = spent - result.skipped.length;
+    parts.push(`${used} credit${used === 1 ? "" : "s"} used`);
+  }
+  return { error: null, success: true, summary: parts.join(". ") + "." };
 }
 
 export type RoleBriefState = { error: string | null; saved: boolean };

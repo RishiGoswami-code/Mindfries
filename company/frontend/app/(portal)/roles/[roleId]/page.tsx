@@ -13,6 +13,7 @@ import { InterviewSettingsForm } from "./InterviewSettingsForm";
 import { RoleBriefForm } from "./RoleBriefForm";
 import { JobPostingForm } from "./JobPostingForm";
 import { InviteCandidateForm } from "./InviteCandidateForm";
+import { BulkInviteForm } from "./BulkInviteForm";
 import { PipelineList } from "./PipelineList";
 import { RoleStatusToggle } from "./RoleStatusToggle";
 
@@ -109,7 +110,22 @@ export default async function RoleDetailPage({
       {canWriteRole && <AssistantSettingsForm roleId={role.id} config={role.assistantConfig} />}
       {canWriteRole && <InterviewSettingsForm roleId={role.id} config={role.interviewConfig} />}
 
-      {can("candidate:invite", user.role) && <InviteCandidateForm roleId={role.id} />}
+      {can("candidate:invite", user.role) && (
+        <>
+          {(role.taskStatus === "pending" || role.taskStatus === "generating") && (
+            <p className="rounded-xl bg-[#eef3fb] px-3 py-2 text-[13px] leading-relaxed text-[#334155]">
+              This role’s assessment task is being prepared. You can invite candidates now — they’ll get it as soon as it’s ready, with no wait on their side.
+            </p>
+          )}
+          {role.taskStatus === "failed" && (
+            <p role="alert" className="rounded-xl bg-[#fdecef] px-3 py-2 text-[13px] leading-relaxed text-[#a6203c]">
+              This role’s assessment task couldn’t be generated{role.taskError ? `: ${role.taskError}` : "."} Edit the brief above and save it to try again before inviting.
+            </p>
+          )}
+          <InviteCandidateForm roleId={role.id} />
+          <BulkInviteForm roleId={role.id} />
+        </>
+      )}
 
       <form method="get" className="hair-card flex flex-wrap items-end gap-3 p-4">
         {activeStage && <input type="hidden" name="stage" value={activeStage} />}

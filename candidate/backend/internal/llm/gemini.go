@@ -230,10 +230,12 @@ func (c *GeminiClient) report(ctx context.Context, model string, r geminiRespons
 		return
 	}
 	agent, sessionID := tagsFrom(ctx)
+	company, role, invitation := scopeFrom(ctx)
 	// Google doesn't put a price on each response the way OpenRouter does;
 	// the tokens are exact, the cost is left at zero rather than guessed.
 	c.onUsage(ctx, Usage{
 		Agent: agent, SessionID: sessionID, Model: model,
+		CompanyID: company, RoleID: role, InvitationID: invitation,
 		PromptTokens:     r.UsageMetadata.PromptTokenCount,
 		CompletionTokens: r.UsageMetadata.CandidatesTokenCount + r.UsageMetadata.ThoughtsTokenCount,
 		CachedTokens:     r.UsageMetadata.CachedContentTokenCount,

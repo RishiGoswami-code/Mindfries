@@ -69,23 +69,30 @@ func (m *Mailer) send(ctx context.Context, subject, text string) error {
 }
 
 // TaskFailure alerts that a candidate's task could not be generated, naming
-// who is blocked and why, so a person can step in.
-func (m *Mailer) TaskFailure(ctx context.Context, invitationID, company, role, candidateEmail, reason string) error {
-	who := candidateEmail
-	if who == "" {
-		who = "a candidate"
-	}
+// who is blocked and why, so a person can step in. candidateEmail empty means
+// the failure is at the role level — the task for a whole role, which every
+// candidate invited to it would have shared — rather than one invitation's.
+func (m *Mailer) TaskFailure(ctx context.Context, id, company, role, candidateEmail, reason string) error {
+	roleLevel := strings.TrimSpace(candidateEmail) == ""
 	subject := fmt.Sprintf("Assessment task failed to generate — %s", orElse(role, "a role"))
 	var b strings.Builder
-	fmt.Fprintf(&b, "A candidate's assessment task could not be generated, and it will not be retried automatically.\n\n")
-	fmt.Fprintf(&b, "Candidate: %s\n", who)
+	if roleLevel {
+		b.WriteString("The task for a role could not be generated, and it will not be retried automatically. No one can be invited to this role until it has a task.\n\n")
+	} else {
+		b.WriteString("A candidate's assessment task could not be generated, and it will not be retried automatically.\n\n")
+		fmt.Fprintf(&b, "Candidate: %s\n", candidateEmail)
+	}
 	if company != "" {
 		fmt.Fprintf(&b, "Company:   %s\n", company)
 	}
 	fmt.Fprintf(&b, "Role:      %s\n", orElse(role, "(unspecified)"))
-	fmt.Fprintf(&b, "Invitation: %s\n\n", invitationID)
+	fmt.Fprintf(&b, "%s: %s\n\n", map[bool]string{true: "Role ID", false: "Invitation"}[roleLevel], id)
 	fmt.Fprintf(&b, "Reason: %s\n\n", reason)
-	b.WriteString("What to do: regenerate the task for this invitation, or assign one, so the candidate can start. Until then their assessment stays in preparing.")
+	if roleLevel {
+		b.WriteString("What to do: fix the role's brief and save the role again to regenerate its task.")
+	} else {
+		b.WriteString("What to do: regenerate the task for this invitation, or assign one, so the candidate can start. Until then their assessment stays in preparing.")
+	}
 	return m.send(ctx, subject, b.String())
 }
 
