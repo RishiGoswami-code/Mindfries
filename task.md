@@ -7,7 +7,7 @@ what was tested and how, the full security review — see
 [`AUDIT.md`](AUDIT.md). Detail on the in-browser code editor itself lives in
 its own [task.md](candidate/frontend/src/app/ide/task.md).
 
-**Last updated: 2026-09-15.**
+**Last updated: 2026-10-18.**
 
 **Legend:** ✅ Done and real · 🟡 Partly done · ❌ Not built yet
 
@@ -15,17 +15,23 @@ its own [task.md](candidate/frontend/src/app/ide/task.md).
 
 ## Company side
 
-A company can't do any of this for itself yet — there's no Company Portal
-at all. This is the single biggest thing missing from the product.
+The Company Portal (`company/frontend`) exists and covers the whole company
+flow. What's missing is mostly proof against real services: no real email
+has been sent from it, and the score that lands in the pipeline after
+evaluation has never been written back by a real model run.
 
 | # | What a company should be able to do | Status |
 |---|---|---|
-| 1 | Sign up | ❌ No sign-up page or account system exists for companies |
-| 2 | Create a role | ❌ |
-| 3 | Pick or configure an assessment | ❌ |
-| 4 | Invite a candidate | ✅ Both a company (from a role in its portal) and our own team (from the admin portal, on a company's behalf) can invite. Each invitation has its own link, and each candidate gets their own task, generated from the role's brief (since 2026-10-14) |
-| 5 | See how an assessment is going | ❌ |
-| 6 | Review a candidate's report | ❌ |
+| 1 | Sign up | ✅ Two ways. A company can sign itself up at `/signup` (migration 0027): it starts with access pending and 0 credits — it can sign in and look around, but creating roles and inviting stay locked until a Mindfries admin grants access and credits in internal-admin's `/admin/access`; 1 credit is spent per candidate invited. Or our team onboards it from internal-admin, which emails a `/set-password` link; those companies aren't metered. A company admin invites teammates from Settings → Team |
+| 2 | Create a role | ✅ Title, tech stack, duration, visibility, and a brief. A role can be closed and reopened, and published to the job board (applicants can be answered, invited to the assessment, and given an interview time) |
+| 3 | Pick or configure an assessment | 🟡 Configure: yes — the role's brief and kind of task drive a task generated per candidate, and the AI assistant (on/off, message cap) and AI interviewer (questions, tone, language, time per answer) are set per role. Pick a template from the Game Library: not in the portal — the data function exists (`setJobRoleTemplate`) but no screen calls it |
+| 4 | Invite a candidate | ✅ Both a company (from a role in its portal) and our own team (from the admin portal, on a company's behalf) can invite. Each invitation has its own link, and each candidate gets their own task, generated from the role's brief (since 2026-10-14). Emailed only once `RESEND_API_KEY`, `RESEND_FROM` and `CANDIDATE_PORTAL_URL` are set |
+| 5 | See how an assessment is going | ✅ An overview (stat cards, invite trend, activity heatmap, due-dates calendar, recent activity) and a pipeline per role, with stage badges, one-at-a-time and bulk stage changes, accepted/declined answers, and whether each candidate's task is ready. Stages move by themselves when a candidate starts and submits. The portal polls rather than listening live. No score or date filters |
+| 6 | Review a candidate's report | ✅ A summary card (picture, headline, recommendation, scores, linked accounts), the profile and resume, and the evidence report with cited moments, interview answers and recordings, camera stills and flagged moments. A reviewer can add notes and record their own decision. 2–4 candidates can be compared side by side. What a candidate chose to hide is respected |
+
+Billing: Settings → Billing is backed by `company/backend`'s real Stripe
+checkout, billing portal and webhook — but that service isn't deployed and
+there is no real Stripe account or keys yet.
 
 ## Candidate side
 
@@ -151,7 +157,10 @@ All four working.
 
 ## Known gaps, in plain terms
 
-- **No Company Portal.** Still the single biggest hole — see above.
+- **The Company Portal hasn't met real services yet.** It's built (see
+  above), but no real email has been sent from it, the score write-back
+  after evaluation hasn't run against a real model, and its backend
+  (Stripe billing) isn't deployed anywhere.
 - **A candidate can start as many separate practice sessions as they want**
   from the open, non-invited pool of assessments — there's no per-candidate
   limit yet. (A candidate *can't* replay or resubmit the same session
@@ -190,14 +199,19 @@ write-up with exact detail.
   needed to do it safely?
 - **How should a company-specific codebase actually get generated?**
   Decided in principle (see "Built, but not part of the original checklist"
-  and [PRD §1.4](System_Archetect_And_PRD.md)) — waiting on the Company
-  Portal to exist before it's built.
+  and [PRD §1.4](System_Archetect_And_PRD.md)). Partly answered: each
+  candidate now gets a task generated from the role's brief (see
+  "Invitation-only assessments" below); a codebase generated from a
+  company's own code is still not built.
 
 ## What's next, in order
 
-1. **Build the Company Portal.** The biggest thing left, by far.
-2. **Get real API keys** for the AI evaluation service and the sandbox
-   service — everything downstream is already built and just waiting.
+1. **Get real API keys** for the AI evaluation service, the sandbox
+   service and email — everything downstream is already built and just
+   waiting, including the Company Portal's invite emails and score
+   write-back.
+2. **Deploy `company/backend` and set up a real Stripe account**, or decide
+   billing stays manual (credits granted by our team) for now.
 3. **Decide the AI interview's timeline** — build it for real, or say
    clearly it's not happening soon.
 4. **Connect the live status/terminal streaming** that's already built but
