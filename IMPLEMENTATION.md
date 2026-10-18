@@ -6,7 +6,7 @@ monorepo package between them.
 **Status:** Draft v2 — supersedes the v1 draft; incorporates a full audit of
 `candidate/frontend`, `internal-admin/frontend`, the PRD, and every
 Supabase migration, plus two confirmed decisions (theme base, billing scope).
-**Last updated:** 2026-09-15.
+**Last updated:** 2026-10-18.
 
 This is the build referred to as "the single biggest thing missing from the
 product" in [`task.md`](task.md)'s Company side table and What's next #1.
@@ -26,7 +26,8 @@ reports — visually and architecturally consistent with `internal-admin`.
 **Non-goals for MVP** (unchanged from v1, plus billing — see §3):
 - ATS integrations, built-in interview scheduling, AI-generated candidate
   summaries.
-- Real payment processing (Stripe or otherwise) — see §3.4.
+- ~~Real payment processing~~ — built after all, in `company/backend`; see
+  §3.4 and §16.
 - Open-ended assessment authoring (rubric/interviewer-prompt editing stays
   admin-only; see §3.5).
 
@@ -83,10 +84,10 @@ starting:
 | 3.1 | Single login per company, or multiple recruiters/hiring managers with roles? | Multiple, with roles (Admin/Recruiter/Viewer). Team Management is in MVP scope. |
 | 3.2 | Company switcher (one recruiter, multiple client companies)? | No. One company per login. No switcher, no `companyId` in routes (see §8). |
 | 3.3 | Who creates assessment content — internal team or company? | **Neither, fully.** Per PRD §1.11, Mindfries centrally authors the Game Library (`game_templates`) — task variants, rubric, interviewer prompt. A company **picks a published template** and configures role-scoped fields only (duration override, tech stack, candidate-facing role details). Rubric/interviewer-prompt authoring stays admin-only. This narrows v1's "self-serve... configure sections/weights" wording, which over-scoped into a full assessment builder. |
-| 3.4 | Billing: real payment integration, or a display only? | **Confirmed: display only for MVP**, per PRD §2.1 ("billing automation... can wait — manual, ops-run versions are enough until there are paying companies to bill"). Settings/Billing shows plan, seats, and a usage/credits counter — modeled on `internal-admin`'s existing `onboarded_companies`/Costs view. No Stripe, no webhooks, no invoice UI. This removes v1's single biggest timeline risk. |
+| 3.4 | Billing: real payment integration, or a display only? | **Confirmed: display only for MVP**, per PRD §2.1 ("billing automation... can wait — manual, ops-run versions are enough until there are paying companies to bill"). Settings/Billing shows plan, seats, and a usage/credits counter — modeled on `internal-admin`'s existing `onboarded_companies`/Costs view. No Stripe, no webhooks, no invoice UI. This removes v1's single biggest timeline risk. **Superseded 2026-10-03:** real Stripe billing was built in `company/backend` (checkout, billing portal, signed webhook — §16) and `/settings/billing` calls it. **Since 2026-10-18** a self-signed-up company is also metered in credits (1 credit = 1 candidate invited), granted by hand from internal-admin — see §3.6. |
 | 3.5 | Role visibility | Both open-pool and invite-only are already real on the candidate side (`task.md` Candidate #1) — a role's publish step picks one, no new candidate-side work required. |
 | 3.7 | Does role creation have to wait for the assessment-template picker (§3.3)? | **No — confirmed, decoupled.** `job_roles.template_id` is nullable in the schema (§7) specifically so a role can be created and published without one. `/roles/new` (built) collects title, tech stack, duration, and visibility only; picking/attaching a published `game_template` is tracked as its own later integration, not a blocker on a company being able to open a role today. |
-| 3.6 | How does a company get its first login — self-serve signup, or ops-created? | **Confirmed: ops-created, no self-serve company signup.** Mindfries ops creates the first `company_users` admin row as part of the existing internal-admin onboarding flow (PRD §1.11's `ON1 Create Company Account`) — the same moment that already creates the `companies` row today. There is no `/signup` route in `company/frontend`; `/login` is the only entry point. The company's own admin then invites teammates from `/settings/team` (§6, §11 Phase 4). |
+| 3.6 | How does a company get its first login — self-serve signup, or ops-created? | **Confirmed: ops-created, no self-serve company signup.** Mindfries ops creates the first `company_users` admin row as part of the existing internal-admin onboarding flow (PRD §1.11's `ON1 Create Company Account`) — the same moment that already creates the `companies` row today. There is no `/signup` route in `company/frontend`; `/login` is the only entry point. The company's own admin then invites teammates from `/settings/team` (§6, §11 Phase 4). **Superseded 2026-10-18 (migration 0027):** a company can now also sign itself up at `/signup`. It starts with `access_status = 'pending'` and 0 credits — it can sign in and look around, but creating roles and inviting candidates stay locked until a Mindfries admin grants access and credits in internal-admin's `/admin/access`; each invite spends 1 credit. Ops-onboarded companies (the original flow, still there) keep `access_status = 'active'` and `credits = NULL`, meaning not metered. |
 
 ---
 
@@ -141,8 +142,10 @@ Mirrors `internal-admin/frontend/lib/auth/` exactly, new names only:
   `/candidates`, `/settings`, redirecting to `/login` otherwise.
 - **No root/env-configured account** — unlike admin, a locked-out company
   should reach Mindfries support, not have a shared backdoor credential.
-- **No self-serve signup (§3.6).** `company/frontend` ships `/login` only,
-  no `/signup`. The first `company_users` row (`role = 'admin'`, `status =
+- **Self-serve signup, since 2026-10-18 (§3.6).** `/signup` creates the
+  company and its first admin with access pending and 0 credits
+  (`lib/access.ts` gates hiring on it). The ops-created path below is
+  unchanged. Originally `company/frontend` shipped `/login` only. The first `company_users` row (`role = 'admin'`, `status =
   'active'` or `'invited'` if they should set their own password) is
   created from `internal-admin/frontend` — extend its existing onboarding
   action (the one that already calls `createCompany` — see
@@ -277,7 +280,7 @@ hoc checks, on both `company/frontend` (`lib/auth/permissions.ts`) and
 - `company/frontend` scaffold (§4), theme copy from internal-admin (§2.1)
 - `0011_company_portal.sql` migration (§7)
 - Auth: `company_users`, session cookie, middleware, `/login`-only, no
-  `/signup` (§6, §3.6)
+  `/signup` (§6, §3.6) — `/signup` was added later, 2026-10-18
 - Extend `internal-admin/frontend`'s onboarding action (`addOnboarded` in
   `lib/db.ts`) to also create the first `company_users` admin row +
   send the signed set-password link, so onboarding a company produces a
@@ -320,8 +323,8 @@ hoc checks, on both `company/frontend` (`lib/auth/permissions.ts`) and
 - **Per-candidate stage actions (real, narrower than "bulk"):** Shortlist /
   Hire / Reject buttons on each row in `/roles/[roleId]`, permission-gated
   via `candidate:stage`, each a plain `<form action={changeStage.bind(...)}>`
-  — no client component needed. **Not built:** multi-select (checkboxes +
-  a bulk-action bar) — every change is still one candidate at a time.
+  — no client component needed. Multi-select with a bulk-action bar was
+  added later (`PipelineList.tsx`, `bulkChangeStage`).
 - Score-range and date filters on the pipeline view — not built.
 - Permission checks (§10) wired into every write action added so far
   (`role:write`, `candidate:invite`, `candidate:stage`).
@@ -337,17 +340,25 @@ hoc checks, on both `company/frontend` (`lib/auth/permissions.ts`) and
   reading the same tables directly is the established pattern every other
   read in this codebase already follows (`ARCHITECTURE.md`). Auto-refreshes
   while a report is `pending`/`generating`, same mechanic as candidate/frontend's
-  own `ReportAutoRefresh`. Score breakdown by section and stage-change
-  actions are still outstanding.
-- Side-by-side candidate comparison (2–4, sortable)
-- Attach a published `game_template` to an existing role — the picker/
-  configure step §3.3 originally scoped into role creation itself, now a
-  standalone addition to `/roles/[roleId]` instead of a precondition for
-  `/roles/new` (§3.7)
+  own `ReportAutoRefresh`. Since then it has gained cited moments, the
+  interview, recordings, flagged moments, reviewer notes and the reviewer's
+  own decision, plus a summary card and the candidate's profile.
+- Side-by-side candidate comparison (2–4) — built, `/candidates/compare`.
+- Attach a published `game_template` to an existing role — **not exposed.**
+  `lib/db.ts` still has `setJobRoleTemplate`, but no screen calls it: a
+  role's brief and kind of task now generate a task per candidate
+  instead (`task.md`, "Invitation-only assessments").
 
-### Phase 4 — Team + Billing
-- Invite teammate flow (email via Resend, pending/accepted states, §6)
-- Billing/plan page: plan, seats, usage/credits display only (§3.4)
+### Phase 4 — Team + Billing (done)
+- Invite teammate flow (email via Resend, pending/accepted states, §6) —
+  `/settings/team`
+- Billing/plan page — real Stripe through `company/backend` rather than
+  display only (§3.4, §16); credits for self-signed-up companies (§3.6)
+
+### Built beyond the original phases
+- Job board (migration 0025): publish a role as a job, answer applicants,
+  invite one to the assessment, schedule an interview, email candidates.
+- Per-role AI assistant and interviewer settings.
 
 ### Phase 5 — Polish + QA
 - Cross-portal visual QA against internal-admin (this is now the actual
@@ -371,6 +382,8 @@ service — not part of the frontend-only Phase 1-5 sequence above).
 pre-selected option, 2026-10-04.
 
 ~~Company signup model~~ — resolved: ops-created, no self-serve (§3.6).
+Revisited 2026-10-18: self-serve sign-up added, gated by access and
+credits granted from internal-admin.
 
 ---
 
