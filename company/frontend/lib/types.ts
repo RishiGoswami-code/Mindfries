@@ -70,17 +70,25 @@ export interface JobRole {
   assistantConfig: AssistantConfig;
   /**
    * What the assessment should test — the work, the level, what to look
-   * for. Each invited candidate gets their own task, generated from this.
+   * for. The role's one shared task is generated from this (every candidate
+   * invited to the role gets it).
    */
   assessmentBrief: string;
   /** The kind of task generated: bug_fix | feature | refactor | debug. */
   taskVariant: TaskVariant;
+  /** Whether the role's one shared task has been generated yet. 'none' is a role from before role-level tasks. */
+  taskStatus: RoleTaskStatus;
+  /** Set when the role's task couldn't be generated — the company fixes the brief and saves again. */
+  taskError: string | null;
   /** How the role appears on the job board, if it's listed there. */
   posting: JobPosting;
 }
 
 /** Whether an invited candidate's own task has been made yet (candidate/backend makes it). */
 export type InviteTaskStatus = "pending" | "generating" | "ready" | "failed";
+
+/** The state of a role's one shared task (migration 0028). 'none': a legacy role with no role-level task. */
+export type RoleTaskStatus = "none" | "pending" | "generating" | "ready" | "failed";
 
 export type ApplicationStage =
   // The candidate applied from the job board and is waiting for the

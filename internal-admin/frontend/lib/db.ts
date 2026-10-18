@@ -298,10 +298,31 @@ export async function createInvitation(input: {
 
   let roleId = input.roleId ?? null;
   let roleTitle = "";
+  // The task is generated once per role now (migration 0028); an invitation
+  // inherits it rather than generating its own. Default: no task yet, 'pending'
+  // — the backend backfills it when the role's task is ready.
+  let inviteTemplateId: string | null = null;
+  let inviteTaskStatus: "ready" | "pending" = "pending";
   if (roleId) {
-    const { data: role } = await c.from("job_roles").select("id, title").eq("id", roleId).eq("company_id", input.companyId).maybeSingle();
+    const { data: role } = await c
+      .from("job_roles")
+      .select("id, title, template_id, task_status")
+      .eq("id", roleId)
+      .eq("company_id", input.companyId)
+      .maybeSingle();
     if (!role) throw new Error("That role isn't one of this company's");
     roleTitle = role.title;
+    if (role.task_status === "failed") {
+      throw new Error("This role's assessment task couldn't be generated. Fix the role's brief and save it to regenerate before inviting.");
+    }
+    if (role.template_id && role.task_status === "ready") {
+      inviteTemplateId = role.template_id;
+      inviteTaskStatus = "ready";
+    } else if (role.task_status === "none") {
+      // A role from before role-level tasks: start one now so this and future
+      // invites share it, instead of each generating its own.
+      await c.from("job_roles").update({ task_status: "pending", task_attempts: 0, task_error: null }).eq("id", roleId).eq("task_status", "none");
+    }
   } else if (input.newRole) {
     const { data: role, error } = await c
       .from("job_roles")
@@ -317,6 +338,8 @@ export async function createInvitation(input: {
     if (error || !role) throw error ?? new Error("Couldn't create the role");
     roleId = role.id;
     roleTitle = role.title;
+    // A brand-new role (default task_status 'pending'): its task is generated
+    // now; this invitation waits for it and is backfilled when it's ready.
   } else {
     throw new Error("Pick a role, or describe a new one");
   }
@@ -325,9 +348,9 @@ export async function createInvitation(input: {
     .from("assessments")
     .insert({
       company_id: input.companyId,
-      template_id: null,
+      template_id: inviteTemplateId,
       job_role_id: roleId,
-      task_status: "pending",
+      task_status: inviteTaskStatus,
       invited_by: "mindfries",
       candidate_email: input.candidateEmail,
       candidate_name: input.candidateName || null,

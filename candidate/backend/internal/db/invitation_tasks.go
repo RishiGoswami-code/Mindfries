@@ -52,12 +52,20 @@ func (d *DB) ClaimInvitationTask(ctx context.Context) (*InvitationTaskJob, error
 	var job InvitationTaskJob
 	err := d.pool.QueryRow(ctx, `
 		with next as (
-			select id from assessments
-			where status = 'invited'
-			  and task_attempts < $1
-			  and (task_status = 'pending'
-			       or (task_status = 'generating' and task_started_at < now() - interval '15 minutes'))
-			order by created_at
+			select a.id from assessments a
+			where a.status = 'invited'
+			  and a.task_attempts < $1
+			  and (a.task_status = 'pending'
+			       or (a.task_status = 'generating' and a.task_started_at < now() - interval '15 minutes'))
+			  -- Only invitations whose task isn't being provided at the role
+			  -- level: one with no role, or a legacy role that has no role-level
+			  -- task ('none'). A role that is generating, has, or failed its own
+			  -- task owns its invitations' tasks (role_tasks.go) — the invitation
+			  -- worker must not also generate one, or the candidate's task would
+			  -- be made twice.
+			  and (a.job_role_id is null
+			       or exists (select 1 from job_roles r where r.id = a.job_role_id and r.task_status = 'none'))
+			order by a.created_at
 			limit 1
 			for update skip locked
 		)
