@@ -3,7 +3,7 @@ import { AuthSplit } from "@/components/login/AuthSplit";
 import { MIN_PASSWORD } from "@/lib/auth/company-signup";
 import { SignupForm } from "./SignupForm";
 
-export const metadata: Metadata = { title: "Create a company account · Mindfries" };
+export const metadata: Metadata = { title: "Create an account" };
 
 export const dynamic = "force-dynamic";
 

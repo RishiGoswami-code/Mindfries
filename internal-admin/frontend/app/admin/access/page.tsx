@@ -1,9 +1,12 @@
+import type { Metadata } from "next";
 import { PageHeader } from "@/components/ui";
 import { Panel, SoftPill } from "@/components/admin/cards";
 import { GrantAccessForm } from "@/components/admin/GrantAccessForm";
 import { listSelfSignupCompanies, type AccessCompany } from "@/lib/company-access";
 import { supabaseReady } from "@/lib/supabase";
 import { fmtDate } from "@/lib/format";
+
+export const metadata: Metadata = { title: "Access requests" };
 
 export const dynamic = "force-dynamic";
 
