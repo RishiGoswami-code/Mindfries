@@ -11,7 +11,9 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/mindfries/v2/cli/internal/api"
 	"github.com/mindfries/v2/cli/internal/buildinfo"
+	"github.com/mindfries/v2/cli/internal/sys"
 )
 
 // App is one invocation's environment.
@@ -20,11 +22,35 @@ type App struct {
 	Stdout io.Writer
 	Stderr io.Writer
 	Getenv func(string) string
+	// Sys is the machine; nil means the real one.
+	Sys *sys.Sys
 }
 
 // Default is the real process environment.
 func Default() *App {
-	return &App{Stdin: os.Stdin, Stdout: os.Stdout, Stderr: os.Stderr, Getenv: os.Getenv}
+	return &App{Stdin: os.Stdin, Stdout: os.Stdout, Stderr: os.Stderr, Getenv: os.Getenv, Sys: sys.Real()}
+}
+
+func (a *App) sys() *sys.Sys {
+	if a.Sys == nil {
+		a.Sys = sys.Real()
+	}
+	return a.Sys
+}
+
+// apiURL picks the API: the flag, then $MINDFRIES_API, then the built-in.
+func (a *App) apiURL(flagValue string) string {
+	if flagValue != "" {
+		return flagValue
+	}
+	if v := a.Getenv("MINDFRIES_API"); v != "" {
+		return v
+	}
+	return buildinfo.DefaultAPI
+}
+
+func (a *App) client(flagValue string) *api.Client {
+	return api.New(a.apiURL(flagValue), buildinfo.Version)
 }
 
 type command struct {
@@ -163,4 +189,3 @@ func (a *App) agent(args []string) error  { return errNotBuilt }
 func (a *App) status(args []string) error { return errNotBuilt }
 func (a *App) submit(args []string) error { return errNotBuilt }
 func (a *App) stop(args []string) error   { return errNotBuilt }
-func (a *App) doctor(args []string) error { return errNotBuilt }

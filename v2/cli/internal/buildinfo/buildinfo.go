@@ -5,7 +5,7 @@ package buildinfo
 
 var (
 	// Version is the CLI's semantic version.
-	Version = "0.0.0-dev"
+	Version = "0.1.0-dev"
 	// Commit is the Git commit the binary was built from.
 	Commit = "unknown"
 	// DefaultAPI is the V2 API base URL used when neither --api nor
