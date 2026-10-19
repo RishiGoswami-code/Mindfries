@@ -4,6 +4,11 @@ Two worked examples of how an assessment runs inside Mindfries V2, end to
 end. They show how the pieces in [`SPEC.md`](SPEC.md) fit together for a
 real role; where they and the spec disagree, the spec wins.
 
+> **Note:** these flows predate the decision to move the assistant into the
+> terminal. Where they say "AI Help", that is now `mindfries agent`, run from
+> the CLI. The customer conversation and the other tabs stay in the floating
+> panel. See [README](README.md#where-this-repos-v2-departs-from-the-spec).
+
 These are end-to-end examples of how an assessment should run inside Mindfries V2. They are not standalone interview scripts. Both use the shared recruiter blueprint, candidate onboarding, local CLI, floating tabbed workspace, evidence timeline, evaluation engine, and reviewer report. Only the scenario, enabled tabs, task progression, and role rubric change.
 
 - [Flow A — Forward Deployed Engineer (FDE)](#flow-a--forward-deployed-engineer-fde-solve-a-customer-problem-in-an-unfamiliar-environment)

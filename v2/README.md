@@ -26,9 +26,10 @@ with the CLI first.
 V2 turns the assessment from "code in our browser IDE, chat with our
 assistant" into an evidence-first work session across several kinds of work.
 - **Where the candidate codes:** in their own IDE, set up by a session-scoped local CLI and a short-lived agent ([§9](SPEC.md#9-local-cli-and-assessment-agent-no-ide-extension)).
-- **The browser:** stays the hub, with one floating panel of tabs — AI Help, System Design, Research, Debugging, Notes/Evidence ([§10](SPEC.md#10-the-unified-candidate-workspace)).
+- **The assistant:** `mindfries agent`, a coding and research assistant in the terminal, under the assessment's policy (see [below](#where-this-repos-v2-departs-from-the-spec)).
+- **The browser:** stays the hub, with one floating panel of tabs. Stage & Task, System Design, Debugging, Notes & Evidence, Conversation and Submission review cover everything except coding with the assistant ([§10](SPEC.md#10-the-unified-candidate-workspace)).
 - **Routes:** each assessment adapts to the candidate — a common core, an evidence-driven route and targeted follow-ups — and "not assessed" is kept apart from "weak" ([§11](SPEC.md#11-adaptive-assessment-candidates-can-be-strong-in-different-ways)).
-- **Assistant:** a backend policy gateway decides what the AI assistant and developer platforms may do ([§13](SPEC.md#13-floating-ai-help-assistant-and-tool-permissions)).
+- **Policy:** a backend policy gateway decides what the assistant and developer platforms may do ([§13](SPEC.md#13-floating-ai-help-assistant-and-tool-permissions)).
 - **Result:** a capability profile — per competency: score, confidence, coverage, evidence links. The avatar is capped at about 5% ([§14](SPEC.md#14-evaluation-and-weighting-model), [§19](SPEC.md#19-candidate-report--capability-profile)).
 - **Integrity:** three separate categories — observed events, verified violations, review signals — never one "cheating score" ([§16](SPEC.md#16-integrity-monitoring-and-anti-cheating-design)).
 
@@ -72,6 +73,15 @@ so V1 code can't simply be carried over:
 5. **Assistant.** V1's assistant is prompt-limited, with a message cap. V2 needs server-side policy enforcement: tool, domain, scope, credentials, audit ([§13](SPEC.md#assistant-policy-gateway)).
 6. **Recruiter setup.** V1's company portal creates roles and invites candidates; tasks are generated per candidate. V2 adds blueprints, essential versus differentiator competencies, versioned rubrics, the AI policy mode, preview and dry-run ([§7](SPEC.md#7-recruiter-setup-flow)).
 7. **Retention.** V1 promises 90-day deletion. Its cron only removes media and has never run. V2 makes retention and deletion a release-gate item ([release gate](SPEC.md#v2-release-gate-do-not-cut-over-before-all-checks-pass)).
+
+## Where this repo's V2 departs from the spec
+
+Owner decisions that change what [`SPEC.md`](SPEC.md) says. The spec is
+otherwise unchanged and still governs.
+
+1. **The assistant lives in the terminal.** The spec puts AI Help in the floating panel ([§13](SPEC.md#13-floating-ai-help-assistant-and-tool-permissions)). Here it is `mindfries agent`, a terminal coding and research assistant run by the CLI. Its policy gateway, modes, logging and limits still follow §13. The floating panel has no chat and handles everything else. Where [`ROLE_FLOWS.md`](ROLE_FLOWS.md) says "AI Help", read `mindfries agent`.
+2. **Outside coding agents are not allowed.** Candidates code with `mindfries agent`, not their own agents. The CLI looks for outside agents and reports what it finds as review signals ([PLAN, task 1.8](PLAN.md#stage-1--the-cli-9-17)). Agent-first IDEs are not offered.
+3. **V2 reuses V1.** It uses V1's accounts, dashboard and company portal, and keeps its data in a `v2` schema in the same database. The spec permits this; its default is a separate project. Cut-over is therefore a switch ([PLAN, Part 1](PLAN.md#part-1--how-v2-reuses-v1-and-how-v1-stays-safe)).
 
 ## About `candidate/v2/`
 

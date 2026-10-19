@@ -24,7 +24,7 @@ the same accounts and screens, and V2 adds only what is new.
 |---|---|
 | Sign-in and accounts (candidates and companies) | The CLI and the V2 API it talks to |
 | Candidate dashboard, profile, settings, job portal | The workspace hub: setup code, live session status, stage view |
-| Company portal: roles, invites, candidates, credits | The floating tabbed panel and the policy-gated assistant |
+| Company portal: roles, invites, candidates, credits | `mindfries agent`, our coding and research assistant, in the terminal; and the floating panel for everything else |
 | Internal admin | The evidence timeline, evaluation and capability-profile report |
 | V1 assessments, from start to finish | Recruiter blueprints and versioned rubrics |
 
@@ -180,11 +180,16 @@ The commands are:
 
 | Command | What it does |
 |---|---|
-| `mindfries start <setup-code>` | Sets up the workspace and runs the agent |
+| `mindfries start <setup-code>` | Sets up the workspace and runs the session watcher |
+| `mindfries agent` | Opens **our coding and research assistant** in the terminal (tasks 1.14–1.17) |
 | `mindfries status` | Shows the session, sync and Git state |
 | `mindfries submit` | Reviews the diff and hands in |
-| `mindfries stop` | Ends the agent and cleans up |
+| `mindfries stop` | Ends the session watcher and cleans up |
 | `mindfries doctor` | Runs preflight checks only |
+
+Two different things could both be called an "agent", so the plan names them apart:
+- **The session watcher** is the spec's "local assessment agent" ([§9](SPEC.md#local-agent-responsibilities)). It runs quietly beside the work and records evidence.
+- **`mindfries agent`** is the AI assistant the candidate talks to.
 
 - [ ] **1.1 The CLI ↔ API contract.**
   - Write `v2/contracts/cli-api.yaml` (OpenAPI). It covers:
@@ -194,6 +199,7 @@ The commands are:
     - heartbeat;
     - event batches, including the coding-agent signals;
     - diff snapshots;
+    - assistant turns for `mindfries agent`, streamed, with tool calls and the edits it applies;
     - the submission manifest and upload;
     - revoke;
     - the minimum CLI version.
@@ -231,7 +237,7 @@ The commands are:
   - Supported IDEs: VS Code, JetBrains IDEs (via their launchers) and Zed. Agent-first IDEs (Antigravity, Cursor, Windsurf) are not offered, and 1.8 marks them if they're open anyway.
   - The CLI detects which are installed and opens the one the candidate picks. If none is found, it prints the path to open by hand.
   - *Done when:* launch works or fails gracefully on each OS.
-- [ ] **1.7 The local agent.**
+- [ ] **1.7 The session watcher** (the spec's local agent).
   - It runs in the foreground: never a service, and never at login.
   - It sends a heartbeat.
   - It reads Git status and diff stats on an interval.
@@ -241,13 +247,13 @@ The commands are:
   - It shows "last synced …".
   - *Done when:* if the network is cut for 10 minutes, nothing is lost and nothing is duplicated after reconnecting.
 - [ ] **1.8 Coding-agent signals.**
-  - The policy: candidates may use **our assistant** to write code, but not their own coding agents (Claude Code, Gemini CLI, Codex, Aider, Copilot CLI, Antigravity, Cursor's agent, Windsurf and the like). The candidate is told this, and told what the CLI checks, before they start.
+  - The policy: candidates may use **our assistant, `mindfries agent`,** to write code, but not their own coding agents (Claude Code, Gemini CLI, Codex, Aider, Copilot CLI, Antigravity, Cursor's agent, Windsurf and the like). The candidate is told this, and told what the CLI checks, before they start.
   - The CLI collects five signals. None of them needs special permissions or reads anything private:
     1. **Agents running.** It matches running process names against a list of known coding agents and agent IDEs. At `start`, a match asks the candidate to close it before the timer begins. During the session it checks every few minutes, and a match becomes a review signal. Only the matches are sent, never the full list of processes.
     2. **AI extensions in the IDE.** It reads the editor's list of installed extensions, for example `code --list-extensions`, and reports the AI ones: Copilot, Cline, Continue, Roo, the Claude Code and Gemini extensions. It does the same for JetBrains' AI Assistant and Junie, and for Zed's agent settings.
     3. **Leftovers in the folder.** It scans for `CLAUDE.md`, `.claude/`, `AGENTS.md`, `GEMINI.md`, `.cursor/`, `.windsurf/`, `.aider*` and Copilot instruction files. It also scans commit messages for agent trailers such as "Co-Authored-By: …" or "Generated with …".
     4. **How the code arrives.** It records each file change's size and timing. A person writes in small edits spread out over time. An agent writes whole files, often several at once, within seconds. The CLI marks these bursts.
-    5. **Diff snapshots for matching.** It sends periodic Git diff snapshots, so the server can compare new code with what our assistant gave. Large blocks that didn't come from our assistant and weren't built up gradually are marked.
+    5. **Where each change came from.** Every edit `mindfries agent` applies is recorded exactly (task 1.17), so the watcher can sort each change. It came from our agent, it was built up gradually by the candidate, or it came from neither. Large blocks that came from neither are marked. Periodic Git diff snapshots let the server check this.
   - Every signal is an observed event or a review signal ([§16](SPEC.md#use-three-distinct-categories)). None is a verdict, and a human decides. The real check is whether the candidate understands the code, which the avatar's follow-ups test in Stage 7.
   - *Done when:* each signal has a test, using a fake agent process, a fake extension list, a planted `CLAUDE.md` and a scripted file burst. Nothing outside the listed checks is read.
 - [ ] **1.9 Submit.**
@@ -289,6 +295,48 @@ The commands are:
   - Run the full `start → work → submit → stop` flow against the fake API on Windows, macOS and Linux runners.
   - *Done when:* the flow is green on all three.
 
+### Stage 1b — `mindfries agent`: our coding and research assistant
+
+The assistant lives in the terminal, beside the candidate's IDE, and not
+in the browser. It works like the coding agents candidates already know, but
+it runs under the assessment's policy, and everything it does is evidence.
+It only runs while a session started with `mindfries start` is active.
+
+- [ ] **1.14 The assistant gateway** (on the fake API first, for real in 2.2).
+  - **Server-side model calls.** The model is called by the server, never from the laptop, so no model key ever reaches the candidate's machine.
+  - **Policy mode,** set per assessment:
+    - off;
+    - explain only, with no code written;
+    - code allowed.
+  - **Limits:** a token and cost budget for each session.
+  - **Logging:** every prompt, reply and tool call is logged as evidence, linked to the session.
+  - *Done when:*
+    - in "explain only" mode, the server refuses a turn that asks to write a file;
+    - a session over budget is refused with a clear message.
+- [ ] **1.15 The terminal interface.**
+  - `mindfries agent` opens a chat in the terminal; the IDE's built-in terminal works too.
+  - Replies stream in. Before any change is applied, the candidate sees it as a diff and accepts or rejects it.
+  - It shows the policy mode and the budget left.
+  - *Done when:* it works in Windows Terminal, the macOS Terminal, a Linux terminal and the VS Code terminal.
+- [ ] **1.16 Its tools, and their limits.**
+  - **Files:** read files and propose edits, inside the task folder only.
+  - **Commands:** run commands (tests, builds) in the task folder, after the candidate confirms each one.
+  - **Research:** look things up only through the server. The domains are those the assessment allows (official docs, package registries). Every source it uses is recorded and shows up in the floating panel's Notes & Evidence.
+  - **Never:**
+    - read outside the task folder;
+    - touch credentials;
+    - push to Git;
+    - install anything without asking.
+  - *Done when:* a test shows each "never" is refused, and research to a domain that isn't allowed is refused by the server.
+- [ ] **1.17 Attribution.**
+  - Every edit the agent applies is recorded with the file, the lines and a hash.
+  - The session watcher (1.7) uses these records to sort each change:
+    - written by our agent;
+    - typed by the candidate;
+    - from neither, which feeds 1.8.
+  - The report can then show how much of the work came from each source.
+  - *Done when:* in a scripted session that mixes agent edits, typing and a pasted block, each change is attributed correctly.
+
 ### Stage 2 — The V2 API, and connecting V2 to V1 ([§6 core services](SPEC.md#core-services))
 
 - [ ] **2.1 V2 schema and database role.**
@@ -299,6 +347,7 @@ The commands are:
     - a test shows the V2 role is refused when it tries to write any V1 table.
 - [ ] **2.2 `v2/api`: the contract from 1.1, for real.**
   - Implement sessions, setup codes, token issue and revoke, task bundles, events and submissions, with manifest verification.
+  - Implement the assistant gateway from 1.14 with real model calls, policy modes and budgets.
   - *Done when:* the CLI's end-to-end tests from 1.13 pass against the real API as well as the fake.
 - [ ] **2.3 Connection points in V1** (`v1-seam` PRs, switch off).
   - Add the migration for `assessments.engine` (default `v1`) and the `V2_ENABLED` and `V2_DEFAULT_ENGINE` switch.
@@ -325,7 +374,13 @@ Each will be split into tasks like Stage 1 when it starts.
   - the stage and journey view from [`ROLE_FLOWS.md`](ROLE_FLOWS.md);
   - the submission manifest review.
 - **4. Recruiter setup:** blueprints, competencies, versioned rubrics, AI policy mode, preview and dry-run ([§7](SPEC.md#7-recruiter-setup-flow)). The first role family comes from the open decision.
-- **5. The floating tabbed panel:** Notes & Evidence, Debugging, System Design, Research, and AI Help behind the policy gateway ([§10](SPEC.md#10-the-unified-candidate-workspace), [§13](SPEC.md#13-floating-ai-help-assistant-and-tool-permissions)).
+- **5. The floating tabbed panel:** responsible for everything that isn't coding with the assistant ([§10](SPEC.md#10-the-unified-candidate-workspace)). It has no AI chat; that is `mindfries agent`. Its tabs:
+  - **Stage & Task:** the current stage, goal, time and deliverables;
+  - **System Design** canvas;
+  - **Debugging & Reliability:** hypotheses, logs, reproductions;
+  - **Notes & Evidence,** which includes the sources the agent researched;
+  - **Conversation:** the simulated customer in the FDE flow, and the avatar's follow-ups;
+  - **Submission review.**
 - **6. Evidence timeline, evaluation and the capability-profile report:** a score, confidence and coverage for each competency, and "not assessed" ([§14](SPEC.md#14-evaluation-and-weighting-model), [§15](SPEC.md#15-evidence-model-and-timeline), [§18](SPEC.md#18-evaluation-engine), [§19](SPEC.md#19-candidate-report--capability-profile)). Includes human review.
 - **7. Adaptive follow-ups and the avatar** (bounded weight) ([§11](SPEC.md#11-adaptive-assessment-candidates-can-be-strong-in-different-ways), [§12](SPEC.md#12-ai-avatar-important-but-not-the-main-judge)).
 - **8. Integrity, integrations and retention:**
@@ -364,3 +419,4 @@ are already decided and shape everything after Stage 1.
 | Data | **Decided:** a `v2` schema in the current Supabase project, with a V2 database role that can only read V1 tables | Reuses V1's accounts and data with no migration. The database itself blocks V2 from writing V1 tables |
 | Accounts | **Decided:** shared with V1; V2 is entered through a signed handoff from V1 | Candidates and companies keep one login |
 | Web app | **Decided:** `v2/web` holds only the new V2 screens; the dashboard, settings, profile and company portal stay V1 | Least to rebuild, least to migrate |
+| Where the assistant lives | **Decided:** in the terminal, as `mindfries agent`; the floating panel handles everything else | The candidate codes with an assistant where they code. Every edit it makes is attributed exactly, which makes spotting outside agents more reliable. This departs from the spec's floating AI Help tab ([§13](SPEC.md#13-floating-ai-help-assistant-and-tool-permissions)); its policy gateway still applies |
