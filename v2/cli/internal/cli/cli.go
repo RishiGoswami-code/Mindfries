@@ -188,7 +188,3 @@ func renderError(err error) string {
 	}
 	return msg
 }
-
-var errNotBuilt = errors.New("not built yet")
-
-func (a *App) agent(args []string) error { return errNotBuilt }
