@@ -15,6 +15,7 @@ import (
 	"github.com/mindfries/v2/cli/internal/buildinfo"
 	"github.com/mindfries/v2/cli/internal/sys"
 	"github.com/mindfries/v2/cli/internal/ui"
+	"github.com/mindfries/v2/cli/internal/watcher"
 )
 
 // App is one invocation's environment.
@@ -27,6 +28,9 @@ type App struct {
 	Sys *sys.Sys
 
 	prompt *ui.UI
+	setup  setupResult
+	// tuneWatcher lets tests shorten the watcher's intervals.
+	tuneWatcher func(*watcher.Config)
 }
 
 // Default is the real process environment.

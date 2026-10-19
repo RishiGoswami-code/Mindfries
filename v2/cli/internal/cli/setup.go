@@ -28,6 +28,13 @@ func (a *App) ui(yes bool) *ui.UI {
 	return a.prompt
 }
 
+// setupResult is what this run's setup found, for the watcher's first
+// events.
+type setupResult struct {
+	resumed bool
+	checks  []preflight.Check
+}
+
 // blocking checks stop setup; the rest can be fixed later.
 var blocking = map[string]bool{"os": true, "git": true, "disk": true}
 
@@ -41,6 +48,7 @@ func (a *App) setUpWorkspace(ctx context.Context, l *state.Local, c *api.Client,
 	stateDir := state.Dir(home)
 	if workspace.Present(ctx, l) {
 		fmt.Fprintf(a.Stdout, "Workspace: %s\n", l.Workspace)
+		a.setup.resumed = true
 		return nil
 	}
 	if l.Workspace != "" {
@@ -68,6 +76,7 @@ func (a *App) setUpWorkspace(ctx context.Context, l *state.Local, c *api.Client,
 	}
 
 	checks := preflight.Run(ctx, a.sys(), preflight.Options{Dir: nearestExisting(dir), CLIVersion: buildinfo.Version, Runtimes: m.RequiredRuntimes})
+	a.setup.checks = checks
 	var problems []preflight.Check
 	stop := false
 	for _, ch := range checks {

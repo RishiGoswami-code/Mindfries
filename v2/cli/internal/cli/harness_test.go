@@ -11,6 +11,7 @@ import (
 
 	"github.com/mindfries/v2/cli/fakeapi"
 	"github.com/mindfries/v2/cli/internal/sys"
+	"github.com/mindfries/v2/cli/internal/watcher"
 	"github.com/mindfries/v2/cli/internal/workspace"
 )
 
@@ -25,6 +26,8 @@ type harness struct {
 
 	mu     sync.Mutex
 	offset time.Duration
+	// keepWatching leaves start's watcher running until the session ends.
+	keepWatching bool
 }
 
 func newHarness(t *testing.T) *harness {
@@ -64,11 +67,23 @@ func (h *harness) advance(d time.Duration) {
 
 func (h *harness) app(stdin string, out *bytes.Buffer) *App {
 	return &App{
-		Stdin:  strings.NewReader(stdin),
-		Stdout: out,
-		Stderr: out,
-		Getenv: func(k string) string { return h.env[k] },
-		Sys:    h.machine.Sys("linux", "amd64"),
+		Stdin:       strings.NewReader(stdin),
+		Stdout:      out,
+		Stderr:      out,
+		Getenv:      func(k string) string { return h.env[k] },
+		Sys:         h.machine.Sys("linux", "amd64"),
+		tuneWatcher: h.tune,
+	}
+}
+
+// tune makes the watcher fast. Unless a test sets h.keepWatching, start
+// returns shortly after the watcher begins, as if Ctrl+C were pressed.
+func (h *harness) tune(c *watcher.Config) {
+	c.Scan, c.Send, c.Heartbeat, c.Snapshot, c.AgentScan = 20*time.Millisecond, 30*time.Millisecond, 60*time.Millisecond, 100*time.Millisecond, 100*time.Millisecond
+	c.MaxBackoff = 60 * time.Millisecond
+	c.FlushTimeout = 2 * time.Second
+	if !h.keepWatching {
+		c.PauseAfter = 150 * time.Millisecond
 	}
 }
 

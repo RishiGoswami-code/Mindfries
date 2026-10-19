@@ -7,6 +7,9 @@ import (
 	"time"
 
 	"github.com/mindfries/v2/cli/internal/api"
+	"github.com/mindfries/v2/cli/internal/gitx"
+	"github.com/mindfries/v2/cli/internal/state"
+	"github.com/mindfries/v2/cli/internal/watcher"
 )
 
 func (a *App) status(args []string) error {
@@ -39,7 +42,47 @@ func (a *App) status(args []string) error {
 		fmt.Fprintf(a.Stdout, "Session      %s, %s left (ends %s)\n", sess.Status, left, sess.EndsAt.Local().Format("15:04"))
 		fmt.Fprintf(a.Stdout, "Assistant    %s\n", describeMode(sess.Policy))
 	}
+	if local.Workspace == "" {
+		fmt.Fprintln(a.Stdout, "Workspace    not set up yet: run 'mindfries start'")
+		return nil
+	}
+	fmt.Fprintf(a.Stdout, "Workspace    %s\n", local.Workspace)
+	a.printWatcher(local)
+	r := &gitx.Repo{Dir: local.Workspace}
+	if b, err := r.Branch(ctx); err == nil {
+		n, _ := r.ChangedFiles(ctx)
+		commits, _ := r.Line(ctx, "rev-list", "--count", local.BaseCommit+"..HEAD")
+		fmt.Fprintf(a.Stdout, "Git          branch %s, %s commit(s) since the start, %d file(s) changed and not committed\n", b, commits, n)
+	}
 	return nil
+}
+
+func (a *App) printWatcher(local *state.Local) {
+	home, err := a.home()
+	if err != nil {
+		return
+	}
+	dir := state.Dir(home)
+	st, err := watcher.ReadStatus(dir)
+	switch {
+	case err != nil:
+		fmt.Fprintln(a.Stdout, "Watcher      hasn't run yet: run 'mindfries start'")
+		return
+	case watcher.Running(dir):
+		fmt.Fprint(a.Stdout, "Watcher      running")
+	default:
+		fmt.Fprint(a.Stdout, "Watcher      not running: run 'mindfries start' to carry on")
+	}
+	switch {
+	case st.OfflineSince != nil:
+		fmt.Fprintf(a.Stdout, "; offline since %s", st.OfflineSince.Local().Format("15:04:05"))
+	case st.LastSyncedAt != nil:
+		fmt.Fprintf(a.Stdout, "; last synced %s", st.LastSyncedAt.Local().Format("15:04:05"))
+	}
+	if st.QueueDepth > 0 {
+		fmt.Fprintf(a.Stdout, "; %d event(s) waiting to send", st.QueueDepth)
+	}
+	fmt.Fprintln(a.Stdout)
 }
 
 func describeMode(p api.Policy) string {

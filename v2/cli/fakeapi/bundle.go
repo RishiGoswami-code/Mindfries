@@ -161,6 +161,8 @@ type tampering struct {
 	manifest            bool
 	archive             bool
 	truncateArchiveOnce bool
+	refuseBatches       int
+	dropReplies         int
 }
 
 // TamperManifest makes the manifest's first file hash wrong (after signing).

@@ -8,6 +8,7 @@ import (
 	"github.com/mindfries/v2/cli/internal/api"
 	"github.com/mindfries/v2/cli/internal/secret"
 	"github.com/mindfries/v2/cli/internal/state"
+	"github.com/mindfries/v2/cli/internal/watcher"
 )
 
 // startOptions are start's flags.
@@ -102,18 +103,24 @@ func (a *App) afterConnect(ctx context.Context, l *state.Local, c *api.Client, o
 	if err := a.setUpWorkspace(ctx, l, c, o); err != nil {
 		return err
 	}
+	home, err := a.home()
+	if err != nil {
+		return err
+	}
+	stateDir := state.Dir(home)
+	alreadyWatching := watcher.Running(stateDir)
 	used := a.openEditor(l, o.ide, o.yes)
 	if used != l.IDE {
 		l.IDE = used
-		home, err := a.home()
-		if err != nil {
-			return err
-		}
 		if err := state.Save(home, l); err != nil {
 			return err
 		}
 	}
-	return nil
+	if alreadyWatching {
+		fmt.Fprintln(a.Stdout, "The session watcher is already running in another terminal; nothing more to do here.")
+		return nil
+	}
+	return a.watch(ctx, l, c, used)
 }
 
 // forget removes the local session after the server says it's over.

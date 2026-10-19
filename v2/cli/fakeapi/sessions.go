@@ -156,6 +156,7 @@ func (s *Server) handleExchange(w http.ResponseWriter, r *http.Request) {
 		},
 		token: randomID("mft_", 24),
 		task:  c.opts.Task,
+		ext:   newExt(),
 	}
 	budget := *c.opts.Policy.AssistantBudget
 	sess.Policy.AssistantBudget = &budget
