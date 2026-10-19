@@ -26,6 +26,8 @@ import (
 )
 
 func main() {
+	slog.SetDefault(newLogger(os.Stdout))
+
 	// .env.local wins over .env, and both lose to whatever is already in the
 	// process environment — same precedence every migrate.mts in this repo
 	// already uses.
