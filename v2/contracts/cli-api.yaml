@@ -39,8 +39,12 @@ info:
     - Times are RFC 3339 in UTC. Hashes are lowercase hex SHA-256.
     - Paths inside the workspace are relative, use `/`, and never contain
       `..`.
-    - The CLI never receives a model key, a GitHub token or any V1
-      credential. The only credential it holds is the session token.
+    - The CLI never receives a model key or any V1 credential from
+      Mindfries. It holds the session token and, when the session uses the
+      candidate's GitHub (`Session.github`), the candidate's own GitHub token,
+      which comes from GitHub's device login, never from this API, stays in
+      the OS keychain, is never sent to this API, and is deleted when the
+      session ends.
 servers:
   - url: https://api.v2.mindfries.example/v2/cli
     description: Placeholder; the V2 API's domain is an open decision.
@@ -248,6 +252,64 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "426":
           $ref: "#/components/responses/CliTooOld"
+
+  /session/github/login:
+    post:
+      tags: [Session]
+      operationId: reportGitHubLogin
+      summary: Show GitHub's device code on the Mindfries sign-in page
+      description: |
+        When `Session.github` is set, `start` runs GitHub's own device login
+        (github.com/login/device, with the Mindfries OAuth app in
+        `client_id`) after the workspace is set up. It sends GitHub's user
+        code here so the sign-in page the candidate still has open shows it
+        next to an "Open GitHub" button, the same flow in one browser tab.
+        The GitHub token itself never comes here.
+      parameters:
+        - $ref: "#/components/parameters/CliVersion"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GitHubLogin"
+      responses:
+        "204":
+          description: Shown.
+        "400":
+          $ref: "#/components/responses/Malformed"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "409":
+          $ref: "#/components/responses/SessionNotActive"
+
+  /session/github/repo:
+    post:
+      tags: [Session]
+      operationId: reportGitHubRepo
+      summary: Record the candidate's repository for the assessment
+      description: |
+        The private repository `start` created in the candidate's account,
+        with the reviewers it invited (read access). Reviewers see the
+        commits, Actions runs and deployments there; the submission bundle
+        is still what's assessed as handed in.
+      parameters:
+        - $ref: "#/components/parameters/CliVersion"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GitHubRepo"
+      responses:
+        "204":
+          description: Recorded.
+        "400":
+          $ref: "#/components/responses/Malformed"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "409":
+          $ref: "#/components/responses/SessionNotActive"
 
   /session/revoke:
     post:
@@ -984,6 +1046,73 @@ components:
           description: The highest event `seq` stored. A restarted watcher resumes after it.
         submission_id:
           $ref: "#/components/schemas/Id"
+        github:
+          $ref: "#/components/schemas/GitHubSetting"
+
+    GitHubSetting:
+      type: object
+      description: |
+        Set when the work goes to a repository in the candidate's own GitHub
+        account, so deployment can be assessed (CI on Actions, a deploy to
+        AWS, Supabase, Render…).
+      required: [required, client_id]
+      properties:
+        required:
+          type: boolean
+          description: "`start` doesn't go on until GitHub is connected."
+        client_id:
+          type: string
+          description: The Mindfries OAuth app's client ID (public), with device flow enabled.
+        scopes:
+          type: array
+          items:
+            type: string
+          description: Default `[repo]`.
+        repo_name:
+          type: string
+          description: Suggested name; the CLI adds `-2`, `-3`… if it's taken.
+        reviewers:
+          type: array
+          items:
+            type: string
+          description: GitHub users invited with read access.
+        deployment:
+          type: boolean
+          description: The task asks for a deployed URL at submit.
+
+    GitHubLogin:
+      type: object
+      required: [user_code, verification_uri, expires_at]
+      properties:
+        user_code:
+          type: string
+          examples: ["WDJB-MJHT"]
+        verification_uri:
+          type: string
+          format: uri
+        expires_at:
+          $ref: "#/components/schemas/Timestamp"
+
+    GitHubRepo:
+      type: object
+      required: [login, full_name, html_url, default_branch, private]
+      properties:
+        login:
+          type: string
+        full_name:
+          type: string
+          examples: ["octocandidate/mindfries-rate-limiter"]
+        html_url:
+          type: string
+          format: uri
+        default_branch:
+          type: string
+        private:
+          type: boolean
+        reviewers_invited:
+          type: array
+          items:
+            type: string
 
     Budget:
       type: object
@@ -1828,6 +1957,16 @@ components:
         task_files_intact:
           type: boolean
           description: Every locked file matches the task manifest at `head_commit`.
+        github_repo:
+          type: string
+          description: The candidate's repository, when the session uses GitHub.
+        pushed_commit:
+          $ref: "#/components/schemas/GitSha"
+          description: The commit pushed there at submit; absent if the push failed.
+        deployment_url:
+          type: string
+          format: uri
+          description: Where the candidate deployed it, when the task asks.
 
     Submission:
       type: object
@@ -1845,3 +1984,6 @@ components:
           $ref: "#/components/schemas/Timestamp"
         head_commit:
           $ref: "#/components/schemas/GitSha"
+        deployment_status:
+          type: integer
+          description: The HTTP status the server got from `deployment_url`; absent if not checked or unreachable.

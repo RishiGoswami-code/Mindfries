@@ -250,6 +250,7 @@ Two different things could both be called an "agent", so the plan names them apa
   - `TASK.md` is locked: the candidate can't change it. The CLI can't truly stop an edit on the candidate's own machine, so it also records the file's hash for 1.7 to watch, and the server's copy is the one that counts.
   - It refuses a folder that isn't empty unless the candidate confirms.
   - *Done when:* a tampered bundle is rejected, and a re-run resumes rather than duplicating.
+  - **The candidate's GitHub** ([README, decision 7](README.md)): when the session says so, `start` then signs in with GitHub's device login (the code shows on the Mindfries sign-in page), creates a private repository in the candidate's account, invites the reviewers, switches to the candidate's own identity and pushes; `git push` keeps working through `mindfries git-credential`. `submit` pushes and records the deployment URL. *Done when:* tested against `fakeapi/fakegithub`, including the candidate's own `git push` and a refused GitHub sign-in.
 - [ ] **1.6 IDE launch.**
   - Supported IDEs: VS Code, JetBrains IDEs (via their launchers) and Zed. Agent-first IDEs (Antigravity, Cursor, Windsurf) are not offered, and 1.8 marks them if they're open anyway.
   - The CLI detects which are installed and opens the one the candidate picks. If none is found, it prints the path to open by hand.

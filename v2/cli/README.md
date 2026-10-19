@@ -30,7 +30,14 @@ through [`../contracts/cli-api.yaml`](../contracts/cli-api.yaml), which
    The CLI receives that session's token (kept in the OS keychain), downloads
    and verifies the task, creates the workspace with a locked `TASK.md`,
    opens their editor, and runs the session watcher until the session ends.
-3. They work in their editor, with `mindfries agent` in another terminal.
+   When the assessment uses GitHub, the same page then shows GitHub's
+   own device code: they authorise Mindfries on GitHub, and `start` creates
+   a private repository in their account, invites the hiring team, and
+   pushes. They deploy from it (AWS, Supabase, Render, Actions) as the task
+   asks.
+3. They work in their editor (VS Code opens in a new window on
+   `TASK.md`), commit and `git push` as usual, with `mindfries agent` in
+   another terminal.
 4. `mindfries submit` runs the checks, shows the diff, commits and hands in.
    `mindfries stop` ends the session without submitting.
 
@@ -43,9 +50,9 @@ with a single-use setup code, `mindfries start <code>`, also still works.
 | Command | What it does |
 |---|---|
 | `mindfries start` | Signs in through the browser, sets up the workspace and runs the session watcher. Run it again to carry on after a restart, or to reopen the editor. `--no-browser` prints the sign-in address instead. |
-| `mindfries agent` | The coding and research assistant, in the terminal |
+| `mindfries agent` | The coding and research assistant, in a rich terminal interface (plain line mode when piped, or with `MINDFRIES_PLAIN=1`) |
 | `mindfries status` | The session, watcher, sync and Git state, or the last submission |
-| `mindfries submit` | Runs the task's checks, shows the diff, commits and hands in |
+| `mindfries submit` | Runs the task's checks, shows the diff, commits, pushes to the candidate's GitHub if the session uses it, takes the deployed URL (`--url`) when the task asks, and hands in |
 | `mindfries stop` | Ends the session without submitting and removes this computer's credentials; the code stays |
 | `mindfries doctor` | Preflight checks only; changes nothing |
 
@@ -92,8 +99,11 @@ config folder), `MINDFRIES_TOKEN_STORE=file` (skip the keychain),
 | `cmd/mindfries` | The binary; `main` only calls `internal/cli` |
 | `cmd/fakeapi` | The fake V2 API, to run by hand |
 | `cmd/mfsign` | Ed25519 keys, signing and checking for releases |
+| `fakeapi/fakegithub` | A fake GitHub for tests, with a real `git http-backend` to push to |
 | `fakeapi/` | The fake API: browser sign-in with its `/device` page, invitations, setup codes, bundles, events, snapshots, the assistant gateway with a scripted model, submissions, and (with `-dist`) hosted installers and builds. Tests drive it from Go. |
-| `internal/cli` | Argument parsing and the six commands |
+| `internal/cli` | Argument parsing, the six commands, and the hidden `git-credential` helper |
+| `internal/github` | GitHub's device login, the user, creating the repo, inviting reviewers |
+| `internal/term`, `internal/tui` | Raw terminal mode, keys, the input box, spinner, menus and streamed Markdown for `mindfries agent` |
 | `internal/api` | The contract's types and a client, including the assistant's event stream |
 | `internal/preflight` | `doctor`'s checks |
 | `internal/workspace` | Download, verification, Git setup, locked files |

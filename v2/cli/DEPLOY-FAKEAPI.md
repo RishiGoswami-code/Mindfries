@@ -6,43 +6,78 @@ holds everything in memory: sessions, events and submissions disappear
 whenever the service restarts or sleeps. Two demo invitations are seeded on
 every start, so signing in always works.
 
-The image also hosts dev builds of the CLI for every platform, with the
-service's address and the fake's development signing key baked in, plus the
-two installers. A tester needs no environment variables, keys or codes.
+It also hosts dev builds of the CLI for every platform, with the service's
+address and the fake's development signing key baked in, plus the two
+installers. A tester needs no environment variables, keys or codes.
 
-## Deploy on Render
+## Deploy on Render (native Go)
 
-The branch has to be on GitHub first; Render deploys from a branch.
-
-1. In Render: **New → Web Service**, connect the repository, and pick the
-   branch.
+1. In Render: **New → Web Service**, connect the repository, pick the
+   branch, and choose **Go** as the language.
 2. Settings:
 
    | Setting | Value |
    |---|---|
    | Root Directory | `v2/cli` |
-   | Runtime | **Docker** |
-   | Dockerfile Path | `./Dockerfile.fakeapi` |
-   | Instance type | Free is fine |
+   | Build Command | the line below |
+   | Start Command | `./bin/fakeapi` |
    | Health Check Path | `/healthz` |
-   | Environment variable | `FAKEAPI_ADMIN_TOKEN` = a long random string |
+   | Instance type | Free is fine |
 
-   Render sets `PORT` and `RENDER_EXTERNAL_URL` itself, and the fake API
-   uses both.
-3. If the service isn't `https://mindfries-cli.onrender.com`, add an
-   environment variable `CLI_API` = `https://<service>.onrender.com/v2/cli`
-   (Render hands environment variables to the Docker build as build
-   arguments) so the hosted CLI builds talk to it.
+   Build Command (it builds the fake API, then the CLI for six platforms
+   with the service's URL baked in):
+
+   ```bash
+   go build -o bin/fakeapi ./cmd/fakeapi && for t in windows/amd64 windows/arm64 darwin/amd64 darwin/arm64 linux/amd64 linux/arm64; do os=${t%/*}; arch=${t#*/}; ext=""; [ "$os" = windows ] && ext=".exe"; GOOS=$os GOARCH=$arch CGO_ENABLED=0 go build -trimpath -ldflags "-s -w -X github.com/mindfries/v2/cli/internal/buildinfo.DefaultAPI=https://mindfries-cli.onrender.com/v2/cli -X github.com/mindfries/v2/cli/internal/buildinfo.TrustDevKey=1" -o "dist/mindfries_${os}_${arch}${ext}" ./cmd/mindfries; done
+   ```
+
+   The output is `bin/fakeapi`, not `fakeapi`: `v2/cli/fakeapi` is already a
+   folder (the fake's source), and `go build -o fakeapi` would put the
+   program inside it. If the service has another address, change the URL in
+   the build command.
+
+3. Environment variables:
+
+   | Variable | Value |
+   |---|---|
+   | `FAKEAPI_DIST` | `dist` (the folder the build command fills) |
+   | `FAKEAPI_ADMIN_TOKEN` | a long random string |
+   | `FAKEAPI_GITHUB_CLIENT_ID` | the Mindfries OAuth app's Client ID (below); leave it out to keep work local |
+   | `FAKEAPI_GITHUB_REVIEWERS` | GitHub usernames to invite with read access, comma-separated |
+   | `FAKEAPI_GITHUB_OPTIONAL` | `1` to let candidates skip GitHub; by default it's required |
+
+   Render sets `PORT` and `RENDER_EXTERNAL_URL` itself.
 4. Deploy. The log prints the addresses:
 
    ```text
    fake V2 API on https://<service>.onrender.com/v2/cli
-   sign-in page: https://<service>.onrender.com/device (any email; two demo assessments)
+   sign-in page: https://<service>.onrender.com/device (a fake browser session; two demo assessments)
+   GitHub: the work goes to the candidate's own GitHub (OAuth app Ov23li…; reviewers [hiring-team])
    install: irm https://<service>.onrender.com/install.ps1 | iex      (Windows PowerShell)
    install: curl -fsSL https://<service>.onrender.com/install.sh | sh   (macOS, Linux)
    ```
 
-Git is in the image because the fake API checks submitted Git bundles with it.
+Docker works too: Runtime **Docker**, Dockerfile Path `./Dockerfile.fakeapi`,
+the same environment variables (`FAKEAPI_DIST` is set by the image), and
+`CLI_API` if the address isn't `https://mindfries-cli.onrender.com/v2/cli`.
+
+## The GitHub OAuth app (once)
+
+The candidate's work goes to a private repository in their own GitHub, so
+deployment can be assessed. The CLI signs them in with GitHub's own device
+login, which needs an OAuth app:
+
+1. On GitHub, under the account or organisation that should own it:
+   **Settings → Developer settings → OAuth Apps → New OAuth App**.
+2. Application name `Mindfries`, Homepage URL your site, Authorization
+   callback URL the same (device login doesn't use it).
+3. **Tick "Enable Device Flow"**, then **Register application**.
+4. Copy the **Client ID** into `FAKEAPI_GITHUB_CLIENT_ID`. No client secret
+   is needed or used.
+
+Candidates see "Mindfries wants to access your account" with the `repo`
+scope; the token stays in their OS keychain and is deleted when the session
+ends.
 
 ## Try it as a candidate would
 
@@ -58,19 +93,12 @@ macOS / Linux:
 curl -fsSL https://mindfries-cli.onrender.com/install.sh | sh
 ```
 
-The installer puts `mindfries` on your PATH (`%LOCALAPPDATA%\Mindfries\bin`
-or `~/.local/bin`). Then, in any terminal (a new one, if `mindfries` isn't
-found):
-
-```text
-mindfries start
-```
-
-It opens the fake's sign-in page in your browser and shows a code. Check the
-page shows the same code, enter any email, pick a demo assessment and press
-**Connect**. The terminal carries on by itself. From other terminals:
-`mindfries agent`, `mindfries status`, `mindfries submit`, `mindfries stop`,
-`mindfries doctor`.
+Then, in a new terminal, `mindfries start`. It opens the sign-in page; check
+the code matches, pick a demo assessment and press **Connect**. If GitHub is
+on, the same page then shows GitHub's code: press **Open GitHub**, enter it
+and authorise. The terminal creates the repository, pushes, and opens VS
+Code. From other terminals: `mindfries agent`, `mindfries status`,
+`mindfries submit`, `mindfries stop`, `mindfries doctor`.
 
 ## A build from your own checkout
 
@@ -105,6 +133,7 @@ The old setup codes still work, for testing `mindfries start <code>`:
   service awake.
 - **Lost sessions.** A restart loses every session. The CLI then reports
   that the session has ended or that the token isn't recognised; run
-  `mindfries stop --yes`, then `mindfries start` to sign in again.
+  `mindfries stop --yes`, then `mindfries start` to sign in again. The
+  GitHub repository stays in the candidate's account.
 - **The assistant.** `mindfries agent` talks to the fake API's scripted model
   (read, list, create, replace, run, research), not a real one.
