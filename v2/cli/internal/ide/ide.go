@@ -112,3 +112,21 @@ func Supported(eds []Editor) []Editor {
 	}
 	return out
 }
+
+// Launch opens dir in the editor without waiting for it.
+func Launch(s *sys.Sys, e Editor, dir string) error {
+	if e.macApp {
+		return s.Start("open", "-na", e.Path, "--args", dir)
+	}
+	return s.Start(e.Path, dir)
+}
+
+// ByID finds an editor by id among eds.
+func ByID(eds []Editor, id string) (Editor, bool) {
+	for _, e := range eds {
+		if e.ID == id {
+			return e, true
+		}
+	}
+	return Editor{}, false
+}
