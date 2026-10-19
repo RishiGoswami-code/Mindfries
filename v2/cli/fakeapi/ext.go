@@ -13,8 +13,9 @@ type sessionExt struct {
 	heartbeats []api.Heartbeat
 	submission *submission
 	bundle     []byte
+	assistant  assistantState
 }
 
 func newExt() sessionExt {
-	return sessionExt{events: map[int64]api.Event{}, snapshots: map[int64]string{}}
+	return sessionExt{events: map[int64]api.Event{}, snapshots: map[int64]string{}, assistant: assistantState{turns: map[string]*turn{}}}
 }

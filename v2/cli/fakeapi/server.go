@@ -41,6 +41,7 @@ type Server struct {
 	codes    map[string]*setupCode
 	sessions map[string]*session
 	tamper   tampering
+	model    Model
 }
 
 // New returns a fake with cfg.
