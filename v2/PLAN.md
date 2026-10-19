@@ -13,21 +13,39 @@ shows what the finished product does for an FDE and a DevOps role.
 
 ---
 
-## Part 1 — How V1 stays safe
+## Part 1 — How V2 reuses V1, and how V1 stays safe
 
-V1 is protected by boundaries a mistake can't cross unnoticed, not by care
-alone.
+### The approach: V2 is a new kind of assessment inside the existing product
+
+V2 does not rebuild what V1 already does well. Candidates and companies keep
+the same accounts and screens, and V2 adds only what is new.
+
+| Stays V1, reused as is | New in V2 |
+|---|---|
+| Sign-in and accounts (candidates and companies) | The CLI and the V2 API it talks to |
+| Candidate dashboard, profile, settings, job portal | The workspace hub: setup code, live session status, stage view |
+| Company portal: roles, invites, candidates, credits | The floating tabbed panel and the policy-gated assistant |
+| Internal admin | The evidence timeline, evaluation and capability-profile report |
+| V1 assessments, from start to finish | Recruiter blueprints and versioned rubrics |
+
+Every assessment gets an **`engine`** field, `v1` or `v2`, with a default of
+`v1`. A V2 assessment appears on the same V1 dashboard. Its Start button and
+its report link go to V2. **Cut-over is changing the default from `v1` to
+`v2`; nothing is copied or migrated** (see section 7).
+
+The spec allows this: V2 may reuse stable V1 parts, and V1 may have V2 code
+paths "isolated and feature-disabled by default" ([§2](SPEC.md#safe-implementation-workflow), step 4).
 
 ### 1. One folder, and a check that enforces it
 
 Every line of V2 lives under `v2/`. V2 work is merged into `main` in small
 PRs, not kept on a long-lived branch that drifts from `main`.
 
-A CI job, the **V1 guard**, fails any V2 PR that changes a file outside
-`v2/`. That covers `candidate/`, `company/`, `internal-admin/` and
-`supabase/migrations/`. The root orientation file and `.github/` are the only
-exceptions. A change that really must touch V1 goes in its own PR, which
-the owner approves on purpose.
+A CI job, the **V1 guard**, fails any PR that mixes V2 work with changes
+outside `v2/`. The only V1 changes V2 ever needs are the **connection
+points** (section 5). Each goes in its own small PR, labelled `v1-seam`, and
+the owner approves it on purpose. The root orientation file and `.github/`
+are the other exceptions.
 
 ### 2. Its own modules
 
@@ -37,45 +55,71 @@ V2 has its own modules:
 |---|---|---|
 | `v2/cli` | Go | The CLI |
 | `v2/api` | Go | The API |
-| `v2/web` | Next.js | The web app |
-| `v2/db` | SQL | Migrations and their own runner |
+| `v2/web` | Next.js | Only the new V2 screens; no sign-in, dashboard or settings of its own |
+| `v2/db` | SQL | Migrations for the `v2` schema and their own runner |
 
 None of them imports from a V1 package. If V2 needs something V1 has, it
 copies a thin piece and owns it, as the spec prefers in [§2](SPEC.md#what-v2-adds-or-changes).
 A V1 refactor can then never break V2, and the reverse holds too.
 
-### 3. Its own data
+### 3. Its own data, beside V1's
 
-V2 gets its own Supabase project, or at least a `v2` schema, with its own
-migrations and its own `schema_migrations` table. V2 code never reads or
-writes V1 tables. Tests use synthetic data only.
+V2's data lives in a **`v2` schema in the current Supabase project**. It is
+keyed to V1's existing candidate, company, role and assessment IDs, so
+nothing has to be copied across.
+
+The protection is enforced by the database, not by care. The V2 API connects
+as its own Postgres role with these grants:
+- read-only on the V1 tables it needs: `candidate_users`, `companies`, `company_users`, `job_roles`, `assessments`;
+- full access to the `v2` schema;
+- nothing else.
+
+So a V2 bug *cannot* write to a V1 table.
+
+V2's migrations live in `v2/db`, with their own `v2.schema_migrations`. The
+one V1 migration is additive: an `engine` column on `assessments`, with a
+default of `v1`. Tests use synthetic data only.
 
 ### 4. Its own deployments and secrets
 
-V2 has its own Vercel project for `v2/web`, its own Railway service for
-`v2/api`, and its own domain. Its environment variables are prefixed with
-`V2_`, and its keys are V2-scoped: Gemini, Resend, GitHub app.
+V2 has its own Vercel project for `v2/web` and its own Railway service for
+`v2/api`. Its environment variables are prefixed with `V2_`. It has its own
+keys (Gemini, Resend, GitHub app) and its own database role.
 
-Nothing in V1's Vercel or Railway settings changes. Merging V2 code into
-`main` only adds files that V1's builds never read.
+Nothing in V1's Vercel or Railway settings changes, apart from the switch
+in section 5.
 
-### 5. Proof that V1 still works
+### 5. The connection points: the only V1 changes
 
-Before any V2 deployment, V1 gets a CI run on every PR:
+| Where | Change | With the switch off |
+|---|---|---|
+| Database | `assessments.engine` column, with a default of `v1` | Every row is `v1`, as today |
+| Sign-in handoff | V1 signs a short-lived, single-use link token (user, assessment). `v2/web` exchanges it for its own session. V1's cookie is not touched | Never issued |
+| Candidate dashboard | A `v2` assessment's Start button and report link go to V2 through the handoff | No `v2` assessments exist, so nothing shows |
+| Company portal | Choosing the engine for an assessment, and opening a V2 candidate's report | Hidden |
+| The switch | `V2_ENABLED` (off or on) and `V2_DEFAULT_ENGINE` (`v1` or `v2`) | Off: V1 behaves exactly as today |
+
+### 6. Proof that V1 still works
+
+V2 now touches V1 at those few points. So V1 gets a CI run on every PR
+**before the first connection point lands**:
 
 - typecheck, lint and build for the three apps;
 - `go test` for the backends;
-- a small contract suite for V1's critical journeys.
+- a contract suite for V1's critical journeys.
 
 That suite is the **V1 regression suite** that the [release gate](SPEC.md#v1-non-regression-and-coexistence) requires.
 
-### 6. A gated, reversible cut-over
+### 7. Cut-over is a switch
 
-V2 goes live only on its own domain, and only for a pilot cohort enrolled
-on purpose. Existing V1 links and sessions are never redirected.
-
-The cut-over is a single routing switch with a rehearsed rollback. V1 code
-and data stay intact through the rollback window.
+Cut-over has four parts:
+- **Pilot:** turn on `V2_ENABLED` for a pilot cohort's assessments.
+- **Cut-over:** after the release gate, set `V2_DEFAULT_ENGINE=v2`, so new assessments are V2.
+- **Rollback:** set it back to `v1`.
+- **Existing work:**
+  - V1 assessments already running finish on V1;
+  - V1 reports stay readable in V1's format;
+  - accounts and company data never move.
 
 ---
 
@@ -83,8 +127,10 @@ and data stay intact through the rollback window.
 
 ```
 local (fake API)  →  CI (V1 guard + V1 suite + V2 tests)  →  merge to main (v2/ only)
-     →  V2 staging (own project, own DB, synthetic data)  →  coexistence test with V1
-     →  pilot cohort on the V2 domain  →  release gate sign-off  →  reversible cut-over
+     →  connection points merged into V1, switch off (V1 suite proves no change)
+     →  V2 staging (own services, v2 schema, synthetic data)  →  coexistence test with V1
+     →  pilot cohort (switch on for them)  →  release gate sign-off
+     →  cut-over: default engine v1 → v2  (rollback: back to v1)
 ```
 
 ---
@@ -104,6 +150,7 @@ Each task is one PR and has a "done when". Tick it off here when it lands.
     - V1 typecheck, lint and build;
     - `go test`;
     - a V2 job that is empty for now.
+  - The one exception is a PR labelled `v1-seam`, for the connection points.
   - *Done when:* a test PR that touches `candidate/` from a V2 branch fails the guard, and a clean one passes.
 - [ ] **0.3 V1 inventory.**
   - Write `v2/V1_INVENTORY.md`, listing V1's:
@@ -113,12 +160,15 @@ Each task is one PR and has a "done when". Tick it off here when it lands.
     - jobs and crons;
     - environment variables;
     - deployments.
-  - Mark the files that V2 must never change.
+  - Mark the files that V2 must never change. List the connection points (Part 1, section 5) and the V1 tables V2 may read.
   - *Done when:* reviewed by the owner.
+- [ ] **0.4 V1 regression suite.**
+  - Contract tests for sign-in, the dashboard, opening the IDE, an assistant reply, saving, submitting and the report, on both the candidate and company sides.
+  - Run them in CI.
+  - *Done when:* they're green on `main`, and they fail when one of those journeys is broken on purpose.
 
-*V1 contract tests (0.4) are not needed to write CLI code, which runs only
-on a laptop. They are needed before V2 deploys anything, so they come before
-Stage 2.*
+*0.4 must land before any connection point (task 2.3). It doesn't block the
+CLI, which runs only on a laptop, so Stage 1 can start alongside it.*
 
 ### Stage 1 — The CLI ([§9](SPEC.md#9-local-cli-and-assessment-agent-no-ide-extension), [§17](SPEC.md#git-workflow))
 
@@ -239,21 +289,28 @@ The commands are:
   - Run the full `start → work → submit → stop` flow against the fake API on Windows, macOS and Linux runners.
   - *Done when:* the flow is green on all three.
 
-### Stage 2 — The V2 API the CLI talks to ([§6 core services](SPEC.md#core-services))
+### Stage 2 — The V2 API, and connecting V2 to V1 ([§6 core services](SPEC.md#core-services))
 
-- [ ] **0.4 V1 contract tests** (deferred from Stage 0).
-  - Cover sign-in, dashboard, IDE open, assistant reply, save, submit and report.
-  - Run them in CI against a V1 preview or staging environment.
-  - *Done when:* they're green on `main`.
-- [ ] **2.1 V2 database.**
-  - Set up the database chosen in the README.
-  - Write migrations in `v2/db` for sessions, setup codes, tasks and versions, evidence events, and submissions.
-  - *Done when:* applying the migrations to a fresh database twice is a no-op the second time.
+- [ ] **2.1 V2 schema and database role.**
+  - Create the `v2` schema and migrations in `v2/db` for sessions, setup codes, tasks and versions, evidence events and submissions. Rows are keyed to V1 IDs.
+  - Create a V2 Postgres role: read-only on the V1 tables listed in 0.3, full access to `v2`, nothing else.
+  - *Done when:*
+    - applying the migrations twice is a no-op the second time;
+    - a test shows the V2 role is refused when it tries to write any V1 table.
 - [ ] **2.2 `v2/api`: the contract from 1.1, for real.**
   - Implement sessions, setup codes, token issue and revoke, task bundles, events and submissions, with manifest verification.
   - *Done when:* the CLI's end-to-end tests from 1.13 pass against the real API as well as the fake.
-- [ ] **2.3 V2 staging.**
-  - Its own Railway service and database, with `V2_` secrets, on a V2-only domain.
+- [ ] **2.3 Connection points in V1** (`v1-seam` PRs, switch off).
+  - Add the migration for `assessments.engine` (default `v1`) and the `V2_ENABLED` and `V2_DEFAULT_ENGINE` switch.
+  - Add the signed handoff link, and its exchange endpoint in `v2/api`.
+  - Route the Start button and report link for `v2` assessments on the candidate dashboard.
+  - On the company portal, add the engine choice and the V2 report link.
+  - *Done when:*
+    - with the switch off, the V1 regression suite passes unchanged;
+    - with it on, a `v2` assessment goes from the dashboard to the V2 workspace and back without signing in again;
+    - a handoff link can't be reused or used after it expires.
+- [ ] **2.4 V2 staging.**
+  - Its own Railway service and Vercel project, the `v2` schema, `V2_` secrets, and synthetic data.
   - *Done when:* it deploys, and the V1 suite and the coexistence check still pass with V2 running.
 
 ### Stage 3 onward — the rest of V2
@@ -261,8 +318,8 @@ The commands are:
 These follow the spec's phases ([§21](SPEC.md#21-mvp-to-v2-implementation-plan)).
 Each will be split into tasks like Stage 1 when it starts.
 
-- **3. Candidate web app (`v2/web`):**
-  - onboarding and consent;
+- **3. Candidate web app (`v2/web`):** only the new screens. Candidates arrive through the handoff from the V1 dashboard; there is no sign-in, dashboard or settings of its own.
+  - V2 consent: what the CLI checks, including 1.8;
   - "Set up my workspace", which shows the setup code;
   - live session status from the agent;
   - the stage and journey view from [`ROLE_FLOWS.md`](ROLE_FLOWS.md);
@@ -277,18 +334,24 @@ Each will be split into tasks like Stage 1 when it starts.
   - enforced retention and deletion.
 - **9. Hardening:** load and failure tests, a threat model, security review, monitoring, and cost caps ([§21 Phase 6](SPEC.md#phase-6-----production-hardening)).
 - **10. Pilot and cut-over:**
-  - a pilot cohort on the V2 domain;
+  - `V2_ENABLED` turned on for a pilot cohort's assessments;
   - the [release gate](SPEC.md#v2-release-gate-do-not-cut-over-before-all-checks-pass), ticked off item by item;
-  - a rehearsed rollback;
+  - a rehearsed rollback (`V2_DEFAULT_ENGINE` back to `v1`);
   - a recorded go/no-go;
-  - then the reversible switch.
+  - then `V2_DEFAULT_ENGINE=v2`.
+
+  **No data migration:**
+  - accounts, companies, roles and dashboards are the same ones;
+  - V1 assessments already running finish on V1;
+  - old reports stay readable.
 
 ---
 
-## Decisions the CLI needs first
+## Decisions
 
 The rest of the decisions in the [README](README.md#decisions-needed-before-building)
-can wait until Stage 2. The CLI needs these now.
+can wait until Stage 2. The CLI needs these now, and the last three rows
+are already decided and shape everything after Stage 1.
 
 | Decision | Recommendation | Why |
 |---|---|---|
@@ -298,3 +361,6 @@ can wait until Stage 2. The CLI needs these now.
 | Signing | Checksums plus a signature from day one. Windows and macOS code-signing certificates before the pilot | An unsigned binary triggers SmartScreen and Gatekeeper warnings for candidates |
 | Where the CLI is downloaded from | GitHub Releases on a V2 repository or path, behind a short V2-domain installer URL | Versioned, cacheable, auditable |
 | What the agent observes | **Decided:** Git state, file changes and diff snapshots inside the workspace; outside it, only the names of running processes and the IDE's installed extensions that match known coding agents (task 1.8). No keystrokes, screen or other files | Enough to see coding-agent use, without a keylogger. The spec rules out claiming total coverage ([§9](SPEC.md#what-the-cli-cannot-promise)); someone with an agent on a second device can still evade, which is why understanding checks matter |
+| Data | **Decided:** a `v2` schema in the current Supabase project, with a V2 database role that can only read V1 tables | Reuses V1's accounts and data with no migration. The database itself blocks V2 from writing V1 tables |
+| Accounts | **Decided:** shared with V1; V2 is entered through a signed handoff from V1 | Candidates and companies keep one login |
+| Web app | **Decided:** `v2/web` holds only the new V2 screens; the dashboard, settings, profile and company portal stay V1 | Least to rebuild, least to migrate |

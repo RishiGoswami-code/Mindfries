@@ -46,8 +46,9 @@ v2/                        Mindfries V2: SPEC.md is the product spec (source
                            of truth for V2); README.md maps it onto this repo;
                            ROLE_FLOWS.md walks through two example roles;
                            PLAN.md is the build order (CLI first).
-                           Specification only — V1 stays the live product and
-                           is not changed for V2
+                           Specification only — V1 stays the live product; V2
+                           reuses its accounts and dashboard and touches V1
+                           only at switch-guarded connection points
 candidate/backend/         Go — the Application API/Orchestrator/Admin
                            Portal API (PRD §2.3); real, not wired up to
                            either frontend yet — see its own README

@@ -13,8 +13,11 @@ each stage of the candidate's session with the tabs and evidence involved,
 the rubric weights, scenario variations, and the final report. Both run on
 the same platform; only the scenario, tabs, stages and rubric change.
 
-**[`PLAN.md`](PLAN.md) is how V2 gets built:** the guards that keep V1
-safe, the path to production, and the tasks in order — the CLI first.
+**[`PLAN.md`](PLAN.md) is how V2 gets built:** V2 runs as a new kind of
+assessment inside the existing product, reusing V1's accounts, dashboard and
+company portal, so cut-over is a switch, not a migration. It also covers the
+guards that keep V1 safe, the path to production, and the tasks in order,
+with the CLI first.
 
 **Status: specification only. Nothing in V2 is built, and V1 is unchanged.**
 
@@ -34,8 +37,10 @@ assistant" into an evidence-first work session across several kinds of work.
 > Build, test, and run V2 independently until the V2 acceptance criteria
 > pass. Only then perform a planned, reversible cutover. — [§2](SPEC.md#2-v1-baseline-and-non-negotiable-parallel-build-strategy)
 
-V1 stays the only production candidate path. No V1 URL, session, table,
-env var, job or deployment setting is changed for V2.
+V1 stays the only production candidate path. V2 changes V1 at a handful
+of connection points only, all hidden while the switch is off
+([PLAN, Part 1, section 5](PLAN.md#5-the-connection-points-the-only-v1-changes)).
+No V1 session, existing data, job or deployment setting is changed.
 
 ## What "isolated" means in this repo
 
@@ -44,16 +49,16 @@ The spec's isolation table ([§2](SPEC.md#required-isolation-boundaries)), again
 | Area | V1 today (do not touch) | V2 needs |
 |---|---|---|
 | Source | `candidate/frontend`, `company/frontend`, `internal-admin/frontend`, `candidate/backend`, `company/backend` | Its own packages under `v2/` (and the parked `candidate/v2/`, see below) |
-| URLs | `candidate.mindfries…`, company and admin Vercel projects | A separate domain or Vercel project — never a route inside the V1 apps |
+| URLs | `candidate.mindfries…`, company and admin Vercel projects | Its own Vercel project for the new V2 screens, entered from the V1 dashboard through a signed handoff link |
 | Deployment | Vercel: three projects. Railway: `candidate/backend` | New V2 Vercel/Railway projects with their own pipelines |
 | Env / secrets | `SESSION_SECRET`, `SUPABASE_*`, `CANDIDATE_BACKEND_URL`, Gemini, Resend, Composio, Daytona keys | V2-prefixed variables and V2-scoped credentials; nothing shared or overwritten |
-| Database | One shared Supabase project, `supabase/migrations/0001–0027`, applied by `candidate/frontend/scripts/migrate.mts` into one `schema_migrations` | A separate Supabase project, or a `v2` schema with its own migrations folder and runner — **decision needed** |
+| Database | One shared Supabase project, `supabase/migrations/0001–0027`, applied by `candidate/frontend/scripts/migrate.mts` into one `schema_migrations` | **Decided:** a `v2` schema in the same project, with its own migrations and runner. A V2 database role can only read the V1 tables it needs. The one V1 migration adds `assessments.engine` (default `v1`) |
 | API | Go `candidate/backend` at `/api/v1/…`, plus Next route handlers | A versioned `/v2/…` API in its own service |
 | Jobs | Go workers (evaluation, task generation), internal-admin crons (retention, discovery) | V2's own workers, queues and schedules |
-| Sessions / auth | `mf_candidate` cookie, `candidate_users`, `sessions` | Separate V2 session state and credentials |
+| Sessions / auth | `mf_candidate` cookie, `candidate_users`, `sessions` | **Decided:** the same V1 accounts. V2 keeps its own session state, started from a single-use handoff link; V1's cookie is not touched |
 | AI | Gemini, direct (per-session message cap; interview off for the pilot) | The V2 assistant behind the policy gateway, its own keys and budgets |
 | Telemetry | `activity_events`, `assessment_reports`, `evidence_items` | A separate V2 evidence store and event namespace |
-| Tests | Almost none: a few `*.check.ts` files, one vitest file, Go unit tests, **no CI** | V1 contract tests and CI first (see Phase 0) |
+| Tests | Almost none: a few `*.check.ts` files, one vitest file, Go unit tests, **no CI** | V1 contract tests and CI first ([PLAN, Stage 0](PLAN.md#stage-0--guard-v1-before-any-v2-code)) |
 
 ## Where V1 differs from the spec
 
@@ -80,38 +85,26 @@ explicitly approved V1 change, not part of V2.
 
 ## Order of work
 
-The spec's phases are in [§21](SPEC.md#21-mvp-to-v2-implementation-plan). Before Phase 1, this repo needs a **Phase 0** that the spec's safe workflow ([§2, steps 1–3](SPEC.md#safe-implementation-workflow)) implies:
-
-0. **Protect V1.**
-   - **Inventory:** list V1's entry points, routes, tables, jobs and env vars.
-   - **CI:** run typecheck, lint, the check files, vitest and `go test` on every PR.
-   - **Contract tests:** write them for V1's critical journeys — sign-in, dashboard, IDE, assistant, save, submit, report. These become the "V1 regression suite" that the release gate requires.
-1. **Assessment foundation:**
-   - blueprints and versioned rubrics
-   - the V2 session and consent flow
-   - task delivery and a common core
-   - Git status/diff and submission
-   - the evidence schema
-   - a report with explicit unknowns
-   - human review
-2. **Local CLI and reliability:**
-   - a signed, versioned CLI
-   - preflight checks
-   - IDE launch
-   - a short-lived agent with an offline queue
-   - credential cleanup
-3. **Multi-mode:** the design canvas, Research Lab, debugging, review, testing and delivery evidence, and links between artifacts.
-4. **Avatar and adaptive follow-ups:** bounded in weight, with pause/defer/text controls.
-5. **Integrity, integrations, calibration:** the three integrity categories, GitHub private repos, optional CI and deployment, retention and audit, fairness studies.
-6. **Production hardening**, then the [release gate](SPEC.md#v2-release-gate-do-not-cut-over-before-all-checks-pass), a pilot cohort, and a reversible cut-over.
+The order is set in [`PLAN.md`](PLAN.md#part-3--tasks-in-order). It
+starts by guarding V1 (CI, an inventory, a V1 regression suite), then
+builds the CLI, then the V2 API and the connection points into V1, then the
+rest of the spec's phases ([§21](SPEC.md#21-mvp-to-v2-implementation-plan)).
 
 ## Decisions needed before building
 
-- **Data isolation.** A separate Supabase project, or a `v2` schema in the current one? The spec defaults to separate. A schema is cheaper, but shares the project's auth, storage and service-role key.
+Already decided, see [PLAN, Decisions](PLAN.md#decisions):
+- **Data:** a `v2` schema in the current project, with a V2 database role.
+- **Accounts:** shared with V1, through a handoff link.
+- **Web app:** only the new V2 screens.
+- **Supported IDEs:** no agent-first IDEs.
+- **What the CLI observes.**
+
+Still open:
+
+- **Supabase plan limits.** Sharing the project means V2's load counts against V1's limits. Check them before the pilot.
 - **Backend.** A new V2 service (Go, to match `candidate/backend`?) or something else? Where is it hosted?
-- **Web app.** One V2 Next.js app holding both the candidate and recruiter sides, or two? On which domain?
-- **CLI.** Language and distribution (signed binaries per OS), and which IDEs are supported at launch.
+- **Web app domain.** Which domain the V2 screens are served from.
+- **CLI.** Language (Go is recommended), distribution, and code-signing certificates.
 - **Browser fallback.** Does V2 keep a browser coding workspace? If not, `candidate/v2/` is retired.
 - **First role family.** Broad software engineering, or the quant-research blueprint ([§14](SPEC.md#quantitative-researcher-assessment-blueprint))?
 - **AI.** Which models the assistant, evaluators and avatar use (V1 uses Gemini directly), and the per-company and global cost caps.
-- **Accounts.** Can V2 candidates and recruiters use their V1 accounts, or are V2 accounts separate as the spec's isolation implies?
