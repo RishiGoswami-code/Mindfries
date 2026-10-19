@@ -82,3 +82,17 @@ func TestUnknownFieldIsCovered(t *testing.T) {
 		t.Fatal("a field added after signing went unnoticed")
 	}
 }
+
+func TestDevKeyAnywhereOptIn(t *testing.T) {
+	m := manifest()
+	_ = SignManifest(m, DevKeyID, DevPrivateKey())
+	defer func() { AllowDevKeyAnywhere = false }()
+	AllowDevKeyAnywhere = true
+	if err := VerifyManifest(raw(m), "https://fake.onrender.com/v2/cli"); err != nil {
+		t.Fatal(err)
+	}
+	AllowDevKeyAnywhere = false
+	if err := VerifyManifest(raw(m), "https://fake.onrender.com/v2/cli"); err == nil {
+		t.Fatal("dev key trusted remotely without the opt-in")
+	}
+}

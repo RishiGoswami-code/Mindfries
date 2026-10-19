@@ -26,6 +26,11 @@ var ManifestKeys = ""
 // this machine (localhost), so a dev key can never vouch for a real task.
 const DevKeyID = "dev-fakeapi"
 
+// AllowDevKeyAnywhere trusts the dev key from any API, for a throwaway
+// deployment of the fake API. The CLI sets it only for dev builds, and only
+// when MINDFRIES_TRUST_DEV_KEY=1; release builds never do.
+var AllowDevKeyAnywhere = false
+
 // DevPrivateKey is the fake API's signing key. It is derived from a fixed
 // seed on purpose: it is public, and only trusted for localhost.
 func DevPrivateKey() ed25519.PrivateKey {
@@ -94,7 +99,7 @@ func keyFor(id, apiURL string) (ed25519.PublicKey, error) {
 		return ed25519.PublicKey(b), nil
 	}
 	if id == DevKeyID {
-		if !isLocal(apiURL) {
+		if !isLocal(apiURL) && !AllowDevKeyAnywhere {
 			return nil, errors.New("the task manifest is signed with the development key, which is only trusted from a local test server")
 		}
 		return DevPrivateKey().Public().(ed25519.PublicKey), nil

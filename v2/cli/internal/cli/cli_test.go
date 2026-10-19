@@ -7,7 +7,9 @@ import (
 	"testing"
 
 	"github.com/mindfries/v2/cli/fakeapi"
+	"github.com/mindfries/v2/cli/internal/buildinfo"
 	"github.com/mindfries/v2/cli/internal/sys"
+	"github.com/mindfries/v2/cli/internal/trust"
 )
 
 // run executes the CLI with args and stdin, returning the exit code and
@@ -89,5 +91,22 @@ func TestDoctor(t *testing.T) {
 		if !strings.Contains(out.String(), want) {
 			t.Errorf("missing %q in:\n%s", want, out.String())
 		}
+	}
+}
+
+func TestDevKeyOptInOnlyForDevBuilds(t *testing.T) {
+	defer func() { trust.AllowDevKeyAnywhere = false }()
+	env := map[string]string{"MINDFRIES_TRUST_DEV_KEY": "1"}
+	if _, out := run(t, "", env, "--version"); !trust.AllowDevKeyAnywhere || !strings.Contains(out, "Only for testing") {
+		t.Fatalf("dev build didn't opt in: %q", out)
+	}
+	old := buildinfo.Version
+	buildinfo.Version = "1.0.0"
+	defer func() { buildinfo.Version = old }()
+	if _, out := run(t, "", env, "--version"); trust.AllowDevKeyAnywhere || !strings.Contains(out, "ignored by release builds") {
+		t.Fatalf("release build opted in: %q", out)
+	}
+	if _, _ = run(t, "", nil, "--version"); trust.AllowDevKeyAnywhere {
+		t.Fatal("opted in without the variable")
 	}
 }

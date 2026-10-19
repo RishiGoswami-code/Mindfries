@@ -25,6 +25,8 @@ type Config struct {
 	MinVersion    string // default 0.0.0
 	LatestVersion string // default 0.1.0
 	Now           func() time.Time
+	// AdminToken, if set, is required on every /__admin request.
+	AdminToken string
 }
 
 // Server is the fake V2 API.

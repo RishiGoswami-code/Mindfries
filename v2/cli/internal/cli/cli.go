@@ -14,6 +14,7 @@ import (
 	"github.com/mindfries/v2/cli/internal/api"
 	"github.com/mindfries/v2/cli/internal/buildinfo"
 	"github.com/mindfries/v2/cli/internal/sys"
+	"github.com/mindfries/v2/cli/internal/trust"
 	"github.com/mindfries/v2/cli/internal/ui"
 	"github.com/mindfries/v2/cli/internal/watcher"
 )
@@ -93,6 +94,7 @@ func (e *ExitError) Unwrap() error { return e.Err }
 
 // Run executes args (without the program name) and returns the exit code.
 func (a *App) Run(args []string) int {
+	a.devKeyOptIn()
 	if len(args) == 0 {
 		a.usage(a.Stderr)
 		return 2
@@ -187,4 +189,20 @@ func renderError(err error) string {
 		msg = "mindfries: " + msg
 	}
 	return msg
+}
+
+// devKeyOptIn lets a dev build trust the fake API's signing key from a
+// remote server (a throwaway deployment of cmd/fakeapi). Release builds
+// ignore the variable.
+func (a *App) devKeyOptIn() {
+	trust.AllowDevKeyAnywhere = false
+	if a.Getenv("MINDFRIES_TRUST_DEV_KEY") != "1" {
+		return
+	}
+	if !strings.Contains(buildinfo.Version, "-dev") {
+		fmt.Fprintln(a.Stderr, "mindfries: MINDFRIES_TRUST_DEV_KEY is ignored by release builds.")
+		return
+	}
+	trust.AllowDevKeyAnywhere = true
+	fmt.Fprintln(a.Stderr, "mindfries: dev build trusting the fake API's development key from any server (MINDFRIES_TRUST_DEV_KEY=1). Only for testing.")
 }

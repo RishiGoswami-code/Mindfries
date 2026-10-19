@@ -53,6 +53,9 @@ go run ./cmd/mindfries start <code> --api http://localhost:8787/v2/cli
 `MINDFRIES_HOME` moves the CLI's own state (default: the user config
 folder), and `MINDFRIES_TOKEN_STORE=file` skips the keychain.
 
+To try it against a URL on the internet, deploy the fake API as a
+throwaway service: see [DEPLOY-FAKEAPI.md](DEPLOY-FAKEAPI.md).
+
 ## Layout
 
 | Path | What's there |
