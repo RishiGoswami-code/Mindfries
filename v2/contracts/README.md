@@ -3,7 +3,8 @@
 The agreements between V2's pieces, written before the code on either side.
 Every later task is built against them.
 
-**Status: empty.** Task 1.1 adds `cli-api.yaml`.
+**Status:** [`cli-api.yaml`](cli-api.yaml) is drafted and waiting for review
+(task 1.1). CI lints every contract here with Redocly.
 
 ## What goes here
 
