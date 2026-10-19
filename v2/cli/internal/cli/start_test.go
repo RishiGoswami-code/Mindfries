@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -117,5 +118,17 @@ func TestRevokedTokenIsRefused(t *testing.T) {
 	}
 	if _, err := c.Session(t.Context()); err == nil {
 		t.Fatal("a revoked token still works")
+	}
+}
+
+func TestOldCLIIsRefused(t *testing.T) {
+	h := newHarness(t)
+	old := fakeapi.New(fakeapi.Config{MinVersion: "9.0.0"})
+	ts := httptest.NewServer(old.Handler())
+	defer ts.Close()
+	h.env["MINDFRIES_API"] = ts.URL + fakeapi.Prefix
+	exit, out := h.run("", "start", old.MintSetupCode(fakeapi.SessionOptions{}))
+	if exit == 0 || !strings.Contains(out, "too old (need 9.0.0") || !strings.Contains(out, "Run the setup command from your dashboard again") {
+		t.Fatalf("%d\n%s", exit, out)
 	}
 }
