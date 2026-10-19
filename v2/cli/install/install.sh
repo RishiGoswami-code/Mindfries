@@ -1,21 +1,27 @@
 #!/bin/sh
 # Mindfries CLI installer for macOS, Linux and Git Bash on Windows.
 #
-# The dashboard's setup command runs it as:
-#   curl -fsSL https://<v2-domain>/install.sh | sh -s -- <SETUP-CODE>
+# Install (the candidate runs this once):
+#   curl -fsSL https://<v2-domain>/install.sh | sh
+# then, in any terminal:
+#   mindfries start
 #
 # It downloads the release's checksums, installs mindfries only if the
-# binary's SHA-256 matches (a tampered binary is refused and deleted), then
-# runs `mindfries start <SETUP-CODE>`. A binary that already matches the
-# release isn't downloaded again.
+# binary's SHA-256 matches (a tampered binary is refused and deleted), puts
+# it in ~/.local/bin and, if that folder isn't on PATH, adds it in the
+# shell's startup file. A binary that already matches the release isn't
+# downloaded again. Given a setup code, as a dashboard command can do:
+#   curl -fsSL https://<v2-domain>/install.sh | sh -s -- <SETUP-CODE>
+# it then runs `mindfries start <SETUP-CODE>`.
 #
 # Environment (for testing and mirrors):
-#   MINDFRIES_DOWNLOAD     release base URL (default below)
-#   MINDFRIES_INSTALL_DIR  where the binary goes (default ~/.mindfries/bin)
+#   MINDFRIES_DOWNLOAD        release base URL, or a local folder (default below)
+#   MINDFRIES_INSTALL_DIR     where the binary goes (default ~/.local/bin)
+#   MINDFRIES_NO_MODIFY_PATH  1 leaves shell startup files alone
 set -eu
 
 BASE="${MINDFRIES_DOWNLOAD:-https://get.v2.mindfries.example/cli/latest}"
-DIR="${MINDFRIES_INSTALL_DIR:-$HOME/.mindfries/bin}"
+DIR="${MINDFRIES_INSTALL_DIR:-$HOME/.local/bin}"
 CODE="${1:-}"
 
 say() { printf '%s\n' "$*"; }
@@ -34,7 +40,10 @@ case "$(uname -m)" in
 esac
 name="mindfries_${os}_${arch}${ext}"
 
-if command -v curl >/dev/null 2>&1; then
+if [ -d "$BASE" ]; then
+  # A local folder works as the release too, for dev-install.sh.
+  fetch() { cp "${1}" "$2"; }
+elif command -v curl >/dev/null 2>&1; then
   fetch() { curl -fsSL --retry 3 -o "$2" "$1"; }
 elif command -v wget >/dev/null 2>&1; then
   fetch() { wget -q -O "$2" "$1"; }
@@ -52,7 +61,7 @@ fi
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
 
-fetch "$BASE/checksums.txt" "$tmp/checksums.txt" || fail "couldn't download the release checksums from $BASE. Check your connection and run the setup command again."
+fetch "$BASE/checksums.txt" "$tmp/checksums.txt" || fail "couldn't download the release checksums from $BASE. Check your connection and run the install command again."
 want="$(awk -v n="$name" '$2 == n || $2 == "*" n { print $1 }' "$tmp/checksums.txt")"
 [ -n "$want" ] || fail "the release has no build for $os/$arch."
 
@@ -61,11 +70,11 @@ if [ -f "$bin" ] && [ "$(hash "$bin")" = "$want" ]; then
   say "mindfries is up to date."
 else
   say "Downloading mindfries for ${os}/${arch}..."
-  fetch "$BASE/$name" "$tmp/$name" || fail "couldn't download mindfries. Check your connection and run the setup command again."
+  fetch "$BASE/$name" "$tmp/$name" || fail "couldn't download mindfries. Check your connection and run the install command again."
   got="$(hash "$tmp/$name")"
   if [ "$got" != "$want" ]; then
     rm -f "$tmp/$name"
-    fail "the download doesn't match the release checksum, so it was deleted and not run. Run the setup command again; if this keeps happening, tell the hiring team."
+    fail "the download doesn't match the release checksum, so it was deleted and not run. Run the install command again; if this keeps happening, tell the hiring team."
   fi
   mkdir -p "$DIR"
   chmod +x "$tmp/$name"
@@ -73,12 +82,46 @@ else
   say "Installed $bin"
 fi
 
+# The startup file of the candidate's login shell, where PATH is set.
+profile_file() {
+  case "$(basename "${SHELL:-sh}")" in
+    zsh) printf '%s\n' "${ZDOTDIR:-$HOME}/.zshrc" ;;
+    bash)
+      if [ "$os" = darwin ]; then printf '%s\n' "$HOME/.bash_profile"; else printf '%s\n' "$HOME/.bashrc"; fi ;;
+    fish) printf '%s\n' "$HOME/.config/fish/conf.d/mindfries.fish" ;;
+    *) printf '%s\n' "$HOME/.profile" ;;
+  esac
+}
+
+marker="# Added by the Mindfries installer"
 case ":$PATH:" in
   *":$DIR:"*) ;;
-  *) say "Tip: add $DIR to your PATH to run 'mindfries' from any terminal." ;;
+  *)
+    if [ "${MINDFRIES_NO_MODIFY_PATH:-}" = 1 ]; then
+      say "Add $DIR to your PATH to run 'mindfries' from any terminal."
+    else
+      rc="$(profile_file)"
+      if [ -f "$rc" ] && grep -qF "$marker" "$rc"; then
+        :
+      else
+        mkdir -p "$(dirname "$rc")"
+        case "$rc" in
+          *.fish) line="fish_add_path \"$DIR\"" ;;
+          *) line="export PATH=\"$DIR:\$PATH\"" ;;
+        esac
+        printf '\n%s\n%s\n' "$marker" "$line" >> "$rc"
+        say "Added $DIR to your PATH in $rc."
+      fi
+      say "Open a new terminal (or run: export PATH=\"$DIR:\$PATH\") so 'mindfries' is found."
+    fi
+    ;;
 esac
 
-[ -n "$CODE" ] || exit 0
+if [ -z "$CODE" ]; then
+  say ""
+  say "Next, in a new terminal:  mindfries start"
+  exit 0
+fi
 # The script itself arrives on stdin, so give mindfries the terminal.
 if [ -r /dev/tty ] && (: </dev/tty) 2>/dev/null; then
   exec "$bin" start "$CODE" </dev/tty
