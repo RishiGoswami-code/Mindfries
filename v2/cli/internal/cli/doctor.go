@@ -9,6 +9,7 @@ import (
 	"github.com/mindfries/v2/cli/internal/api"
 	"github.com/mindfries/v2/cli/internal/buildinfo"
 	"github.com/mindfries/v2/cli/internal/preflight"
+	"github.com/mindfries/v2/cli/internal/state"
 )
 
 func (a *App) doctor(args []string) error {
@@ -49,12 +50,16 @@ func printChecks(w io.Writer, checks []preflight.Check) {
 	}
 }
 
-// activeRuntimes is extended once a session's manifest is stored locally.
-var activeRuntimesHook func(a *App) []api.Runtime
-
+// activeRuntimes are the runtimes the active session's task needs, if a
+// workspace has been set up.
 func (a *App) activeRuntimes() []api.Runtime {
-	if activeRuntimesHook == nil {
+	home, err := a.home()
+	if err != nil {
 		return nil
 	}
-	return activeRuntimesHook(a)
+	l, err := state.Load(home)
+	if err != nil {
+		return nil
+	}
+	return l.Runtimes
 }

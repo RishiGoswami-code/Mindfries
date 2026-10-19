@@ -37,6 +37,9 @@ type Server struct {
 	offline bool
 	// requests counts contract requests by "METHOD /path".
 	requests map[string]int
+
+	codes    map[string]*setupCode
+	sessions map[string]*session
 }
 
 // New returns a fake with cfg.
@@ -50,7 +53,7 @@ func New(cfg Config) *Server {
 	if cfg.Now == nil {
 		cfg.Now = time.Now
 	}
-	return &Server{cfg: cfg, requests: map[string]int{}}
+	return &Server{cfg: cfg, requests: map[string]int{}, codes: map[string]*setupCode{}, sessions: map[string]*session{}}
 }
 
 func (s *Server) now() time.Time { return s.cfg.Now().UTC() }

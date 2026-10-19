@@ -18,10 +18,9 @@ func main() {
 	flag.Parse()
 
 	s := fakeapi.New(fakeapi.Config{MinVersion: *min})
-	setup(s)
-	log.Printf("fake V2 API on http://%s%s", *addr, fakeapi.Prefix)
+	base := "http://" + *addr + fakeapi.Prefix
+	log.Printf("fake V2 API on %s", base)
+	log.Printf("setup code: %s   (mint more: POST http://%s/__admin/setup-codes)", s.MintSetupCode(fakeapi.SessionOptions{}), *addr)
+	log.Printf("try: mindfries start <code> --api %s", base)
 	log.Fatal(http.ListenAndServe(*addr, s.Handler()))
 }
-
-// setup is extended as the fake gains sessions and tasks.
-var setup = func(*fakeapi.Server) {}
