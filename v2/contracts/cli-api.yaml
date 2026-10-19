@@ -1,0 +1,1691 @@
+openapi: 3.1.0
+info:
+  title: Mindfries V2 — CLI ↔ API
+  version: 0.1.0
+  summary: Everything the `mindfries` CLI and the V2 API exchange.
+  description: |
+    The contract for [PLAN task 1.1](../PLAN.md#stage-1--the-cli-9-17). Both
+    `v2/cli/fakeapi` and `v2/api` serve it, and the CLI's end-to-end tests run
+    against both.
+
+    ## How a session uses it
+
+    1. The dashboard shows one setup command. It installs the CLI if needed,
+       checking `GET /version`, then runs `mindfries start <setup-code>`.
+    2. `start` trades the single-use setup code for a session token
+       (`POST /sessions/exchange`). Everything after that sends the token as a
+       bearer credential.
+    3. `start` fetches the task manifest and archive, checks every file's
+       hash, and sets up the workspace (`GET /session/bundle`,
+       `GET /session/bundle/archive`).
+    4. The session watcher sends heartbeats, event batches and diff
+       snapshots until the session ends.
+    5. `mindfries agent` sends assistant turns. Replies stream back as
+       server-sent events, including tool calls the CLI carries out locally.
+    6. `submit` sends a manifest, then uploads a Git bundle that the server
+       checks against it.
+    7. `stop`, a submit or expiry revokes the token (`POST /session/revoke`).
+
+    ## Rules for every request
+
+    - Every request carries `Mindfries-CLI-Version`. A version below the
+      server's minimum gets `426` with code `cli_too_old`.
+    - Errors are `application/problem+json` ([RFC 9457](https://www.rfc-editor.org/rfc/rfc9457))
+      with a stable `code`. The CLI branches on `code`, never on `title`.
+    - Times are RFC 3339 in UTC. Hashes are lowercase hex SHA-256.
+    - Paths inside the workspace are relative, use `/`, and never contain
+      `..`.
+    - The CLI never receives a model key, a GitHub token or any V1
+      credential. The only credential it holds is the session token.
+servers:
+  - url: https://api.v2.mindfries.example/v2/cli
+    description: Placeholder; the V2 API's domain is an open decision.
+  - url: http://localhost:8787/v2/cli
+    description: v2/cli/fakeapi
+
+security:
+  - sessionToken: []
+
+tags:
+  - name: Version
+    description: Which CLI versions the server accepts.
+  - name: Session
+    description: Setup code, session token, revoke.
+  - name: Bundle
+    description: The task files and their manifest.
+  - name: Watcher
+    description: The session watcher, the spec's local assessment agent.
+  - name: Assistant
+    description: "`mindfries agent`, our coding and research assistant."
+  - name: Submission
+    description: The manifest and the Git bundle.
+
+paths:
+  /version:
+    get:
+      tags: [Version]
+      operationId: getVersion
+      summary: Minimum and latest CLI versions
+      description: Called by the installer and by `start`. No auth.
+      security: []
+      parameters:
+        - $ref: "#/components/parameters/CliVersion"
+      responses:
+        "200":
+          description: Version info.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VersionInfo"
+        "400":
+          $ref: "#/components/responses/Malformed"
+
+  /sessions/exchange:
+    post:
+      tags: [Session]
+      operationId: exchangeSetupCode
+      summary: Trade a single-use setup code for a session token
+      description: |
+        The setup code is shown on the dashboard inside the setup command. It
+        is unique to the candidate and the assessment, works once and
+        expires after about 10 minutes, so shell history leaks nothing
+        reusable. The returned token is stored in the OS keychain (or a file
+        only the user can read) and is never printed.
+      security: []
+      parameters:
+        - $ref: "#/components/parameters/CliVersion"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ExchangeRequest"
+      responses:
+        "200":
+          description: The session token and the session.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExchangeResponse"
+        "400":
+          $ref: "#/components/responses/Malformed"
+        "410":
+          description: |
+            The code can't be used. `code` is `setup_code_used`,
+            `setup_code_expired` or `setup_code_invalid`.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "426":
+          $ref: "#/components/responses/CliTooOld"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+  /session:
+    get:
+      tags: [Session]
+      operationId: getSession
+      summary: The current session
+      description: Used by `status`, and by `start` when it resumes after a restart.
+      parameters:
+        - $ref: "#/components/parameters/CliVersion"
+      responses:
+        "200":
+          description: The session.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Session"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "426":
+          $ref: "#/components/responses/CliTooOld"
+
+  /session/revoke:
+    post:
+      tags: [Session]
+      operationId: revokeSession
+      summary: Revoke the session token
+      description: |
+        Sent by `stop`, after a successful submit, and when the CLI sees the
+        session has expired. Afterwards the token is refused everywhere. The
+        CLI then deletes its local credentials and session state and leaves
+        the candidate's code in place. Revoking twice is not an error.
+      parameters:
+        - $ref: "#/components/parameters/CliVersion"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RevokeRequest"
+      responses:
+        "204":
+          description: Revoked.
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /session/bundle:
+    get:
+      tags: [Bundle]
+      operationId: getBundleManifest
+      summary: The task manifest
+      description: |
+        Lists every file in the task with its hash, the task version, the Git
+        setup and the runtimes the task needs. `doctor` uses
+        `required_runtimes`; `start` checks every file of the archive
+        against `files`, and rejects the bundle on any mismatch.
+      parameters:
+        - $ref: "#/components/parameters/CliVersion"
+      responses:
+        "200":
+          description: The manifest.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BundleManifest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "409":
+          $ref: "#/components/responses/SessionNotActive"
+
+  /session/bundle/archive:
+    get:
+      tags: [Bundle]
+      operationId: getBundleArchive
+      summary: The task files
+      description: |
+        A gzipped tar of the files in the manifest. Its SHA-256 is the
+        manifest's `archive_sha256`. Supports `Range` so a broken download
+        can resume.
+      parameters:
+        - $ref: "#/components/parameters/CliVersion"
+      responses:
+        "200":
+          description: The archive.
+          content:
+            application/gzip:
+              schema:
+                type: string
+                contentMediaType: application/gzip
+        "206":
+          description: Part of the archive, for a resumed download.
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "409":
+          $ref: "#/components/responses/SessionNotActive"
+
+  /session/heartbeat:
+    post:
+      tags: [Watcher]
+      operationId: sendHeartbeat
+      summary: The watcher is alive
+      description: |
+        Sent every `intervals.heartbeat_seconds`. The reply may tell the
+        watcher to stop, for example when the session was ended from the
+        portal or has expired.
+      parameters:
+        - $ref: "#/components/parameters/CliVersion"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Heartbeat"
+      responses:
+        "200":
+          description: Acknowledged.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HeartbeatReply"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "426":
+          $ref: "#/components/responses/CliTooOld"
+
+  /session/events:
+    post:
+      tags: [Watcher]
+      operationId: sendEvents
+      summary: A batch of watcher events
+      description: |
+        Events leave the CLI's offline queue in order, in batches of at most
+        `limits.max_events_per_batch` events and `limits.max_batch_bytes`
+        bytes.
+
+        - **Idempotent.** Each event has a `seq` that only ever increases
+          for the session. The server ignores any `seq` it already has and
+          reports it in `duplicates`, so resending after a timeout is safe.
+        - **Chained.** Each event's `hash` covers its own fields and the
+          previous event's `hash` (see `Event`). A gap or a broken chain is
+          recorded as an observed event on the server; it is not a reason
+          to reject the batch.
+        - **Malformed batches are dropped.** On `400` or `413` the CLI drops
+          that batch and moves on, rather than retrying it for ever. On `5xx`,
+          `429` or a network error it retries with backoff.
+      parameters:
+        - $ref: "#/components/parameters/CliVersion"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EventBatch"
+      responses:
+        "200":
+          description: Stored.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EventBatchReply"
+        "400":
+          $ref: "#/components/responses/Malformed"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "409":
+          $ref: "#/components/responses/SessionNotActive"
+        "413":
+          $ref: "#/components/responses/TooLarge"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+  /session/snapshots:
+    post:
+      tags: [Watcher]
+      operationId: sendSnapshot
+      summary: A Git diff snapshot
+      description: |
+        Sent every `intervals.snapshot_seconds` while the workspace has
+        changed since the last one. The diff is against the baseline commit,
+        so the server can check the watcher's attribution (task 1.17) and
+        see work that arrived from none of the known sources. Idempotent by
+        `seq`.
+      parameters:
+        - $ref: "#/components/parameters/CliVersion"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Snapshot"
+      responses:
+        "204":
+          description: Stored.
+        "400":
+          $ref: "#/components/responses/Malformed"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "409":
+          $ref: "#/components/responses/SessionNotActive"
+        "413":
+          $ref: "#/components/responses/TooLarge"
+
+  /session/assistant/turns:
+    post:
+      tags: [Assistant]
+      operationId: startAssistantTurn
+      summary: Send the candidate's message to the assistant
+      description: |
+        The model runs on the server under the assessment's policy
+        (`Session.policy`). The reply streams as server-sent events; see
+        `AssistantStreamEvent`. Every prompt, reply and tool call is logged as
+        evidence for the session.
+
+        When the stream ends with `tool.calls_pending`, the CLI carries out
+        the calls and sends the results to
+        `/session/assistant/turns/{turn_id}/tool-results`, which continues
+        the same turn as another stream.
+
+        Refusals arrive before the stream starts, as a problem:
+        `assistant_off` (403), `budget_exhausted` (429). In `explain_only`
+        mode the server never offers `propose_edit` or `run_command`, and a
+        message asking it to write a file is answered with an explanation
+        and no edit.
+      parameters:
+        - $ref: "#/components/parameters/CliVersion"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AssistantTurnRequest"
+      responses:
+        "200":
+          $ref: "#/components/responses/AssistantStream"
+        "400":
+          $ref: "#/components/responses/Malformed"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          description: The assistant is off for this assessment (`assistant_off`).
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "409":
+          $ref: "#/components/responses/SessionNotActive"
+        "429":
+          description: |
+            `budget_exhausted` when the session's token or cost budget is
+            used up, or `rate_limited`.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+
+  /session/assistant/turns/{turn_id}/tool-results:
+    post:
+      tags: [Assistant]
+      operationId: sendToolResults
+      summary: Results of the tool calls the CLI carried out
+      description: |
+        One result per pending call, including the ones the candidate
+        rejected. For an accepted `propose_edit` the result records exactly
+        what changed, which is how every assistant edit is attributed
+        (task 1.17). The reply continues the turn as another stream.
+      parameters:
+        - $ref: "#/components/parameters/CliVersion"
+        - name: turn_id
+          in: path
+          required: true
+          schema:
+            $ref: "#/components/schemas/Id"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ToolResults"
+      responses:
+        "200":
+          $ref: "#/components/responses/AssistantStream"
+        "400":
+          $ref: "#/components/responses/Malformed"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: |
+            `turn_not_waiting`: the turn has no pending calls, or these
+            results were already received.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+
+  /session/submission:
+    post:
+      tags: [Submission]
+      operationId: createSubmission
+      summary: Declare what is being handed in
+      description: |
+        Sent by `submit` after the candidate has seen the diff and written a
+        commit message. Returns where to upload the Git bundle. Sending the
+        same manifest again returns the same submission.
+      parameters:
+        - $ref: "#/components/parameters/CliVersion"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SubmissionManifest"
+      responses:
+        "201":
+          description: Created; upload the bundle next.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Submission"
+        "400":
+          $ref: "#/components/responses/Malformed"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "409":
+          description: |
+            `session_not_active`, or `already_submitted` when a verified
+            submission exists. After a `rejected` one the CLI may submit
+            again.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+    get:
+      tags: [Submission]
+      operationId: getSubmission
+      summary: The submission's status
+      description: Used by `status`.
+      parameters:
+        - $ref: "#/components/parameters/CliVersion"
+      responses:
+        "200":
+          description: The submission.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Submission"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /session/submission/{submission_id}/bundle:
+    put:
+      tags: [Submission]
+      operationId: uploadSubmissionBundle
+      summary: Upload the Git bundle
+      description: |
+        A `git bundle` containing the assessment branch from the baseline
+        commit to the submitted head. The server checks its SHA-256, that it
+        contains `head_commit` on top of `base_commit`, and that the files at
+        `head_commit` match the manifest's hashes. On success the submission
+        is `verified` and the session ends.
+      parameters:
+        - $ref: "#/components/parameters/CliVersion"
+        - name: submission_id
+          in: path
+          required: true
+          schema:
+            $ref: "#/components/schemas/Id"
+      requestBody:
+        required: true
+        content:
+          application/octet-stream:
+            schema:
+              type: string
+              contentMediaType: application/octet-stream
+      responses:
+        "200":
+          description: Verified.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Submission"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "413":
+          $ref: "#/components/responses/TooLarge"
+        "422":
+          description: |
+            `bundle_mismatch`: the bundle doesn't match the manifest. The
+            problem's `mismatches` lists what differed. The CLI shows it and
+            lets the candidate submit again.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+
+components:
+  securitySchemes:
+    sessionToken:
+      type: http
+      scheme: bearer
+      description: |
+        The opaque token from `/sessions/exchange`. Scoped to one session,
+        it expires with it and is revoked by `/session/revoke`.
+
+  parameters:
+    CliVersion:
+      name: Mindfries-CLI-Version
+      in: header
+      required: true
+      description: The CLI's semantic version.
+      schema:
+        $ref: "#/components/schemas/SemVer"
+
+  responses:
+    Malformed:
+      description: "`malformed`: the request doesn't match this contract."
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+    Unauthorized:
+      description: |
+        `token_missing`, `token_invalid`, `token_expired` or
+        `token_revoked`. The CLI stops the watcher and deletes the token.
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+    NotFound:
+      description: "`not_found`."
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+    SessionNotActive:
+      description: |
+        `session_not_active`: the session has been submitted, has expired or
+        was ended from the portal. The problem's `session_status` says which.
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+    TooLarge:
+      description: "`too_large`: over the size limit in `Session.limits`."
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+    RateLimited:
+      description: "`rate_limited`. Retry after the `Retry-After` header."
+      headers:
+        Retry-After:
+          schema:
+            type: integer
+            minimum: 1
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+    CliTooOld:
+      description: |
+        `cli_too_old`: the CLI is older than `minimum_version`. The CLI tells
+        the candidate to rerun the setup command, which installs the latest.
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+    AssistantStream:
+      description: |
+        A stream of server-sent events. Each event's `event:` field is the
+        `type` of an `AssistantStreamEvent` and its `data:` is that object as
+        JSON. The stream always ends with `turn.completed`,
+        `tool.calls_pending` or `error`.
+      content:
+        text/event-stream:
+          schema:
+            $ref: "#/components/schemas/AssistantStreamEvent"
+
+  schemas:
+    Id:
+      type: string
+      description: An opaque identifier.
+      minLength: 1
+      maxLength: 64
+      pattern: "^[A-Za-z0-9_-]+$"
+    SemVer:
+      type: string
+      pattern: "^\\d+\\.\\d+\\.\\d+(-[0-9A-Za-z.-]+)?$"
+      examples: ["0.1.0"]
+    Sha256:
+      type: string
+      pattern: "^[0-9a-f]{64}$"
+    GitSha:
+      type: string
+      pattern: "^[0-9a-f]{40}([0-9a-f]{24})?$"
+    Timestamp:
+      type: string
+      format: date-time
+    WorkspacePath:
+      type: string
+      description: Relative to the workspace root, `/`-separated, no `..`.
+      minLength: 1
+      maxLength: 1024
+      pattern: "^(?!/)(?!.*(^|/)\\.\\.(/|$)).+$"
+
+    Problem:
+      type: object
+      description: RFC 9457 problem details, plus a stable `code`.
+      required: [code, title, status]
+      properties:
+        type:
+          type: string
+          format: uri-reference
+        code:
+          type: string
+          enum:
+            - malformed
+            - not_found
+            - rate_limited
+            - too_large
+            - cli_too_old
+            - setup_code_used
+            - setup_code_expired
+            - setup_code_invalid
+            - token_missing
+            - token_invalid
+            - token_expired
+            - token_revoked
+            - session_not_active
+            - assistant_off
+            - budget_exhausted
+            - turn_not_waiting
+            - already_submitted
+            - bundle_mismatch
+            - internal
+        title:
+          type: string
+          description: For people; the CLI shows it but never branches on it.
+        status:
+          type: integer
+        detail:
+          type: string
+        minimum_version:
+          $ref: "#/components/schemas/SemVer"
+          description: Only with `cli_too_old`.
+        session_status:
+          $ref: "#/components/schemas/SessionStatus"
+          description: Only with `session_not_active`.
+        mismatches:
+          type: array
+          description: Only with `bundle_mismatch`.
+          items:
+            type: object
+            required: [what]
+            properties:
+              what:
+                type: string
+                enum: [bundle_sha256, head_commit, base_commit, file_missing, file_extra, file_hash]
+              path:
+                $ref: "#/components/schemas/WorkspacePath"
+              expected:
+                type: string
+              actual:
+                type: string
+
+    VersionInfo:
+      type: object
+      required: [minimum_version, latest_version]
+      properties:
+        minimum_version:
+          $ref: "#/components/schemas/SemVer"
+        latest_version:
+          $ref: "#/components/schemas/SemVer"
+        release_notes_url:
+          type: string
+          format: uri
+
+    Device:
+      type: object
+      description: Enough to choose builds and explain failures. No hostnames, usernames or hardware IDs.
+      required: [os, arch]
+      properties:
+        os:
+          type: string
+          enum: [windows, darwin, linux]
+        os_version:
+          type: string
+          maxLength: 64
+        arch:
+          type: string
+          enum: [amd64, arm64]
+
+    ExchangeRequest:
+      type: object
+      required: [setup_code, device]
+      properties:
+        setup_code:
+          type: string
+          description: As shown in the setup command.
+          pattern: "^[A-Z0-9]{4}(-[A-Z0-9]{4}){2}$"
+          examples: ["K7QM-2XRP-9WDA"]
+        device:
+          $ref: "#/components/schemas/Device"
+
+    ExchangeResponse:
+      type: object
+      required: [session_token, expires_at, session]
+      properties:
+        session_token:
+          type: string
+          minLength: 32
+          description: Store in the OS keychain. Never print or log it.
+        expires_at:
+          $ref: "#/components/schemas/Timestamp"
+        session:
+          $ref: "#/components/schemas/Session"
+
+    SessionStatus:
+      type: string
+      description: |
+        `active` while the candidate can work; `submitted` once a submission
+        is verified; `expired` when the time ran out; `revoked` when the
+        token was revoked or the session ended from the portal.
+      enum: [active, submitted, expired, revoked]
+
+    AssistantMode:
+      type: string
+      description: |
+        Set per assessment. `off`: no assistant. `explain_only`: it explains
+        and researches but never edits files or runs commands.
+        `code_allowed`: it may propose edits and commands, each confirmed by
+        the candidate.
+      enum: [off, explain_only, code_allowed]
+
+    Session:
+      type: object
+      required: [id, assessment_id, status, started_at, ends_at, policy, intervals, limits, last_acked_seq]
+      properties:
+        id:
+          $ref: "#/components/schemas/Id"
+        assessment_id:
+          $ref: "#/components/schemas/Id"
+        assessment_title:
+          type: string
+        status:
+          $ref: "#/components/schemas/SessionStatus"
+        started_at:
+          $ref: "#/components/schemas/Timestamp"
+        ends_at:
+          $ref: "#/components/schemas/Timestamp"
+          description: When the assessment's time runs out. The token expires with it.
+        policy:
+          type: object
+          required: [assistant_mode, outside_agents_allowed]
+          properties:
+            assistant_mode:
+              $ref: "#/components/schemas/AssistantMode"
+            assistant_budget:
+              $ref: "#/components/schemas/Budget"
+            outside_agents_allowed:
+              type: boolean
+              description: Always `false` in V2. Outside coding agents are flagged (task 1.8).
+            research_domains:
+              type: array
+              description: Domains the assistant's research may reach. The server enforces this; the CLI only shows it.
+              items:
+                type: string
+        intervals:
+          type: object
+          required: [heartbeat_seconds, snapshot_seconds, agent_scan_seconds]
+          properties:
+            heartbeat_seconds:
+              type: integer
+              minimum: 5
+            snapshot_seconds:
+              type: integer
+              minimum: 30
+            agent_scan_seconds:
+              type: integer
+              minimum: 30
+              description: How often the watcher checks for outside coding agents.
+        limits:
+          type: object
+          required: [max_events_per_batch, max_batch_bytes, max_snapshot_bytes, max_bundle_bytes]
+          properties:
+            max_events_per_batch:
+              type: integer
+              minimum: 1
+            max_batch_bytes:
+              type: integer
+              minimum: 1024
+            max_snapshot_bytes:
+              type: integer
+              minimum: 1024
+            max_bundle_bytes:
+              type: integer
+              minimum: 1024
+        last_acked_seq:
+          type: integer
+          minimum: 0
+          description: The highest event `seq` stored. A restarted watcher resumes after it.
+        submission_id:
+          $ref: "#/components/schemas/Id"
+
+    Budget:
+      type: object
+      required: [tokens_total, tokens_remaining]
+      properties:
+        tokens_total:
+          type: integer
+          minimum: 0
+        tokens_remaining:
+          type: integer
+          minimum: 0
+
+    RevokeRequest:
+      type: object
+      required: [reason]
+      properties:
+        reason:
+          type: string
+          enum: [stop, submitted, expired]
+
+    BundleManifest:
+      type: object
+      required: [task_version, archive_sha256, archive_bytes, files, git, signature]
+      properties:
+        task_version:
+          type: string
+          description: The exact version of the task this session uses. Recorded at setup and in the submission.
+        archive_sha256:
+          $ref: "#/components/schemas/Sha256"
+        archive_bytes:
+          type: integer
+          minimum: 0
+        files:
+          type: array
+          items:
+            $ref: "#/components/schemas/BundleFile"
+        git:
+          type: object
+          required: [branch, author_name, author_email]
+          properties:
+            branch:
+              type: string
+              description: The assessment branch the CLI creates.
+              examples: ["mindfries/assessment"]
+            author_name:
+              type: string
+              description: Set as the repository's local Git identity only, never globally.
+            author_email:
+              type: string
+              format: email
+        required_runtimes:
+          type: array
+          description: What the task needs installed. `doctor` checks each one.
+          items:
+            type: object
+            required: [name, version]
+            properties:
+              name:
+                type: string
+                examples: ["python", "node", "go", "docker"]
+              version:
+                type: string
+                description: A version constraint.
+                examples: [">=3.11"]
+              install_url:
+                type: string
+                format: uri
+        setup_commands:
+          type: array
+          description: Commands that install the task's dependencies. The CLI shows each one and runs it only after the candidate confirms.
+          items:
+            type: string
+        check_commands:
+          type: array
+          description: Tests and builds `submit` runs before handing in. Their results go in the submission manifest's `checks`.
+          items:
+            type: string
+        signature:
+          type: object
+          description: |
+            An Ed25519 signature over this manifest without `signature`,
+            serialised as RFC 8785 canonical JSON. The CLI carries the public
+            keys and rejects a manifest it can't verify.
+          required: [key_id, value]
+          properties:
+            key_id:
+              type: string
+            value:
+              type: string
+              contentEncoding: base64
+
+    BundleFile:
+      type: object
+      required: [path, sha256, bytes]
+      properties:
+        path:
+          $ref: "#/components/schemas/WorkspacePath"
+        sha256:
+          $ref: "#/components/schemas/Sha256"
+        bytes:
+          type: integer
+          minimum: 0
+        executable:
+          type: boolean
+          default: false
+        locked:
+          type: boolean
+          default: false
+          description: |
+            True for `TASK.md` and any other file the candidate may not
+            change. The CLI makes it read-only, watches its hash and restores
+            it on any edit, sending a `task_file.modified` event.
+
+    Heartbeat:
+      type: object
+      required: [sent_at, watcher]
+      properties:
+        sent_at:
+          $ref: "#/components/schemas/Timestamp"
+        watcher:
+          type: object
+          required: [queue_depth, last_sent_seq]
+          properties:
+            queue_depth:
+              type: integer
+              minimum: 0
+              description: Events waiting in the offline queue.
+            last_sent_seq:
+              type: integer
+              minimum: 0
+            offline_since:
+              $ref: "#/components/schemas/Timestamp"
+              description: Set while the last sync attempts failed.
+        git:
+          type: object
+          properties:
+            branch:
+              type: string
+            head:
+              $ref: "#/components/schemas/GitSha"
+            changed_files:
+              type: integer
+              minimum: 0
+
+    HeartbeatReply:
+      type: object
+      required: [server_time, session_status, ends_at]
+      properties:
+        server_time:
+          $ref: "#/components/schemas/Timestamp"
+        session_status:
+          $ref: "#/components/schemas/SessionStatus"
+        ends_at:
+          $ref: "#/components/schemas/Timestamp"
+        stop:
+          type: boolean
+          default: false
+          description: When true the watcher flushes its queue, stops and cleans up.
+
+    EventBatch:
+      type: object
+      required: [events]
+      properties:
+        events:
+          type: array
+          minItems: 1
+          items:
+            $ref: "#/components/schemas/Event"
+
+    EventBatchReply:
+      type: object
+      required: [acked_through_seq, stored, duplicates]
+      properties:
+        acked_through_seq:
+          type: integer
+          minimum: 0
+          description: Every event up to this `seq` is stored. The CLI deletes them from its queue.
+        stored:
+          type: integer
+          minimum: 0
+        duplicates:
+          type: integer
+          minimum: 0
+
+    Event:
+      type: object
+      description: |
+        One watcher event. Every event is an observed event or a review
+        signal (SPEC §16), never a verdict.
+
+        `hash` is SHA-256 over RFC 8785 canonical JSON of
+        `{seq, occurred_at, type, data, prev_hash}`. `prev_hash` is the
+        previous event's `hash`; the first event uses 64 zeros.
+      required: [seq, occurred_at, type, data, prev_hash, hash]
+      properties:
+        seq:
+          type: integer
+          minimum: 1
+        occurred_at:
+          $ref: "#/components/schemas/Timestamp"
+        prev_hash:
+          $ref: "#/components/schemas/Sha256"
+        hash:
+          $ref: "#/components/schemas/Sha256"
+      oneOf:
+        - $ref: "#/components/schemas/EvPreflight"
+        - $ref: "#/components/schemas/EvWorkspaceReady"
+        - $ref: "#/components/schemas/EvIdeLaunched"
+        - $ref: "#/components/schemas/EvFileChanged"
+        - $ref: "#/components/schemas/EvFileBurst"
+        - $ref: "#/components/schemas/EvChangeAttributed"
+        - $ref: "#/components/schemas/EvTaskFileModified"
+        - $ref: "#/components/schemas/EvGitCommit"
+        - $ref: "#/components/schemas/EvAgentProcess"
+        - $ref: "#/components/schemas/EvAgentExtension"
+        - $ref: "#/components/schemas/EvAgentLeftover"
+        - $ref: "#/components/schemas/EvWatcherGap"
+        - $ref: "#/components/schemas/EvWatcherStopped"
+      discriminator:
+        propertyName: type
+        mapping:
+          preflight.result: "#/components/schemas/EvPreflight"
+          workspace.ready: "#/components/schemas/EvWorkspaceReady"
+          ide.launched: "#/components/schemas/EvIdeLaunched"
+          file.changed: "#/components/schemas/EvFileChanged"
+          file.burst: "#/components/schemas/EvFileBurst"
+          change.attributed: "#/components/schemas/EvChangeAttributed"
+          task_file.modified: "#/components/schemas/EvTaskFileModified"
+          git.commit: "#/components/schemas/EvGitCommit"
+          agent_signal.process: "#/components/schemas/EvAgentProcess"
+          agent_signal.extension: "#/components/schemas/EvAgentExtension"
+          agent_signal.leftover: "#/components/schemas/EvAgentLeftover"
+          watcher.gap: "#/components/schemas/EvWatcherGap"
+          watcher.stopped: "#/components/schemas/EvWatcherStopped"
+
+    EvPreflight:
+      type: object
+      required: [type, data]
+      properties:
+        type:
+          const: preflight.result
+        data:
+          type: object
+          required: [checks]
+          properties:
+            checks:
+              type: array
+              items:
+                type: object
+                required: [name, ok]
+                properties:
+                  name:
+                    type: string
+                    examples: ["git", "disk_space", "api_reachable", "ide", "runtime:python"]
+                  ok:
+                    type: boolean
+                  detail:
+                    type: string
+
+    EvWorkspaceReady:
+      type: object
+      required: [type, data]
+      properties:
+        type:
+          const: workspace.ready
+        data:
+          type: object
+          required: [task_version, base_commit, resumed]
+          properties:
+            task_version:
+              type: string
+            base_commit:
+              $ref: "#/components/schemas/GitSha"
+            resumed:
+              type: boolean
+              description: True when `start` was re-run on an existing workspace.
+
+    EvIdeLaunched:
+      type: object
+      required: [type, data]
+      properties:
+        type:
+          const: ide.launched
+        data:
+          type: object
+          required: [ide, ok]
+          properties:
+            ide:
+              type: string
+              enum: [vscode, jetbrains, zed, manual]
+            ok:
+              type: boolean
+
+    EvFileChanged:
+      type: object
+      description: A file in the workspace changed. Sizes and timing only, never contents.
+      required: [type, data]
+      properties:
+        type:
+          const: file.changed
+        data:
+          type: object
+          required: [path, change, lines_added, lines_removed, bytes_after]
+          properties:
+            path:
+              $ref: "#/components/schemas/WorkspacePath"
+            change:
+              type: string
+              enum: [created, modified, deleted, renamed]
+            from_path:
+              $ref: "#/components/schemas/WorkspacePath"
+            lines_added:
+              type: integer
+              minimum: 0
+            lines_removed:
+              type: integer
+              minimum: 0
+            bytes_after:
+              type: integer
+              minimum: 0
+
+    EvFileBurst:
+      type: object
+      description: |
+        Signal 4 of task 1.8: a large amount of code arrived within seconds,
+        often across several files, and not from `mindfries agent`. A review
+        signal, not a verdict.
+      required: [type, data]
+      properties:
+        type:
+          const: file.burst
+        data:
+          type: object
+          required: [paths, lines_added, window_ms]
+          properties:
+            paths:
+              type: array
+              items:
+                $ref: "#/components/schemas/WorkspacePath"
+            lines_added:
+              type: integer
+              minimum: 0
+            window_ms:
+              type: integer
+              minimum: 0
+
+    EvChangeAttributed:
+      type: object
+      description: |
+        Signal 5 of task 1.8 and task 1.17: where a change came from.
+        `assistant` matches an edit `mindfries agent` applied (by `edit_id`);
+        `candidate` was built up gradually; `unknown` is neither.
+      required: [type, data]
+      properties:
+        type:
+          const: change.attributed
+        data:
+          type: object
+          required: [path, origin, lines]
+          properties:
+            path:
+              $ref: "#/components/schemas/WorkspacePath"
+            origin:
+              type: string
+              enum: [assistant, candidate, unknown]
+            lines:
+              type: integer
+              minimum: 0
+            edit_id:
+              $ref: "#/components/schemas/Id"
+              description: Only when `origin` is `assistant`.
+
+    EvTaskFileModified:
+      type: object
+      description: A locked file such as `TASK.md` was changed. The CLI restored it.
+      required: [type, data]
+      properties:
+        type:
+          const: task_file.modified
+        data:
+          type: object
+          required: [path, restored]
+          properties:
+            path:
+              $ref: "#/components/schemas/WorkspacePath"
+            restored:
+              type: boolean
+
+    EvGitCommit:
+      type: object
+      required: [type, data]
+      properties:
+        type:
+          const: git.commit
+        data:
+          type: object
+          required: [commit, files_changed]
+          properties:
+            commit:
+              $ref: "#/components/schemas/GitSha"
+            files_changed:
+              type: integer
+              minimum: 0
+            agent_trailer:
+              type: string
+              description: |
+                Set when the message carries a coding-agent trailer, e.g.
+                "Co-Authored-By: …" or "Generated with …" (signal 3 of task
+                1.8). Only the matching line is sent, not the message.
+
+    EvAgentProcess:
+      type: object
+      description: |
+        Signal 1 of task 1.8: running processes whose names match the known
+        coding-agent list. Only matches are sent, never the process list.
+      required: [type, data]
+      properties:
+        type:
+          const: agent_signal.process
+        data:
+          type: object
+          required: [matches, phase]
+          properties:
+            matches:
+              type: array
+              minItems: 1
+              items:
+                type: object
+                required: [agent, process_name]
+                properties:
+                  agent:
+                    type: string
+                    examples: ["claude-code", "gemini-cli", "codex", "aider", "cursor"]
+                  process_name:
+                    type: string
+            phase:
+              type: string
+              enum: [start, during]
+              description: "`start`: found before the timer began, and the candidate was asked to close it."
+            closed_by_candidate:
+              type: boolean
+              description: Only for `start`.
+
+    EvAgentExtension:
+      type: object
+      description: Signal 2 of task 1.8. Only the AI extensions are sent, not the full list.
+      required: [type, data]
+      properties:
+        type:
+          const: agent_signal.extension
+        data:
+          type: object
+          required: [ide, extensions]
+          properties:
+            ide:
+              type: string
+              enum: [vscode, jetbrains, zed]
+            extensions:
+              type: array
+              minItems: 1
+              items:
+                type: string
+                examples: ["github.copilot", "saoudrizwan.claude-dev"]
+
+    EvAgentLeftover:
+      type: object
+      description: Signal 3 of task 1.8. Agent instruction files found in the workspace. Paths only.
+      required: [type, data]
+      properties:
+        type:
+          const: agent_signal.leftover
+        data:
+          type: object
+          required: [paths]
+          properties:
+            paths:
+              type: array
+              minItems: 1
+              items:
+                $ref: "#/components/schemas/WorkspacePath"
+
+    EvWatcherGap:
+      type: object
+      description: |
+        The watcher wasn't running for a while (it crashed, the laptop
+        slept). An evidence gap, never a sign of misconduct.
+      required: [type, data]
+      properties:
+        type:
+          const: watcher.gap
+        data:
+          type: object
+          required: [from, to, reason]
+          properties:
+            from:
+              $ref: "#/components/schemas/Timestamp"
+            to:
+              $ref: "#/components/schemas/Timestamp"
+            reason:
+              type: string
+              enum: [crash, sleep, restart, unknown]
+
+    EvWatcherStopped:
+      type: object
+      required: [type, data]
+      properties:
+        type:
+          const: watcher.stopped
+        data:
+          type: object
+          required: [reason]
+          properties:
+            reason:
+              type: string
+              enum: [stop, submitted, expired, revoked]
+
+    Snapshot:
+      type: object
+      required: [seq, taken_at, base_commit, patch, patch_sha256]
+      properties:
+        seq:
+          type: integer
+          minimum: 1
+          description: Increases per snapshot; separate from event `seq`.
+        taken_at:
+          $ref: "#/components/schemas/Timestamp"
+        base_commit:
+          $ref: "#/components/schemas/GitSha"
+        head_commit:
+          $ref: "#/components/schemas/GitSha"
+        patch:
+          type: string
+          description: "`git diff --binary` of the working tree against `base_commit`, gzipped."
+          contentEncoding: base64
+          contentMediaType: application/gzip
+        patch_sha256:
+          $ref: "#/components/schemas/Sha256"
+          description: Of the uncompressed patch.
+
+    AssistantTurnRequest:
+      type: object
+      required: [message]
+      properties:
+        conversation_id:
+          $ref: "#/components/schemas/Id"
+          description: Omit to start a new conversation; the first stream event returns one.
+        message:
+          type: string
+          minLength: 1
+          maxLength: 20000
+        context:
+          type: object
+          description: What the candidate chose to attach. The assistant can also read files itself with `read_file`.
+          properties:
+            files:
+              type: array
+              maxItems: 20
+              items:
+                type: object
+                required: [path, content]
+                properties:
+                  path:
+                    $ref: "#/components/schemas/WorkspacePath"
+                  content:
+                    type: string
+
+    ToolName:
+      type: string
+      description: |
+        Carried out by the CLI, inside the workspace only:
+        - `read_file`, `list_files`: no confirmation needed.
+        - `propose_edit`: shown as a diff; the candidate accepts or rejects.
+        - `run_command`: shown first; runs only if the candidate confirms.
+        Research runs on the server and never reaches the CLI as a tool call.
+      enum: [read_file, list_files, propose_edit, run_command]
+
+    ToolCall:
+      type: object
+      required: [call_id, name, input]
+      properties:
+        call_id:
+          $ref: "#/components/schemas/Id"
+        name:
+          $ref: "#/components/schemas/ToolName"
+        input:
+          oneOf:
+            - title: read_file
+              type: object
+              required: [path]
+              properties:
+                path:
+                  $ref: "#/components/schemas/WorkspacePath"
+            - title: list_files
+              type: object
+              properties:
+                dir:
+                  $ref: "#/components/schemas/WorkspacePath"
+            - title: propose_edit
+              type: object
+              required: [path, edits]
+              properties:
+                path:
+                  $ref: "#/components/schemas/WorkspacePath"
+                create:
+                  type: boolean
+                  default: false
+                edits:
+                  type: array
+                  minItems: 1
+                  items:
+                    type: object
+                    required: [old_text, new_text]
+                    properties:
+                      old_text:
+                        type: string
+                        description: Must match exactly once; empty when creating a file.
+                      new_text:
+                        type: string
+            - title: run_command
+              type: object
+              required: [command]
+              properties:
+                command:
+                  type: string
+                cwd:
+                  $ref: "#/components/schemas/WorkspacePath"
+                timeout_seconds:
+                  type: integer
+                  minimum: 1
+                  maximum: 600
+
+    ToolResults:
+      type: object
+      required: [results]
+      properties:
+        results:
+          type: array
+          minItems: 1
+          items:
+            $ref: "#/components/schemas/ToolResult"
+
+    ToolResult:
+      type: object
+      required: [call_id, status]
+      properties:
+        call_id:
+          $ref: "#/components/schemas/Id"
+        status:
+          type: string
+          description: |
+            `ok`: done. `rejected`: the candidate said no. `refused`: the CLI
+            refused it, e.g. a path outside the workspace, a locked file, or
+            a command that pushes or installs. `error`: it failed.
+          enum: [ok, rejected, refused, error]
+        output:
+          type: string
+          description: File contents, listing or command output, truncated by the CLI to 64 KiB.
+          maxLength: 65536
+        exit_code:
+          type: integer
+          description: For `run_command`.
+        applied_edit:
+          $ref: "#/components/schemas/AppliedEdit"
+
+    AppliedEdit:
+      type: object
+      description: |
+        Exactly what an accepted `propose_edit` changed. This is the record
+        every attribution is checked against (task 1.17).
+      required: [edit_id, path, before_sha256, after_sha256, ranges]
+      properties:
+        edit_id:
+          $ref: "#/components/schemas/Id"
+        path:
+          $ref: "#/components/schemas/WorkspacePath"
+        before_sha256:
+          description: Absent when the file was created.
+          $ref: "#/components/schemas/Sha256"
+        after_sha256:
+          $ref: "#/components/schemas/Sha256"
+        ranges:
+          type: array
+          description: Line ranges in the file after the edit, 1-based and inclusive.
+          items:
+            type: object
+            required: [start, end]
+            properties:
+              start:
+                type: integer
+                minimum: 1
+              end:
+                type: integer
+                minimum: 1
+
+    AssistantStreamEvent:
+      type: object
+      required: [type]
+      oneOf:
+        - title: turn.started
+          type: object
+          required: [type, turn_id, conversation_id, mode, budget]
+          properties:
+            type:
+              const: turn.started
+            turn_id:
+              $ref: "#/components/schemas/Id"
+            conversation_id:
+              $ref: "#/components/schemas/Id"
+            mode:
+              $ref: "#/components/schemas/AssistantMode"
+            budget:
+              $ref: "#/components/schemas/Budget"
+        - title: text.delta
+          type: object
+          required: [type, text]
+          properties:
+            type:
+              const: text.delta
+            text:
+              type: string
+        - title: research.source
+          type: object
+          description: A source the assistant used for research. Also shown in the floating panel's Notes & Evidence.
+          required: [type, url]
+          properties:
+            type:
+              const: research.source
+            url:
+              type: string
+              format: uri
+            title:
+              type: string
+        - title: research.refused
+          type: object
+          description: The assistant tried a domain the assessment doesn't allow; the server refused it.
+          required: [type, domain]
+          properties:
+            type:
+              const: research.refused
+            domain:
+              type: string
+        - title: tool.call
+          type: object
+          required: [type, call]
+          properties:
+            type:
+              const: tool.call
+            call:
+              $ref: "#/components/schemas/ToolCall"
+        - title: tool.calls_pending
+          type: object
+          description: Ends the stream. Send the results to `/session/assistant/turns/{turn_id}/tool-results`.
+          required: [type, turn_id, call_ids]
+          properties:
+            type:
+              const: tool.calls_pending
+            turn_id:
+              $ref: "#/components/schemas/Id"
+            call_ids:
+              type: array
+              minItems: 1
+              items:
+                $ref: "#/components/schemas/Id"
+        - title: turn.completed
+          type: object
+          description: Ends the stream.
+          required: [type, turn_id, budget]
+          properties:
+            type:
+              const: turn.completed
+            turn_id:
+              $ref: "#/components/schemas/Id"
+            budget:
+              $ref: "#/components/schemas/Budget"
+        - title: error
+          type: object
+          description: Ends the stream. The turn failed partway; nothing pending remains.
+          required: [type, code]
+          properties:
+            type:
+              const: error
+            code:
+              type: string
+              enum: [budget_exhausted, model_unavailable, internal]
+            message:
+              type: string
+
+    SubmissionManifest:
+      type: object
+      required: [task_version, branch, base_commit, head_commit, commit_message, files, bundle_sha256, bundle_bytes, created_at, task_files_intact]
+      properties:
+        task_version:
+          type: string
+        branch:
+          type: string
+        base_commit:
+          $ref: "#/components/schemas/GitSha"
+        head_commit:
+          $ref: "#/components/schemas/GitSha"
+        commit_message:
+          type: string
+          maxLength: 5000
+        files:
+          type: array
+          description: Every file changed between `base_commit` and `head_commit`.
+          items:
+            type: object
+            required: [path, change]
+            properties:
+              path:
+                $ref: "#/components/schemas/WorkspacePath"
+              change:
+                type: string
+                enum: [added, modified, deleted, renamed]
+              sha256:
+                $ref: "#/components/schemas/Sha256"
+                description: Of the file at `head_commit`; absent when deleted.
+        checks:
+          type: array
+          description: Tests and builds the CLI ran before submitting, from the task's manifest.
+          items:
+            type: object
+            required: [command, exit_code, duration_ms]
+            properties:
+              command:
+                type: string
+              exit_code:
+                type: integer
+              duration_ms:
+                type: integer
+                minimum: 0
+              summary:
+                type: string
+                maxLength: 2000
+        bundle_sha256:
+          $ref: "#/components/schemas/Sha256"
+        bundle_bytes:
+          type: integer
+          minimum: 0
+        created_at:
+          $ref: "#/components/schemas/Timestamp"
+        task_files_intact:
+          type: boolean
+          description: Every locked file matches the task manifest at `head_commit`.
+
+    Submission:
+      type: object
+      required: [id, status, created_at]
+      properties:
+        id:
+          $ref: "#/components/schemas/Id"
+        status:
+          type: string
+          description: "`awaiting_bundle` until the upload is verified; `rejected` after a mismatch, until a new submission."
+          enum: [awaiting_bundle, verified, rejected]
+        created_at:
+          $ref: "#/components/schemas/Timestamp"
+        verified_at:
+          $ref: "#/components/schemas/Timestamp"
+        head_commit:
+          $ref: "#/components/schemas/GitSha"
