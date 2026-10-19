@@ -27,6 +27,7 @@ func (o *Orchestrator) RunRoleTaskWorker(ctx context.Context) {
 		slog.Warn("orchestrator: no AI service is configured; roles will wait for their tasks")
 	}
 	for {
+		o.settleTasks(ctx)
 		wait := invitationTaskPoll
 		for {
 			more, pause := o.prepareNextRoleTask(ctx)
@@ -43,6 +44,33 @@ func (o *Orchestrator) RunRoleTaskWorker(ctx context.Context) {
 			return
 		case <-time.After(wait):
 		}
+	}
+}
+
+// settleTasks is the worker's sweep for tasks no generation will ever finish:
+// generations that stalled twice are marked failed (and a person alerted), and
+// invitations waiting on a role whose task is ready or has failed are brought
+// in line with it (db.SettleRoleInvitations). Without it a candidate could
+// watch "being prepared" for ever while the worker found nothing to do.
+func (o *Orchestrator) settleTasks(ctx context.Context) {
+	stalled, err := o.DB.FailStalledTasks(ctx)
+	if err != nil {
+		slog.Error("orchestrator: failing stalled task generations", "error", err)
+	}
+	for _, t := range stalled {
+		slog.Error("orchestrator: a task generation stalled twice; marked failed", "id", t.ID, "role", t.RoleTitle, "candidate", t.CandidateEmail)
+		o.alertTaskFailure(ctx, t.ID, "", t.RoleTitle, t.CandidateEmail, "Task generation was interrupted twice before it finished (the backend restarted while it ran).")
+	}
+	adopted, failed, err := o.DB.SettleRoleInvitations(ctx)
+	if err != nil {
+		slog.Error("orchestrator: settling invitations with their role's task", "error", err)
+		return
+	}
+	if adopted > 0 {
+		slog.Info("orchestrator: invitations given their role's task", "count", adopted)
+	}
+	if failed > 0 {
+		slog.Warn("orchestrator: invitations marked failed because their role's task failed", "count", failed)
 	}
 }
 
