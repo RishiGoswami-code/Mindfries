@@ -1,7 +1,8 @@
 # CI for the whole repo (v2/PLAN.md, task 0.2):
 #   - the V1 guard: a V2 PR may not change V1, and a v1-seam PR may not touch v2/
 #   - V1: typecheck, lint and build for the three Next apps; vet and test for the Go backends
-#   - V2: go test for every Go module under v2/ (none yet)
+#   - V2: lint the contracts; vet and test every Go module under v2/ on Linux,
+#     macOS and Windows; cross-build the CLI for every release target
 name: CI
 
 on:
@@ -82,8 +83,8 @@ jobs:
       - run: go vet ./...
       - run: go test ./...
 
-  v2:
-    name: V2
+  v2-contracts:
+    name: V2 contracts
     if: github.event_name == 'push' || github.event.action != 'labeled' && github.event.action != 'unlabeled'
     runs-on: ubuntu-latest
     steps:
@@ -93,20 +94,40 @@ jobs:
           node-version: 22
       - name: Lint the contracts
         run: npx --yes @redocly/cli@1.34.0 lint v2/contracts/*.yaml
+
+  v2-go:
+    name: V2 Go (${{ matrix.os }})
+    if: github.event_name == 'push' || github.event.action != 'labeled' && github.event.action != 'unlabeled'
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          go-version: stable
+          go-version-file: v2/cli/go.mod
           cache: false
-      - name: Test every Go module under v2/
+      - name: Vet and test every Go module under v2/
         run: |
-          mods=$(find v2 -name go.mod -not -path '*/node_modules/*' | sort)
-          if [ -z "$mods" ]; then
-            echo "No V2 Go modules yet."
-            exit 0
-          fi
-          for mod in $mods; do
+          for mod in $(find v2 -name go.mod -not -path '*/node_modules/*' | sort); do
             dir=$(dirname "$mod")
             echo "::group::$dir"
             (cd "$dir" && go vet ./... && go test ./...)
             echo "::endgroup::"
+          done
+      - name: mindfries --version
+        working-directory: v2/cli
+        run: go run ./cmd/mindfries --version
+      - name: Cross-build every release target
+        if: runner.os == 'Linux'
+        working-directory: v2/cli
+        run: |
+          for t in windows/amd64 windows/arm64 darwin/amd64 darwin/arm64 linux/amd64 linux/arm64; do
+            GOOS=${t%/*} GOARCH=${t#*/} CGO_ENABLED=0 go build -o /dev/null ./cmd/mindfries
+            echo "built $t"
           done
