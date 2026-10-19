@@ -2,7 +2,8 @@
 #   - the V1 guard: a V2 PR may not change V1, and a v1-seam PR may not touch v2/
 #   - V1: typecheck, lint and build for the three Next apps; vet and test for the Go backends
 #   - V2: lint the contracts; vet and test every Go module under v2/ on Linux,
-#     macOS and Windows; cross-build the CLI for every release target
+#     macOS and Windows, including the CLI's end-to-end tests (v2/cli/e2e);
+#     cross-build the CLI for every release target
 name: CI
 
 on:
