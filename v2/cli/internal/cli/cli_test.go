@@ -74,7 +74,16 @@ func TestDoctor(t *testing.T) {
 		Free:     10 << 30,
 	}
 	var out bytes.Buffer
-	a := &App{Stdin: strings.NewReader(""), Stdout: &out, Stderr: &out, Getenv: func(string) string { return "" }, Sys: f.Sys("linux", "amd64")}
+	// Its own empty home, so a real session on this computer (whose task
+	// may need other runtimes) doesn't leak in.
+	home := t.TempDir()
+	getenv := func(k string) string {
+		if k == "MINDFRIES_HOME" {
+			return home
+		}
+		return ""
+	}
+	a := &App{Stdin: strings.NewReader(""), Stdout: &out, Stderr: &out, Getenv: getenv, Sys: f.Sys("linux", "amd64")}
 	if code := a.Run([]string{"doctor", "--api", srv.URL + fakeapi.Prefix}); code != 0 {
 		t.Fatalf("healthy doctor exit %d:\n%s", code, out.String())
 	}
