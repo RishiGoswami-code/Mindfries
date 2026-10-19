@@ -8,6 +8,7 @@ package ide
 
 import (
 	"path/filepath"
+	"strings"
 
 	"github.com/mindfries/v2/cli/internal/sys"
 )
@@ -129,7 +130,23 @@ func Launch(s *sys.Sys, e Editor, dir string) error {
 	if e.macApp {
 		return s.Start("open", append([]string{"-na", e.Path, "--args"}, args...)...)
 	}
-	return s.Start(e.Path, args...)
+	return s.Start(launcher(s, e), args...)
+}
+
+// launcher is the program to run for e. On Windows, VS Code's bin\code.cmd
+// is a batch file around the editor; the editor itself (Code.exe, one
+// folder up) is started directly, which avoids cmd.exe altogether.
+func launcher(s *sys.Sys, e Editor) string {
+	if s.GOOS != "windows" || e.Family != VSCode || !strings.EqualFold(filepath.Ext(e.Path), ".cmd") {
+		return e.Path
+	}
+	root := filepath.Dir(filepath.Dir(e.Path))
+	for _, exe := range []string{"Code.exe", "Code - Insiders.exe"} {
+		if p := filepath.Join(root, exe); s.Exists(p) {
+			return p
+		}
+	}
+	return e.Path
 }
 
 // ByID finds an editor by id among eds.
