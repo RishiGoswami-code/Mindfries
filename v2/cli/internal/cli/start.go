@@ -6,10 +6,8 @@ import (
 	"fmt"
 
 	"github.com/mindfries/v2/cli/internal/api"
-	"github.com/mindfries/v2/cli/internal/secret"
 	"github.com/mindfries/v2/cli/internal/state"
 	"github.com/mindfries/v2/cli/internal/watcher"
-	"github.com/mindfries/v2/cli/internal/workspace"
 )
 
 // startOptions are start's flags.
@@ -124,21 +122,4 @@ func (a *App) afterConnect(ctx context.Context, l *state.Local, c *api.Client, o
 		return nil
 	}
 	return a.watch(ctx, l, c, used)
-}
-
-// finish ends the session on this computer after a submit. The full
-// clean-up arrives with stop.
-func (a *App) finish(l *state.Local, c *api.Client, reason string) {
-	workspace.Unlock(l.Workspace, l.Locked)
-	a.forget(l)
-}
-
-// forget removes the local session after the server says it's over.
-func (a *App) forget(l *state.Local) {
-	home, err := a.home()
-	if err != nil {
-		return
-	}
-	_ = secret.Open(home, l.TokenStore).Delete(l.SessionID)
-	_ = state.Remove(home)
 }

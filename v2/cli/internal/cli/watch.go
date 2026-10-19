@@ -71,8 +71,7 @@ func (a *App) watcherStopped(l *state.Local, c *api.Client, reason string) error
 		fmt.Fprintln(a.Stdout, "\nThe session watcher has stopped.")
 		return nil
 	case watcher.ReasonExpired:
-		_ = c.Revoke(context.Background(), "expired")
-		a.forget(l)
+		a.finish(l, c, watcher.ReasonExpired)
 		fmt.Fprintln(a.Stdout, "\nTime's up: this assessment has ended. Your code is still in", l.Workspace)
 		return nil
 	default:

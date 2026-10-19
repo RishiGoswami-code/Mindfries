@@ -3,6 +3,7 @@ package cli
 import (
 	"bytes"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -110,3 +111,10 @@ func (h *harness) started(o fakeapi.SessionOptions, extra ...string) string {
 }
 
 func gitRepo(dir string) *gitx.Repo { return &gitx.Repo{Dir: dir} }
+
+func writeFile(t *testing.T, dir, name, body string) {
+	t.Helper()
+	if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
