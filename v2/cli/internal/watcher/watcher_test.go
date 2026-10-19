@@ -337,3 +337,8 @@ func TestQueueSurvivesRestart(t *testing.T) {
 		t.Fatalf("chain after full compaction: %+v", d)
 	}
 }
+
+func readFile(dir, name string) (string, error) {
+	b, err := os.ReadFile(filepath.Join(dir, name))
+	return string(b), err
+}

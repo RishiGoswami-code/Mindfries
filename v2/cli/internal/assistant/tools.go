@@ -183,9 +183,6 @@ func (x *Executor) proposeEdit(callID string, in api.ProposeEditInput) (api.Tool
 	if fi, err := os.Stat(full); err == nil {
 		mode = fi.Mode().Perm()
 	}
-	if err := os.WriteFile(full, []byte(after), mode); err != nil {
-		return api.ToolResult{}, err
-	}
 	edit := api.AppliedEdit{EditID: newID("edit_"), Path: in.Path, AfterSHA256: workspace.HashBytes([]byte(after))}
 	if exists {
 		edit.BeforeSHA256 = workspace.HashBytes(beforeBytes)
@@ -193,10 +190,15 @@ func (x *Executor) proposeEdit(callID string, in api.ProposeEditInput) (api.Tool
 	for _, r := range addedRanges(before, after) {
 		edit.Ranges = append(edit.Ranges, api.LineRange{Start: r[0], End: r[1]})
 	}
+	// Recorded before the write, so the watcher never sees the change
+	// without its record.
 	if x.Record != nil {
 		if err := x.Record(edit); err != nil {
 			fmt.Fprintf(x.Out, "  (couldn't record the edit: %v)\n", err)
 		}
+	}
+	if err := os.WriteFile(full, []byte(after), mode); err != nil {
+		return api.ToolResult{}, err
 	}
 	fmt.Fprintf(x.Out, "  Applied to %s.\n", in.Path)
 	return api.ToolResult{CallID: callID, Status: api.ToolOK, AppliedEdit: &edit}, nil

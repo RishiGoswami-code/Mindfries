@@ -10,6 +10,7 @@ import (
 
 	"github.com/mindfries/v2/cli/internal/api"
 	"github.com/mindfries/v2/cli/internal/assistant"
+	"github.com/mindfries/v2/cli/internal/ledger"
 	"github.com/mindfries/v2/cli/internal/state"
 )
 
@@ -61,6 +62,7 @@ func (a *App) agent(args []string) error {
 			UI:     u,
 			Out:    a.Stdout,
 			Color:  isTerminal(a.Stdout),
+			Record: func(e api.AppliedEdit) error { return ledger.Append(state.Dir(home), e) },
 		},
 	}
 	return chat.Run(ctx)

@@ -73,6 +73,7 @@ type Watcher struct {
 	snapHash     string
 	lastLine     string
 	agents       *agentState
+	claimed      map[string]bool
 
 	stopOnce sync.Once
 	stopCh   chan string
@@ -276,7 +277,16 @@ func (w *Watcher) handleChanges(changes []Change) {
 			"path": c.Path, "change": c.Kind,
 			"lines_added": c.LinesAdded, "lines_removed": c.LinesRemoved, "bytes_after": c.BytesAfter,
 		})
-		w.noteArrival(c)
+		if origin, editID := w.attribute(c); origin != "" {
+			data := map[string]any{"path": c.Path, "origin": origin, "lines": c.LinesAdded}
+			if editID != "" {
+				data["edit_id"] = editID
+			}
+			w.emit("change.attributed", data)
+			if origin != OriginAssistant {
+				w.noteArrival(c)
+			}
+		}
 		leftover = leftover || (c.Kind == "created" && signals.IsLeftover(c.Path))
 	}
 	if leftover {
