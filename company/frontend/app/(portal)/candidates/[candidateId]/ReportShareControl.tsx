@@ -79,7 +79,7 @@ export function ReportShareControl({
           <div className="flex shrink-0 items-center gap-2">
             {sharedWithCandidate ? (
               <Button
-                variant="secondary"
+                variant="ghost"
                 size="sm"
                 disabled={isPending}
                 onClick={() => handleToggle(false)}
