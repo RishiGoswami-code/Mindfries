@@ -12,6 +12,8 @@ import (
 	"github.com/mindfries/v2/cli/internal/assistant"
 	"github.com/mindfries/v2/cli/internal/ledger"
 	"github.com/mindfries/v2/cli/internal/state"
+	"github.com/mindfries/v2/cli/internal/term"
+	"github.com/mindfries/v2/cli/internal/tui"
 )
 
 func (a *App) agent(args []string) error {
@@ -54,6 +56,8 @@ func (a *App) agent(args []string) error {
 		UI:              u,
 		Out:             a.Stdout,
 		Policy:          sess.Policy,
+		Title:           l.Title,
+		Workspace:       l.Workspace,
 		ConvPath:        filepath.Join(state.Dir(home), "agent.json"),
 		NewConversation: *fresh,
 		Exec: &assistant.Executor{
@@ -65,5 +69,47 @@ func (a *App) agent(args []string) error {
 			Record: func(e api.AppliedEdit) error { return ledger.Append(state.Dir(home), e) },
 		},
 	}
+	if view, restore := a.terminalView(); view != nil {
+		defer restore()
+		chat.View = view
+		chat.Exec.View = view
+	}
 	return chat.Run(ctx)
+}
+
+// terminalView is the rich terminal interface, when the agent runs in
+// a real terminal that can go into raw mode. Otherwise (pipes, scripts,
+// tests, MINDFRIES_PLAIN=1, TERM=dumb) it returns nil and the plain view
+// is used.
+func (a *App) terminalView() (*assistant.TUI, func()) {
+	in, okIn := a.Stdin.(*os.File)
+	out, okOut := a.Stdout.(*os.File)
+	if !okIn || !okOut || a.Getenv("MINDFRIES_PLAIN") == "1" || a.Getenv("TERM") == "dumb" {
+		return nil, nil
+	}
+	restore, err := term.MakeRaw(in, out)
+	if err != nil {
+		return nil, nil
+	}
+	view := assistant.NewTUI(in, out, func() int { return term.Width(out, 80) })
+	raw := true
+	view.Pause = func() {
+		if raw {
+			restore()
+			raw = false
+		}
+	}
+	view.Resume = func() {
+		if !raw {
+			if r, err := term.MakeRaw(in, out); err == nil {
+				restore, raw = r, true
+			}
+		}
+	}
+	return view, func() {
+		fmt.Fprint(out, tui.ShowCursor+tui.PasteOff)
+		if raw {
+			restore()
+		}
+	}
 }

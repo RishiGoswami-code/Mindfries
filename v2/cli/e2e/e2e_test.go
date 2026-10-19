@@ -63,8 +63,11 @@ type session struct {
 	ws   string
 }
 
-func newSession(t *testing.T) *session {
-	s := &session{t: t, srv: fakeapi.New(fakeapi.Config{SignInInterval: time.Second}), home: t.TempDir(), ws: filepath.Join(t.TempDir(), "workspace")}
+func newSession(t *testing.T) *session { return newSessionWith(t, fakeapi.Config{}) }
+
+func newSessionWith(t *testing.T, cfg fakeapi.Config) *session {
+	cfg.SignInInterval = time.Second
+	s := &session{t: t, srv: fakeapi.New(cfg), home: t.TempDir(), ws: filepath.Join(t.TempDir(), "workspace")}
 	ts := httptest.NewServer(s.srv.Handler())
 	t.Cleanup(ts.Close)
 	s.url = ts.URL

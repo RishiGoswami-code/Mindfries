@@ -138,6 +138,43 @@ type Session struct {
 	Limits          Limits    `json:"limits"`
 	LastAckedSeq    int64     `json:"last_acked_seq"`
 	SubmissionID    string    `json:"submission_id,omitempty"`
+	// GitHub is set when the work goes to a repository in the candidate's
+	// own GitHub account.
+	GitHub *GitHub `json:"github,omitempty"`
+}
+
+// GitHub says how the session uses the candidate's GitHub: the CLI signs
+// them in with GitHub's own device login (the Mindfries OAuth app,
+// ClientID), creates a private repository, invites the reviewers and
+// pushes the work there, so deployment can be assessed too.
+type GitHub struct {
+	Required bool     `json:"required"`
+	ClientID string   `json:"client_id"`
+	Scopes   []string `json:"scopes,omitempty"`
+	// RepoName is a suggested repository name; the CLI adds a suffix if
+	// the candidate already has one by that name.
+	RepoName  string   `json:"repo_name,omitempty"`
+	Reviewers []string `json:"reviewers,omitempty"`
+	// Deployment means the task asks for a deployed URL at submit.
+	Deployment bool `json:"deployment,omitempty"`
+}
+
+// GitHubLogin is GitHub's device code, sent so the Mindfries sign-in page
+// can show it next to an "Open GitHub" button.
+type GitHubLogin struct {
+	UserCode        string    `json:"user_code"`
+	VerificationURI string    `json:"verification_uri"`
+	ExpiresAt       time.Time `json:"expires_at"`
+}
+
+// GitHubRepo is the repository the work goes to.
+type GitHubRepo struct {
+	Login            string   `json:"login"`
+	FullName         string   `json:"full_name"`
+	HTMLURL          string   `json:"html_url"`
+	DefaultBranch    string   `json:"default_branch"`
+	Private          bool     `json:"private"`
+	ReviewersInvited []string `json:"reviewers_invited,omitempty"`
 }
 
 type Policy struct {
@@ -389,6 +426,11 @@ type SubmissionManifest struct {
 	BundleBytes     int64            `json:"bundle_bytes"`
 	CreatedAt       time.Time        `json:"created_at"`
 	TaskFilesIntact bool             `json:"task_files_intact"`
+	// GitHubRepo and PushedCommit: where the work was pushed, if anywhere.
+	GitHubRepo   string `json:"github_repo,omitempty"`
+	PushedCommit string `json:"pushed_commit,omitempty"`
+	// DeploymentURL is where the candidate deployed it, if the task asks.
+	DeploymentURL string `json:"deployment_url,omitempty"`
 }
 
 type SubmissionFile struct {
@@ -417,4 +459,7 @@ type Submission struct {
 	CreatedAt  time.Time  `json:"created_at"`
 	VerifiedAt *time.Time `json:"verified_at,omitempty"`
 	HeadCommit string     `json:"head_commit,omitempty"`
+	// DeploymentStatus is the HTTP status the server got from the
+	// deployment URL (0: not checked or unreachable).
+	DeploymentStatus int `json:"deployment_status,omitempty"`
 }

@@ -14,7 +14,7 @@ func TestOpensTheOnlyEditor(t *testing.T) {
 	h := newHarness(t)
 	h.machine.Programs["code"] = "/usr/bin/code"
 	dir := h.started(fakeapi.SessionOptions{})
-	if len(h.machine.Started) != 1 || h.machine.Started[0] != "/usr/bin/code "+dir {
+	if len(h.machine.Started) != 1 || h.machine.Started[0] != "/usr/bin/code --new-window "+dir {
 		t.Fatalf("started: %q", h.machine.Started)
 	}
 	l, _ := state.Load(h.home)

@@ -1,0 +1,151 @@
+package cli
+
+import (
+	"context"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	"github.com/mindfries/v2/cli/fakeapi"
+	"github.com/mindfries/v2/cli/fakeapi/fakegithub"
+	"github.com/mindfries/v2/cli/internal/api"
+	"github.com/mindfries/v2/cli/internal/secret"
+	"github.com/mindfries/v2/cli/internal/state"
+)
+
+// withGitHub points the harness at a fake GitHub and gives sessions a
+// GitHub setting.
+func withGitHub(t *testing.T, h *harness, g api.GitHub) *fakegithub.Server {
+	gh := fakegithub.Start(t)
+	h.env["MINDFRIES_GITHUB_URL"] = gh.URL
+	h.env["MINDFRIES_GITHUB_API"] = gh.API
+	if g.ClientID == "" {
+		g.ClientID = "Iv1.mindfriestest"
+	}
+	h.srv = fakeapi.New(fakeapi.Config{Now: h.now, GitHub: &g})
+	ts := httptest.NewServer(h.srv.Handler())
+	t.Cleanup(ts.Close)
+	h.url = ts.URL + fakeapi.Prefix
+	h.env["MINDFRIES_API"] = h.url
+	return gh
+}
+
+func gitOut(t *testing.T, dir string, args ...string) string {
+	t.Helper()
+	out, err := gitRepo(dir).Run(context.Background(), args...)
+	if err != nil {
+		t.Fatalf("git %v: %v", args, err)
+	}
+	return strings.TrimSpace(out)
+}
+
+func TestStartPutsTheWorkInTheCandidatesGitHub(t *testing.T) {
+	h := newHarness(t)
+	gh := withGitHub(t, h, api.GitHub{Reviewers: []string{"mindfries-reviewer"}, RepoName: "mindfries-rate-limiter", Deployment: true})
+	gh.TakeName("mindfries-rate-limiter") // the candidate already has one
+
+	dir := h.started(fakeapi.SessionOptions{Title: "Rate limiter", Task: quickTask()})
+	id := h.srv.OnlySessionID()
+
+	full := "octocandidate/mindfries-rate-limiter-2"
+	if got := gh.Collaborators(full); got["mindfries-reviewer"] != "pull" {
+		t.Fatalf("reviewers: %v (repos %v)", got, gh.Repos())
+	}
+	base := gitOut(t, dir, "rev-parse", "HEAD")
+	if got := gh.Head(full, "main"); got != base {
+		t.Fatalf("pushed %q, want the baseline %q", got, base)
+	}
+	if r := h.srv.GitHubRepo(id); r == nil || r.FullName != full || len(r.ReviewersInvited) != 1 {
+		t.Fatalf("reported repo: %+v", r)
+	}
+	// The candidate's own identity, the remote, and the helper for its host
+	// only.
+	if got := gitOut(t, dir, "config", "user.email"); got != "4242+octocandidate@users.noreply.github.com" {
+		t.Fatalf("user.email = %q", got)
+	}
+	if got := gitOut(t, dir, "remote", "get-url", "origin"); got != gh.URL+"/git/"+full+".git" {
+		t.Fatalf("origin = %q", got)
+	}
+	key := "credential." + gh.URL + ".helper"
+	if got := gitOut(t, dir, "config", "--get-all", key); !strings.Contains(got, "git-credential") {
+		t.Fatalf("%s = %q", key, got)
+	}
+	// The token is in the store, never in the repository.
+	l, _ := state.Load(h.home)
+	if tok, err := secret.OpenGitHub(h.home, l.GitHubStore).Get(secret.GitHubID(id)); err != nil || tok != gh.Token {
+		t.Fatalf("stored token: %q %v", tok, err)
+	}
+	if cfg, _ := os.ReadFile(filepath.Join(dir, ".git", "config")); strings.Contains(string(cfg), gh.Token) {
+		t.Fatal("the token is in .git/config")
+	}
+
+	// The credential helper answers git for that host, and nothing else.
+	var out strings.Builder
+	a := h.app("protocol=http\nhost="+strings.TrimPrefix(gh.URL, "http://")+"\n\n", nil)
+	a.Stdout = &out
+	if code := a.Run([]string{"git-credential", "get"}); code != 0 || !strings.Contains(out.String(), "password="+gh.Token) {
+		t.Fatalf("helper: %d %q", code, out.String())
+	}
+	out.Reset()
+	a = h.app("protocol=https\nhost=example.com\n\n", nil)
+	a.Stdout = &out
+	if a.Run([]string{"git-credential", "get"}); out.Len() != 0 {
+		t.Fatalf("helper answered another host: %q", out.String())
+	}
+
+	// Submit pushes the final commit and records the deployment.
+	site := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(200) }))
+	defer site.Close()
+	writeFile(t, dir, "limiter.py", "def allow(key):\n    return True\n")
+	exit, sout := h.run("", "submit", "-m", "Rate limiter", "--yes", "--url", site.URL)
+	if exit != 0 {
+		t.Fatalf("submit: %d\n%s", exit, sout)
+	}
+	head := gitOut(t, dir, "rev-parse", "HEAD")
+	if got := gh.Head(full, "main"); got != head {
+		t.Fatalf("after submit main = %q, want %q\n%s", got, head, sout)
+	}
+	sub, _ := h.srv.Submission(id)
+	if sub == nil || !strings.Contains(sout, "Pushed to") {
+		t.Fatalf("submission %+v\n%s", sub, sout)
+	}
+	// Cleaned up: no GitHub token, no helper; the remote and repo stay.
+	if _, err := secret.OpenGitHub(h.home, "file").Get(secret.GitHubID(id)); err == nil {
+		t.Fatal("the GitHub token is still stored")
+	}
+	if got, _ := gitRepo(dir).Run(context.Background(), "config", "--get-all", key); strings.TrimSpace(got) != "" {
+		t.Fatalf("helper left behind: %q", got)
+	}
+	if got := gitOut(t, dir, "remote", "get-url", "origin"); !strings.HasSuffix(got, full+".git") {
+		t.Fatalf("origin removed: %q", got)
+	}
+}
+
+func TestGitHubRefusedKeepsTheSession(t *testing.T) {
+	h := newHarness(t)
+	gh := withGitHub(t, h, api.GitHub{Required: true})
+	gh.Deny = true
+	dir := filepath.Join(t.TempDir(), "ws")
+	code := h.srv.MintSetupCode(fakeapi.SessionOptions{Task: quickTask()})
+	exit, out := h.run("", "start", code, "--dir", dir, "--yes")
+	if exit == 0 || !strings.Contains(out, "cancelled") || !strings.Contains(out, "run 'mindfries start' to connect GitHub again") {
+		t.Fatalf("denied: %d\n%s", exit, out)
+	}
+	// Trying again works and doesn't set the workspace up twice.
+	gh.Deny = false
+	exit, out = h.run("", "start", "--dir", dir, "--yes")
+	if exit != 0 || !strings.Contains(out, "Signed in to GitHub as @octocandidate") || strings.Contains(out, "Downloading") {
+		t.Fatalf("retry: %d\n%s", exit, out)
+	}
+}
+
+func TestNoGitHubWhenTheSessionDoesntUseIt(t *testing.T) {
+	h := newHarness(t)
+	dir := h.started(fakeapi.SessionOptions{Task: quickTask()})
+	if out, _ := gitRepo(dir).Run(context.Background(), "remote"); strings.TrimSpace(out) != "" {
+		t.Fatalf("remotes: %q", out)
+	}
+}

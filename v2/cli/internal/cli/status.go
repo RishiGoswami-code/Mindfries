@@ -53,6 +53,12 @@ func (a *App) status(args []string) error {
 		return nil
 	}
 	fmt.Fprintf(a.Stdout, "Workspace    %s\n", local.Workspace)
+	switch {
+	case local.Repo != nil:
+		fmt.Fprintf(a.Stdout, "GitHub       %s (private), pushes to %s\n", local.Repo.HTMLURL, local.Repo.Branch)
+	case local.GitHub != nil:
+		fmt.Fprintln(a.Stdout, "GitHub       not connected yet: run 'mindfries start'")
+	}
 	a.printWatcher(local)
 	r := &gitx.Repo{Dir: local.Workspace}
 	if b, err := r.Branch(ctx); err == nil {

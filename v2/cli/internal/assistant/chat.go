@@ -23,9 +23,14 @@ import (
 type Chat struct {
 	Client *api.Client
 	Exec   *Executor
+	// View shows everything; nil means the plain view on UI and Out.
+	View   View
 	UI     *ui.UI
 	Out    io.Writer
 	Policy api.Policy
+	// Title and Workspace are shown when the agent opens.
+	Title     string
+	Workspace string
 	// ConvPath remembers the conversation between runs.
 	ConvPath string
 	// NewConversation starts afresh instead of carrying on.
@@ -40,101 +45,118 @@ var modeText = map[string]string{
 	api.ModeCodeAllowed: "it can propose code changes and commands; nothing happens without your yes",
 }
 
+// Commands are the slash commands, for /help and the TUI's hints.
+var Commands = [][2]string{
+	{"/help", "show the commands"},
+	{"/new", "start a new conversation"},
+	{"/budget", "show the tokens left"},
+	{"/clear", "clear the screen"},
+	{"/exit", "leave (your session carries on)"},
+}
+
+func (c *Chat) view() View {
+	if c.View == nil {
+		c.View = &Plain{UI: c.UI, Out: c.Out}
+	}
+	return c.View
+}
+
 // Run reads the candidate's messages until /exit or end of input.
 func (c *Chat) Run(ctx context.Context) error {
+	v := c.view()
+	if c.Exec != nil && c.Exec.View == nil {
+		c.Exec.View = v
+	}
 	if c.Policy.AssistantMode == api.ModeOff {
-		fmt.Fprintln(c.Out, "The assistant is off for this assessment.")
+		v.Notice("The assistant is off for this assessment.")
 		return nil
 	}
 	c.budget = c.Policy.AssistantBudget
 	if !c.NewConversation {
 		c.loadConv()
 	}
-	fmt.Fprintf(c.Out, "mindfries agent: %s.\n", modeText[c.Policy.AssistantMode])
-	if c.budget != nil {
-		fmt.Fprintf(c.Out, "Budget: %d of %d tokens left.\n", c.budget.TokensRemaining, c.budget.TokensTotal)
-	}
-	fmt.Fprintln(c.Out, "Everything you ask and everything it does is part of the assessment record.")
-	fmt.Fprintln(c.Out, "Type a message (end a line with \\ to continue it). /help for commands, /exit to leave.")
+	v.Welcome(Welcome{Title: c.Title, Workspace: c.Workspace, Mode: modeText[c.Policy.AssistantMode], Budget: c.budget})
 	for {
-		msg, ok := c.read()
+		msg, ok := v.Read()
 		if !ok {
-			fmt.Fprintln(c.Out)
 			return nil
 		}
-		switch strings.TrimSpace(msg) {
+		switch strings.ToLower(strings.TrimSpace(msg)) {
 		case "":
 			continue
-		case "/exit", "/quit":
+		case "/exit", "/quit", "exit", "quit":
 			return nil
-		case "/help":
-			fmt.Fprintln(c.Out, "/new     start a new conversation\n/budget  show the tokens left\n/exit    leave (your session carries on)")
+		case "/help", "help":
+			var lines []string
+			for _, cmd := range Commands {
+				lines = append(lines, fmt.Sprintf("%-8s %s", cmd[0], cmd[1]))
+			}
+			v.Help(lines)
 			continue
 		case "/new":
 			c.conv = ""
 			c.saveConv()
-			fmt.Fprintln(c.Out, "Started a new conversation.")
+			v.Notice("Started a new conversation.")
 			continue
 		case "/budget":
 			c.printBudget()
 			continue
+		case "/clear":
+			v.Clear()
+			continue
 		}
 		if err := c.turn(ctx, msg); err != nil {
+			if errors.Is(err, context.Canceled) && ctx.Err() == nil {
+				v.TurnFailed("Interrupted. What should it do instead?")
+				continue
+			}
 			if p, ok := api.AsProblem(err); ok {
 				switch p.Code {
 				case api.CodeBudgetExhausted:
-					fmt.Fprintln(c.Out, "The assistant's budget for this session is used up. You can keep working without it.")
+					v.Notice("The assistant's budget for this session is used up. You can keep working without it.")
 					continue
 				case api.CodeAssistantOff:
-					fmt.Fprintln(c.Out, "The assistant is off for this assessment.")
+					v.Notice("The assistant is off for this assessment.")
 					return nil
 				}
 				if api.IsAuthFailure(err) || p.Code == api.CodeSessionNotActive {
 					return errors.New("this assessment session has ended")
 				}
 			}
-			fmt.Fprintf(c.Out, "\nThat didn't go through (%v). Try again.\n", err)
+			v.TurnFailed(fmt.Sprintf("That didn't go through (%v). Try again.", err))
 		}
-	}
-}
-
-func (c *Chat) read() (string, bool) {
-	fmt.Fprint(c.Out, "\nyou> ")
-	var parts []string
-	for {
-		line, ok := c.UI.Line()
-		if !ok {
-			return strings.Join(parts, "\n"), len(parts) > 0
-		}
-		if strings.HasSuffix(line, "\\") {
-			parts = append(parts, strings.TrimSuffix(line, "\\"))
-			fmt.Fprint(c.Out, "...> ")
-			continue
-		}
-		parts = append(parts, line)
-		return strings.Join(parts, "\n"), true
 	}
 }
 
 func (c *Chat) printBudget() {
 	if c.budget == nil {
-		fmt.Fprintln(c.Out, "No budget is set for this session.")
+		c.view().Notice("No budget is set for this session.")
 		return
 	}
-	fmt.Fprintf(c.Out, "%d of %d tokens left.\n", c.budget.TokensRemaining, c.budget.TokensTotal)
+	c.view().Notice(fmt.Sprintf("%d of %d tokens left.", c.budget.TokensRemaining, c.budget.TokensTotal))
 }
 
-// turn sends one message and follows the turn through any tool calls.
+// turn sends one message and follows the turn through any tool calls. Esc
+// (in the TUI) cancels the reply while it streams.
 func (c *Chat) turn(ctx context.Context, msg string) error {
-	st, err := c.Client.StartTurn(ctx, api.AssistantTurnRequest{ConversationID: c.conv, Message: msg})
+	v := c.view()
+	tctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	v.TurnStart()
+	stopWatch := v.Interruptible(cancel)
+	st, err := c.Client.StartTurn(tctx, api.AssistantTurnRequest{ConversationID: c.conv, Message: msg})
 	if err != nil {
+		stopWatch()
 		return err
 	}
-	fmt.Fprint(c.Out, "\nagent> ")
 	for {
 		turnID, calls, err := c.follow(st)
 		st.Close()
+		stopWatch()
 		if err != nil {
+			if tctx.Err() != nil {
+				return context.Canceled
+			}
 			return err
 		}
 		if len(calls) == 0 {
@@ -144,16 +166,22 @@ func (c *Chat) turn(ctx context.Context, msg string) error {
 		for _, call := range calls {
 			results = append(results, c.Exec.Execute(ctx, call))
 		}
-		st, err = c.Client.SendToolResults(ctx, turnID, api.ToolResults{Results: results})
+		v.ResultsSent()
+		stopWatch = v.Interruptible(cancel)
+		st, err = c.Client.SendToolResults(tctx, turnID, api.ToolResults{Results: results})
 		if err != nil {
+			stopWatch()
+			if tctx.Err() != nil {
+				return context.Canceled
+			}
 			return err
 		}
-		fmt.Fprint(c.Out, "\nagent> ")
 	}
 }
 
-// follow prints a stream and returns the calls it asked for, if any.
+// follow shows a stream and returns the calls it asked for, if any.
 func (c *Chat) follow(st *api.Stream) (string, []api.ToolCall, error) {
+	v := c.view()
 	var calls []api.ToolCall
 	for {
 		ev, err := st.Next()
@@ -173,29 +201,27 @@ func (c *Chat) follow(st *api.Stream) (string, []api.ToolCall, error) {
 				c.budget = ev.Budget
 			}
 		case api.StreamTextDelta:
-			fmt.Fprint(c.Out, ev.Text)
+			v.Text(ev.Text)
 		case api.StreamResearchSource:
 			title := ev.Title
 			if title == "" {
 				title = ev.URL
 			}
-			fmt.Fprintf(c.Out, "\n  [source] %s (%s)\n", title, ev.URL)
+			v.Source(title, ev.URL)
 		case api.StreamResearchRefused:
-			fmt.Fprintf(c.Out, "\n  [research refused: %s isn't an allowed source for this assessment]\n", ev.Domain)
+			v.ResearchRefused(ev.Domain)
 		case api.StreamToolCall:
 			if ev.Call != nil {
 				calls = append(calls, *ev.Call)
 			}
 		case api.StreamCallsPending:
-			fmt.Fprintln(c.Out)
+			v.CallsPending()
 			return ev.TurnID, calls, nil
 		case api.StreamTurnCompleted:
 			if ev.Budget != nil {
 				c.budget = ev.Budget
-				fmt.Fprintf(c.Out, "\n(%d tokens left)\n", ev.Budget.TokensRemaining)
-			} else {
-				fmt.Fprintln(c.Out)
 			}
+			v.TurnDone(ev.Budget)
 			return ev.TurnID, nil, nil
 		case api.StreamError:
 			if ev.Code == api.CodeBudgetExhausted {

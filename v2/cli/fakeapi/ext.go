@@ -14,6 +14,8 @@ type sessionExt struct {
 	submission *submission
 	bundle     []byte
 	assistant  assistantState
+	ghLogin    *api.GitHubLogin
+	ghRepo     *api.GitHubRepo
 }
 
 func newExt() sessionExt {

@@ -19,6 +19,8 @@ type SessionOptions struct {
 	Intervals api.Intervals // default 30s / 120s / 180s
 	Limits    api.Limits
 	Task      *Task // default DemoTask()
+	// GitHub overrides Config.GitHub for this assessment.
+	GitHub *api.GitHub
 }
 
 type setupCode struct {
@@ -172,6 +174,7 @@ func (s *Server) newSession(o SessionOptions) *session {
 	}
 	budget := *o.Policy.AssistantBudget
 	sess.Policy.AssistantBudget = &budget
+	sess.GitHub = s.githubFor(o)
 	s.sessions[sess.ID] = sess
 	return sess
 }

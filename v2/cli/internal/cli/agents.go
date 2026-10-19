@@ -43,13 +43,18 @@ func (a *App) checkAgentsBeforeStart(ctx context.Context, yes bool) startAgents 
 	}
 	first := found
 	u := a.ui(yes)
-	for len(found) > 0 {
+	for round := 0; len(found) > 0; round++ {
 		var names []string
 		for _, m := range found {
 			names = append(names, m.ProcessName)
 		}
-		fmt.Fprintf(a.Stdout, "\nThese coding agents are running: %s\n", strings.Join(names, ", "))
-		fmt.Fprintln(a.Stdout, "Please close them before you start. If you go ahead with them open, that is noted for the reviewer.")
+		if round == 0 {
+			fmt.Fprintf(a.Stdout, "\nThese coding agents are running: %s\n", strings.Join(names, ", "))
+			fmt.Fprintln(a.Stdout, "Please close them before you start. If you go ahead with them open, that is noted for the reviewer.")
+		} else {
+			// Answering yes again doesn't help while they're still open.
+			fmt.Fprintf(a.Stdout, "\nStill running: %s. Quit them completely (check the system tray too), or answer n to start with them open.\n", strings.Join(names, ", "))
+		}
 		if yes {
 			return startAgents{matches: first}
 		}

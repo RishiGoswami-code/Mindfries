@@ -116,6 +116,13 @@ func (a *App) afterConnect(ctx context.Context, l *state.Local, c *api.Client, o
 		return err
 	}
 	stateDir := state.Dir(home)
+	if err := a.connectGitHub(ctx, l, c); err != nil {
+		var ee *ExitError
+		if errors.As(err, &ee) {
+			return err
+		}
+		fmt.Fprintf(a.Stdout, "GitHub: %v\n", err)
+	}
 	alreadyWatching := watcher.Running(stateDir)
 	used := a.openEditor(l, o.ide, o.yes)
 	if used != l.IDE {

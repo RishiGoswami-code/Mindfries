@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/mindfries/v2/cli/internal/api"
 	"github.com/mindfries/v2/cli/internal/gitx"
@@ -62,7 +63,24 @@ func (s *Server) handleCreateSubmission(w http.ResponseWriter, r *http.Request, 
 	sub := &submission{Submission: api.Submission{ID: randomID("sub_", 6), Status: api.SubmissionAwaitingBundle, CreatedAt: s.now()}, manifest: m, raw: raw}
 	ss.ext.submission = sub
 	ss.SubmissionID = sub.ID
+	if u := m.DeploymentURL; strings.HasPrefix(u, "https://") || strings.HasPrefix(u, "http://") {
+		go s.checkDeployment(sub, u)
+	}
 	writeJSON(w, http.StatusCreated, sub.Submission)
+}
+
+// checkDeployment asks the deployment URL once, as the real API would
+// before a reviewer looks, and records the status it answers with.
+func (s *Server) checkDeployment(sub *submission, u string) {
+	c := &http.Client{Timeout: 10 * time.Second}
+	resp, err := c.Get(u)
+	if err != nil {
+		return
+	}
+	resp.Body.Close()
+	s.mu.Lock()
+	sub.DeploymentStatus = resp.StatusCode
+	s.mu.Unlock()
 }
 
 func (s *Server) handleGetSubmission(w http.ResponseWriter, r *http.Request, ss *session) {

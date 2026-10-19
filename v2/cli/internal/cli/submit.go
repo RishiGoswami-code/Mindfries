@@ -26,6 +26,7 @@ func (a *App) submit(args []string) error {
 	fs := a.newFlags("submit [flags]", "Runs the task's checks, shows your changes, commits them and hands in.")
 	message := fs.String("m", "", "commit message (default: asks)")
 	yes := fs.Bool("yes", false, "don't ask: use the defaults and hand in")
+	deployURL := fs.String("url", "", "where you deployed it, if the task asks (default: asks)")
 	if _, err := parse(fs, args); err != nil {
 		return err
 	}
@@ -100,6 +101,11 @@ func (a *App) submit(args []string) error {
 			return err
 		}
 	}
+	pushed := a.pushForSubmit(ctx, l)
+	deployment := strings.TrimSpace(*deployURL)
+	if deployment == "" && l.GitHub != nil && l.GitHub.Deployment && !*yes {
+		deployment = strings.TrimSpace(u.Ask("Where is it deployed? (the URL, or Enter if it isn't)", ""))
+	}
 
 	// Let the watcher send everything it has before the session closes.
 	if watcher.Running(stateDir) {
@@ -117,6 +123,11 @@ func (a *App) submit(args []string) error {
 	if err != nil {
 		return err
 	}
+	if l.Repo != nil {
+		m.GitHubRepo = l.Repo.FullName
+		m.PushedCommit = pushed
+	}
+	m.DeploymentURL = deployment
 	if l.Limits.MaxBundleBytes > 0 && m.BundleBytes > l.Limits.MaxBundleBytes {
 		return fmt.Errorf("your work is %d MB, more than the %d MB limit. Remove large generated files (add them to .gitignore), then run 'mindfries submit' again", m.BundleBytes>>20, l.Limits.MaxBundleBytes>>20)
 	}
@@ -143,6 +154,16 @@ func (a *App) submit(args []string) error {
 	_ = os.Remove(bundlePath)
 
 	fmt.Fprintf(a.Stdout, "\nSubmitted. Commit %s, received %s.\n", short(m.HeadCommit), time.Now().Format("15:04"))
+	if m.DeploymentURL != "" {
+		if sub.DeploymentStatus > 0 {
+			fmt.Fprintf(a.Stdout, "Your deployment at %s answered %d.\n", m.DeploymentURL, sub.DeploymentStatus)
+		} else {
+			fmt.Fprintf(a.Stdout, "Mindfries couldn't reach %s yet; it's recorded and will be checked again.\n", m.DeploymentURL)
+		}
+	}
+	if l.Repo != nil {
+		fmt.Fprintf(a.Stdout, "Your repository stays yours: %s\n", l.Repo.HTMLURL)
+	}
 	_ = state.SaveLast(home, &state.Last{Title: l.Title, SubmittedAt: time.Now().UTC(), HeadCommit: m.HeadCommit, SubmissionID: sub.ID, Workspace: l.Workspace})
 	a.finish(l, c, "submitted")
 	fmt.Fprintf(a.Stdout, "This computer's session has been cleaned up. Your code stays in %s.\n", l.Workspace)

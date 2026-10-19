@@ -47,14 +47,32 @@ func main() {
 	base = strings.TrimRight(base, "/")
 	token := os.Getenv("FAKEAPI_ADMIN_TOKEN")
 
-	s := fakeapi.New(fakeapi.Config{MinVersion: *min, AdminToken: token, PublicURL: publicURL, DistDir: *dist})
+	cfg := fakeapi.Config{MinVersion: *min, AdminToken: token, PublicURL: publicURL, DistDir: *dist}
+	// The candidate's GitHub: the Mindfries OAuth app's client ID (public;
+	// device flow enabled) and who reviews. Without a client ID the work
+	// stays local and is handed in as a bundle.
+	if id := os.Getenv("FAKEAPI_GITHUB_CLIENT_ID"); id != "" {
+		g := &api.GitHub{ClientID: id, Required: os.Getenv("FAKEAPI_GITHUB_OPTIONAL") != "1", Deployment: true}
+		for _, r := range strings.Split(os.Getenv("FAKEAPI_GITHUB_REVIEWERS"), ",") {
+			if r = strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(r), "@")); r != "" {
+				g.Reviewers = append(g.Reviewers, r)
+			}
+		}
+		cfg.GitHub = g
+	}
+	s := fakeapi.New(cfg)
 	s.Invite(fakeapi.SessionOptions{Title: "Demo assessment: rate limiter"})
 	explain := fakeapi.SessionOptions{Title: "Demo assessment: explain-only assistant", Duration: 60 * time.Minute}
 	explain.Policy.AssistantMode = api.ModeExplainOnly
 	s.Invite(explain)
 
 	log.Printf("fake V2 API on %s%s", base, fakeapi.Prefix)
-	log.Printf("sign-in page: %s/device (any email; two demo assessments)", base)
+	log.Printf("sign-in page: %s/device (a fake browser session; two demo assessments)", base)
+	if cfg.GitHub != nil {
+		log.Printf("GitHub: the work goes to the candidate's own GitHub (OAuth app %s; reviewers %v)", cfg.GitHub.ClientID, cfg.GitHub.Reviewers)
+	} else {
+		log.Printf("GitHub: off (set FAKEAPI_GITHUB_CLIENT_ID to turn it on)")
+	}
 	if *dist != "" {
 		log.Printf("install: irm %s/install.ps1 | iex      (Windows PowerShell)", base)
 		log.Printf("install: curl -fsSL %s/install.sh | sh   (macOS, Linux)", base)

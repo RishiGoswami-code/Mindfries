@@ -35,6 +35,16 @@ type Executor struct {
 	Color  bool
 	// Record is called with every edit that was applied (task 1.17).
 	Record func(api.AppliedEdit) error
+	// View shows the calls and asks for approval; nil means the plain view
+	// on UI and Out.
+	View View
+}
+
+func (x *Executor) view() View {
+	if x.View == nil {
+		x.View = &Plain{UI: x.UI, Out: x.Out, Color: x.Color}
+	}
+	return x.View
 }
 
 // refusal is a tool call the CLI won't carry out.
@@ -75,7 +85,7 @@ func (x *Executor) Execute(ctx context.Context, c api.ToolCall) api.ToolResult {
 	var r refusal
 	switch {
 	case errors.As(err, &r):
-		fmt.Fprintf(x.Out, "  (refused: %s)\n", r.why)
+		x.view().Refused(r.why)
 		return api.ToolResult{CallID: c.CallID, Status: api.ToolRefused, Output: r.why}
 	case err != nil:
 		return api.ToolResult{CallID: c.CallID, Status: api.ToolError, Output: err.Error()}
@@ -112,11 +122,12 @@ func (x *Executor) readFile(in api.ReadFileInput) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	fmt.Fprintf(x.Out, "  > reading %s\n", in.Path)
+	x.view().ToolRead(in.Path)
 	b, err := os.ReadFile(full)
 	if err != nil {
 		return "", err
 	}
+	x.view().ToolReadDone(in.Path, string(b))
 	return string(b), nil
 }
 
@@ -128,8 +139,12 @@ func (x *Executor) listFiles(ctx context.Context, in api.ListFilesInput) (string
 		}
 		args = append(args, "--", in.Dir)
 	}
-	fmt.Fprintln(x.Out, "  > listing files")
-	return (&gitx.Repo{Dir: x.Root}).Run(ctx, args...)
+	x.view().ToolList(in.Dir)
+	out, err := (&gitx.Repo{Dir: x.Root}).Run(ctx, args...)
+	if err == nil {
+		x.view().ToolListDone(out)
+	}
+	return out, err
 }
 
 func newID(prefix string) string {
@@ -171,9 +186,8 @@ func (x *Executor) proposeEdit(callID string, in api.ProposeEditInput) (api.Tool
 	if in.Create && after != "" && !strings.HasSuffix(after, "\n") {
 		after += "\n"
 	}
-	fmt.Fprintln(x.Out)
-	writeDiff(x.Out, in.Path, before, after, x.Color)
-	if !x.UI.Explicit(fmt.Sprintf("Apply this change to %s?", in.Path)) {
+	x.view().ShowEdit(in.Path, in.Create, before, after)
+	if !x.view().ConfirmEdit(in.Path) {
 		return api.ToolResult{CallID: callID, Status: api.ToolRejected}, nil
 	}
 	if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
@@ -194,13 +208,13 @@ func (x *Executor) proposeEdit(callID string, in api.ProposeEditInput) (api.Tool
 	// without its record.
 	if x.Record != nil {
 		if err := x.Record(edit); err != nil {
-			fmt.Fprintf(x.Out, "  (couldn't record the edit: %v)\n", err)
+			fmt.Fprintf(x.view().CommandOutput(), "  (couldn't record the edit: %v)\n", err)
 		}
 	}
 	if err := os.WriteFile(full, []byte(after), mode); err != nil {
 		return api.ToolResult{}, err
 	}
-	fmt.Fprintf(x.Out, "  Applied to %s.\n", in.Path)
+	x.view().Applied(in.Path, before, after)
 	return api.ToolResult{CallID: callID, Status: api.ToolOK, AppliedEdit: &edit}, nil
 }
 
@@ -216,11 +230,7 @@ func (x *Executor) runCommand(ctx context.Context, callID string, in api.RunComm
 	if err := x.checkCommand(in.Command); err != nil {
 		return api.ToolResult{}, err
 	}
-	fmt.Fprintf(x.Out, "\nThe assistant wants to run, in %s:\n  %s\n", rel(x.Root, dir), in.Command)
-	for _, warn := range x.commandWarnings(in.Command) {
-		fmt.Fprintln(x.Out, "  "+warn)
-	}
-	if !x.UI.Explicit("Run it?") {
+	if !x.view().ConfirmCommand(in.Command, rel(x.Root, dir), x.commandWarnings(in.Command)) {
 		return api.ToolResult{CallID: callID, Status: api.ToolRejected}, nil
 	}
 	timeout := time.Duration(in.TimeoutSeconds) * time.Second
@@ -228,10 +238,11 @@ func (x *Executor) runCommand(ctx context.Context, callID string, in api.RunComm
 		timeout = 2 * time.Minute
 	}
 	var buf bytes.Buffer
-	res, err := shell.Run(ctx, dir, in.Command, io.MultiWriter(x.Out, &buf), timeout)
+	res, err := shell.Run(ctx, dir, in.Command, io.MultiWriter(x.view().CommandOutput(), &buf), timeout)
 	if err != nil {
 		return api.ToolResult{}, err
 	}
+	x.view().CommandDone(res.ExitCode, res.TimedOut)
 	out := buf.String()
 	if len(out) > maxOutput {
 		out = "[earlier output cut]\n" + out[len(out)-maxOutput:]
