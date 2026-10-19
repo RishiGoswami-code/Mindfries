@@ -110,3 +110,17 @@ func TestDevKeyOptInOnlyForDevBuilds(t *testing.T) {
 		t.Fatal("opted in without the variable")
 	}
 }
+
+func TestDevKeyBakedIntoDevBuilds(t *testing.T) {
+	defer func() { trust.AllowDevKeyAnywhere = false }()
+	oldKey, oldVer := buildinfo.TrustDevKey, buildinfo.Version
+	defer func() { buildinfo.TrustDevKey, buildinfo.Version = oldKey, oldVer }()
+	buildinfo.TrustDevKey = "1"
+	if _, out := run(t, "", nil, "--version"); !trust.AllowDevKeyAnywhere || !strings.Contains(out, "trusting the fake API's development key") {
+		t.Fatalf("baked-in dev build didn't trust the dev key: %q", out)
+	}
+	buildinfo.Version = "1.0.0"
+	if _, _ = run(t, "", nil, "--version"); trust.AllowDevKeyAnywhere {
+		t.Fatal("a release build trusted the dev key")
+	}
+}

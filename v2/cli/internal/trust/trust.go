@@ -27,8 +27,8 @@ var ManifestKeys = ""
 const DevKeyID = "dev-fakeapi"
 
 // AllowDevKeyAnywhere trusts the dev key from any API, for a throwaway
-// deployment of the fake API. The CLI sets it only for dev builds, and only
-// when MINDFRIES_TRUST_DEV_KEY=1; release builds never do.
+// deployment of the fake API. The CLI sets it only for dev builds: baked in
+// with buildinfo.TrustDevKey, or MINDFRIES_TRUST_DEV_KEY=1. Release builds never do.
 var AllowDevKeyAnywhere = false
 
 // DevPrivateKey is the fake API's signing key. It is derived from a fixed
