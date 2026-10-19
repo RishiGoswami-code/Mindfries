@@ -30,6 +30,7 @@ import { LocalTime } from "@/components/jobs/LocalTime";
 import { BackendAuthError, BackendError, getSession, getSessionReport, sessionEventsOrUndefined, type EvidenceItemView, type ReportView, type SessionView } from "@/lib/backend/client";
 import { currentCandidate } from "@/lib/auth/users";
 import { getProfile } from "@/lib/profile/actions";
+import type { CandidateProfile } from "@/lib/profile/types";
 import { loadReportActivity, type ReportActivity } from "@/lib/report/data";
 import { clock, shortTimeline } from "@/lib/report/trail";
 import { display } from "@/lib/dashboard/fonts";
@@ -212,7 +213,7 @@ function SubmissionPendingView({
 }: {
   session: SessionView;
   activity: ReportActivity | null;
-  profile: any;
+  profile: CandidateProfile | null;
   viewerName?: string;
 }) {
   const trail = activity?.trail;

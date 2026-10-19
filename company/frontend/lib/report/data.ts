@@ -64,9 +64,10 @@ export async function loadReportActivity(
     }
 
     // 4. Fetch starter files from game_templates
-    let starterPromise: Promise<{ data: any; error: any }> = Promise.resolve({ data: null, error: null });
+    type StarterResult = { data: { starter_files: unknown } | null; error: { message: string } | null };
+    let starterPromise: PromiseLike<StarterResult> = Promise.resolve({ data: null, error: null });
     if (tid) {
-      starterPromise = c.from("game_templates").select("starter_files").eq("id", tid).maybeSingle() as any;
+      starterPromise = c.from("game_templates").select("starter_files").eq("id", tid).maybeSingle();
     }
 
     const [eventsRes, snapshotRes, starterRes] = await Promise.all([eventsPromise, snapshotPromise, starterPromise]);
