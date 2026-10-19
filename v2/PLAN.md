@@ -142,7 +142,8 @@ The commands are:
     - the session token and its expiry;
     - the task bundle and its manifest;
     - heartbeat;
-    - event batches;
+    - event batches, including the coding-agent signals;
+    - diff snapshots;
     - the submission manifest and upload;
     - revoke;
     - the minimum CLI version.
@@ -177,7 +178,7 @@ The commands are:
   - It refuses a folder that isn't empty unless the candidate confirms.
   - *Done when:* a tampered bundle is rejected, and a re-run resumes rather than duplicating.
 - [ ] **1.6 IDE launch.**
-  - Supported IDEs: VS Code, Cursor, JetBrains IDEs (via their launchers) and Zed.
+  - Supported IDEs: VS Code, JetBrains IDEs (via their launchers) and Zed. Agent-first IDEs (Antigravity, Cursor, Windsurf) are not offered, and 1.8 marks them if they're open anyway.
   - The CLI detects which are installed and opens the one the candidate picks. If none is found, it prints the path to open by hand.
   - *Done when:* launch works or fails gracefully on each OS.
 - [ ] **1.7 The local agent.**
@@ -189,7 +190,17 @@ The commands are:
   - Events go in batches with retry and backoff. Batches are capped in size, and a batch the server refuses as malformed is dropped. These are the lessons from V1's telemetry backlog bug.
   - It shows "last synced …".
   - *Done when:* if the network is cut for 10 minutes, nothing is lost and nothing is duplicated after reconnecting.
-- [ ] **1.8 Submit.**
+- [ ] **1.8 Coding-agent signals.**
+  - The policy: candidates may use **our assistant** to write code, but not their own coding agents (Claude Code, Gemini CLI, Codex, Aider, Copilot CLI, Antigravity, Cursor's agent, Windsurf and the like). The candidate is told this, and told what the CLI checks, before they start.
+  - The CLI collects five signals. None of them needs special permissions or reads anything private:
+    1. **Agents running.** It matches running process names against a list of known coding agents and agent IDEs. At `start`, a match asks the candidate to close it before the timer begins. During the session it checks every few minutes, and a match becomes a review signal. Only the matches are sent, never the full list of processes.
+    2. **AI extensions in the IDE.** It reads the editor's list of installed extensions, for example `code --list-extensions`, and reports the AI ones: Copilot, Cline, Continue, Roo, the Claude Code and Gemini extensions. It does the same for JetBrains' AI Assistant and Junie, and for Zed's agent settings.
+    3. **Leftovers in the folder.** It scans for `CLAUDE.md`, `.claude/`, `AGENTS.md`, `GEMINI.md`, `.cursor/`, `.windsurf/`, `.aider*` and Copilot instruction files. It also scans commit messages for agent trailers such as "Co-Authored-By: …" or "Generated with …".
+    4. **How the code arrives.** It records each file change's size and timing. A person writes in small edits spread out over time. An agent writes whole files, often several at once, within seconds. The CLI marks these bursts.
+    5. **Diff snapshots for matching.** It sends periodic Git diff snapshots, so the server can compare new code with what our assistant gave. Large blocks that didn't come from our assistant and weren't built up gradually are marked.
+  - Every signal is an observed event or a review signal ([§16](SPEC.md#use-three-distinct-categories)). None is a verdict, and a human decides. The real check is whether the candidate understands the code, which the avatar's follow-ups test in Stage 7.
+  - *Done when:* each signal has a test, using a fake agent process, a fake extension list, a planted `CLAUDE.md` and a scripted file burst. Nothing outside the listed checks is read.
+- [ ] **1.9 Submit.**
   - The candidate sees the diff and writes a commit message.
   - The CLI commits and builds the submission manifest:
     - task version;
@@ -199,14 +210,14 @@ The commands are:
     - timestamp.
   - It uploads a Git bundle, and the server checks it against the manifest.
   - *Done when:* a bundle that doesn't match is refused, and a successful submit is shown in `status`.
-- [ ] **1.9 Stop and clean up.**
+- [ ] **1.10 Stop and clean up.**
   - `stop`, a submit or the session expiring each:
     - end the agent;
     - revoke the token on the server;
     - delete local credentials and session state;
     - **leave the candidate's code in place**.
   - *Done when:* no token or credential is left on disk after any of the three.
-- [ ] **1.10 Failure paths.**
+- [ ] **1.11 Failure paths.**
   - Each row of the spec's failure table has a clear message, a recovery path and a test:
     - Git missing;
     - IDE missing;
@@ -215,15 +226,16 @@ The commands are:
     - network loss;
     - IDE crash;
     - agent crash;
-    - unsupported OS.
+    - unsupported OS;
+    - a coding agent still open at `start`.
   - *Done when:* every row is covered.
-- [ ] **1.11 Signed, versioned distribution.**
+- [ ] **1.12 Signed, versioned distribution.**
   - Release builds for each OS, with checksums and a signature.
   - A one-line installer that verifies the checksum before running the CLI.
   - The server refuses CLI versions older than its minimum.
   - Windows (Authenticode) and macOS (notarization) need certificates; see the decisions below.
   - *Done when:* a tampered binary is refused by the installer.
-- [ ] **1.12 CLI end-to-end in CI.**
+- [ ] **1.13 CLI end-to-end in CI.**
   - Run the full `start → work → submit → stop` flow against the fake API on Windows, macOS and Linux runners.
   - *Done when:* the flow is green on all three.
 
@@ -239,7 +251,7 @@ The commands are:
   - *Done when:* applying the migrations to a fresh database twice is a no-op the second time.
 - [ ] **2.2 `v2/api`: the contract from 1.1, for real.**
   - Implement sessions, setup codes, token issue and revoke, task bundles, events and submissions, with manifest verification.
-  - *Done when:* the CLI's end-to-end tests from 1.12 pass against the real API as well as the fake.
+  - *Done when:* the CLI's end-to-end tests from 1.13 pass against the real API as well as the fake.
 - [ ] **2.3 V2 staging.**
   - Its own Railway service and database, with `V2_` secrets, on a V2-only domain.
   - *Done when:* it deploys, and the V1 suite and the coexistence check still pass with V2 running.
@@ -282,7 +294,7 @@ can wait until Stage 2. The CLI needs these now.
 |---|---|---|
 | CLI language | **Go** | Single static binary per OS, easy cross-compiling, no runtime on the candidate's machine; the team already writes Go (`candidate/backend`) |
 | Supported OS at launch | Windows, macOS and Linux; amd64 and arm64 | The spec requires a tested path on each supported OS |
-| IDEs at launch | VS Code, Cursor, JetBrains and Zed; manual open as the fallback | These cover most candidates and all have a command-line launcher |
+| IDEs at launch | **Decided:** VS Code, JetBrains and Zed; manual open as the fallback. No agent-first IDEs (Antigravity, Cursor, Windsurf) | Candidates code with our assistant, not their own agents; these three all have a command-line launcher |
 | Signing | Checksums plus a signature from day one. Windows and macOS code-signing certificates before the pilot | An unsigned binary triggers SmartScreen and Gatekeeper warnings for candidates |
 | Where the CLI is downloaded from | GitHub Releases on a V2 repository or path, behind a short V2-domain installer URL | Versioned, cacheable, auditable |
-| What the agent observes | Git state and file changes inside the workspace only, nothing outside it | The spec's minimum, and honest about coverage ([§9](SPEC.md#what-the-cli-cannot-promise)) |
+| What the agent observes | **Decided:** Git state, file changes and diff snapshots inside the workspace; outside it, only the names of running processes and the IDE's installed extensions that match known coding agents (task 1.8). No keystrokes, screen or other files | Enough to see coding-agent use, without a keylogger. The spec rules out claiming total coverage ([§9](SPEC.md#what-the-cli-cannot-promise)); someone with an agent on a second device can still evade, which is why understanding checks matter |
