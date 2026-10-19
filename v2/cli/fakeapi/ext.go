@@ -11,6 +11,8 @@ type sessionExt struct {
 	notes      []string
 	snapshots  map[int64]string
 	heartbeats []api.Heartbeat
+	submission *submission
+	bundle     []byte
 }
 
 func newExt() sessionExt {

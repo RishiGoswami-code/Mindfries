@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/mindfries/v2/cli/fakeapi"
+	"github.com/mindfries/v2/cli/internal/gitx"
 	"github.com/mindfries/v2/cli/internal/sys"
 	"github.com/mindfries/v2/cli/internal/watcher"
 	"github.com/mindfries/v2/cli/internal/workspace"
@@ -107,3 +108,5 @@ func (h *harness) started(o fakeapi.SessionOptions, extra ...string) string {
 	}
 	return dir
 }
+
+func gitRepo(dir string) *gitx.Repo { return &gitx.Repo{Dir: dir} }

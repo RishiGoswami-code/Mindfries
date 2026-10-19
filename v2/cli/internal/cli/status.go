@@ -20,6 +20,12 @@ func (a *App) status(args []string) error {
 	local, client, err := a.active()
 	if errors.Is(err, errNoSession) {
 		fmt.Fprintln(a.Stdout, "No active assessment on this computer.")
+		if home, err := a.home(); err == nil {
+			if last, err := state.LoadLast(home); err == nil {
+				fmt.Fprintf(a.Stdout, "Last submitted: %s at %s (commit %s, submission %s), verified by Mindfries.\n",
+					orDefault(last.Title, "your assessment"), last.SubmittedAt.Local().Format("15:04 on Mon 2 Jan"), short(last.HeadCommit), last.SubmissionID)
+			}
+		}
 		return nil
 	}
 	if err != nil {
@@ -96,6 +102,13 @@ func describeMode(p api.Policy) string {
 	}
 	if b := p.AssistantBudget; b != nil && p.AssistantMode != api.ModeOff {
 		s += fmt.Sprintf(", %d of %d tokens left", b.TokensRemaining, b.TokensTotal)
+	}
+	return s
+}
+
+func orDefault(s, def string) string {
+	if s == "" {
+		return def
 	}
 	return s
 }

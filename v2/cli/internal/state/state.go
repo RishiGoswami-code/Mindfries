@@ -130,3 +130,33 @@ func WriteFileAtomic(path string, data []byte, perm os.FileMode) error {
 	}
 	return renameReplace(name, path)
 }
+
+// Last is the most recent submission on this computer, kept after the
+// session is cleaned up so `mindfries status` can confirm it. It holds no
+// credentials.
+type Last struct {
+	Title        string    `json:"title,omitempty"`
+	SubmittedAt  time.Time `json:"submitted_at"`
+	HeadCommit   string    `json:"head_commit"`
+	SubmissionID string    `json:"submission_id"`
+	Workspace    string    `json:"workspace"`
+}
+
+// SaveLast records a submission.
+func SaveLast(home string, l *Last) error {
+	b, err := json.MarshalIndent(l, "", "  ")
+	if err != nil {
+		return err
+	}
+	return WriteFileAtomic(filepath.Join(home, "last-submission.json"), b, 0o600)
+}
+
+// LoadLast reads the last submission, if any.
+func LoadLast(home string) (*Last, error) {
+	b, err := os.ReadFile(filepath.Join(home, "last-submission.json"))
+	if err != nil {
+		return nil, err
+	}
+	var l Last
+	return &l, json.Unmarshal(b, &l)
+}

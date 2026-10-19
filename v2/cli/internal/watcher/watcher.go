@@ -541,3 +541,16 @@ func (w *Watcher) sayLocked(format string, args ...any) {
 
 // ErrNotSetUp means the session has no workspace yet.
 var ErrNotSetUp = errors.New("the workspace isn't set up yet")
+
+// Flush sends whatever is left in the queue when no watcher is running,
+// for up to timeout. It reports how many events are still waiting.
+func Flush(c *api.Client, q *Queue, limits api.Limits, timeout time.Duration) int {
+	w := &Watcher{
+		cfg:    Config{Client: c, Queue: q, Local: &state.Local{Limits: limits}, Out: io.Discard, Now: time.Now, FlushTimeout: timeout},
+		stopCh: make(chan string, 1),
+		wake:   make(chan struct{}, 1),
+		agents: newAgentState(),
+	}
+	w.flush()
+	return q.Depth()
+}
