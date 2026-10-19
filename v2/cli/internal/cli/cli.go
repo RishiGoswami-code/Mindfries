@@ -10,6 +10,7 @@ import (
 	"os"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/mindfries/v2/cli/internal/api"
 	"github.com/mindfries/v2/cli/internal/buildinfo"
@@ -32,6 +33,8 @@ type App struct {
 	setup  setupResult
 	// tuneWatcher lets tests shorten the watcher's intervals.
 	tuneWatcher func(*watcher.Config)
+	// tunePoll lets tests shorten the browser sign-in's polling interval.
+	tunePoll func(time.Duration) time.Duration
 }
 
 // Default is the real process environment.

@@ -27,19 +27,28 @@ func normalizeCode(c string) (string, bool) {
 	return c, codeRe.MatchString(c)
 }
 
-// connect trades the setup code for a session token and records the
-// session locally. The token goes to the keychain (or the owner-only file)
-// and is never printed.
+// device describes this computer to the API.
+func (a *App) device() api.Device {
+	s := a.sys()
+	return api.Device{OS: s.GOOS, Arch: s.GOARCH}
+}
+
+// connect trades a setup code for a session token and records the session.
 func (a *App) connect(ctx context.Context, apiURL, code string) (*state.Local, *api.Client, error) {
+	c := api.New(apiURL, buildinfo.Version)
+	res, err := c.Exchange(ctx, api.ExchangeRequest{SetupCode: code, Device: a.device()})
+	if err != nil {
+		return nil, nil, exchangeError(err)
+	}
+	return a.remember(apiURL, c, res)
+}
+
+// remember records a new session locally. The token goes to the keychain
+// (or the owner-only file) and is never printed.
+func (a *App) remember(apiURL string, c *api.Client, res *api.ExchangeResponse) (*state.Local, *api.Client, error) {
 	home, err := a.home()
 	if err != nil {
 		return nil, nil, err
-	}
-	c := api.New(apiURL, buildinfo.Version)
-	s := a.sys()
-	res, err := c.Exchange(ctx, api.ExchangeRequest{SetupCode: code, Device: api.Device{OS: s.GOOS, Arch: s.GOARCH}})
-	if err != nil {
-		return nil, nil, exchangeError(err)
 	}
 	store, err := secret.Save(secret.Choose(home, a.Getenv), res.Session.ID, res.SessionToken)
 	if err != nil {
@@ -68,25 +77,30 @@ func (a *App) connect(ctx context.Context, apiURL, code string) (*state.Local, *
 func exchangeError(err error) error {
 	p, ok := api.AsProblem(err)
 	if !ok {
-		return fmt.Errorf("couldn't reach Mindfries: %w\nCheck your connection and run the setup command again", err)
+		return fmt.Errorf("couldn't reach Mindfries: %w\nCheck your connection and try again", err)
 	}
 	switch p.Code {
 	case api.CodeSetupCodeUsed:
 		return errors.New("this setup code has already been used.\n" +
 			"If you started this assessment on this computer, run 'mindfries start' (without a code) to carry on.\n" +
-			"Otherwise get a fresh setup command from your Mindfries dashboard")
+			"Otherwise run 'mindfries start' to sign in")
 	case api.CodeSetupCodeExpired:
-		return errors.New("this setup code has expired (codes last about 10 minutes).\nGet a fresh setup command from your Mindfries dashboard")
+		return errors.New("this setup code has expired (codes last about 10 minutes).\nRun 'mindfries start' without a code to sign in instead")
 	case api.CodeSetupCodeInvalid:
-		return errors.New("this setup code isn't recognised.\nCopy the whole setup command from your Mindfries dashboard again")
+		return errors.New("this setup code isn't recognised.\nRun 'mindfries start' without a code to sign in instead")
 	case api.CodeCLITooOld:
-		return fmt.Errorf("this mindfries is too old (need %s or newer).\nRun the setup command from your dashboard again; it installs the latest", p.MinimumVersion)
+		return tooOld(p)
 	}
 	return p
 }
 
+// tooOld explains cli_too_old.
+func tooOld(p *api.Problem) error {
+	return fmt.Errorf("this mindfries is too old (need %s or newer).\nRun the Mindfries install command again; it installs the latest", p.MinimumVersion)
+}
+
 // errNoSession is what every command says when nothing is set up.
-var errNoSession = errors.New("there's no active assessment on this computer.\nStart one from your Mindfries dashboard and run the setup command it shows")
+var errNoSession = errors.New("there's no active assessment on this computer.\nRun 'mindfries start' to sign in and connect to the assessment you were invited to")
 
 // active loads the session and a client carrying its token.
 func (a *App) active() (*state.Local, *api.Client, error) {
@@ -103,7 +117,7 @@ func (a *App) active() (*state.Local, *api.Client, error) {
 	}
 	tok, err := secret.Open(home, l.TokenStore).Get(l.SessionID)
 	if err != nil {
-		return l, nil, fmt.Errorf("this computer's session token is missing (%v).\nRun 'mindfries stop', then get a fresh setup command from your dashboard", err)
+		return l, nil, fmt.Errorf("this computer's session token is missing (%v).\nRun 'mindfries stop', then 'mindfries start' to sign in again", err)
 	}
 	c := api.New(l.APIURL, buildinfo.Version)
 	c.Token = tok

@@ -80,7 +80,7 @@ func Load(home string) (*Local, error) {
 	}
 	var l Local
 	if err := json.Unmarshal(b, &l); err != nil {
-		return nil, fmt.Errorf("the local session record is damaged (%v); run 'mindfries stop' and the setup command again", err)
+		return nil, fmt.Errorf("the local session record is damaged (%v); run 'mindfries stop', then 'mindfries start'", err)
 	}
 	return &l, nil
 }

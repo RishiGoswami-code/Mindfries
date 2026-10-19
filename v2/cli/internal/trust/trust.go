@@ -104,7 +104,7 @@ func keyFor(id, apiURL string) (ed25519.PublicKey, error) {
 		}
 		return DevPrivateKey().Public().(ed25519.PublicKey), nil
 	}
-	return nil, fmt.Errorf("the task manifest is signed with an unknown key (%s); update mindfries by running the setup command again", id)
+	return nil, fmt.Errorf("the task manifest is signed with an unknown key (%s); update mindfries by running the install command again", id)
 }
 
 func isLocal(apiURL string) bool {

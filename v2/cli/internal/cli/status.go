@@ -19,7 +19,7 @@ func (a *App) status(args []string) error {
 	}
 	local, client, err := a.active()
 	if errors.Is(err, errNoSession) {
-		fmt.Fprintln(a.Stdout, "No active assessment on this computer.")
+		fmt.Fprintln(a.Stdout, "No active assessment on this computer. Run 'mindfries start' to sign in and begin.")
 		if home, err := a.home(); err == nil {
 			if last, err := state.LoadLast(home); err == nil {
 				fmt.Fprintf(a.Stdout, "Last submitted: %s at %s (commit %s, submission %s), verified by Mindfries.\n",

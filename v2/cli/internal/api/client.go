@@ -17,8 +17,8 @@ import (
 // VersionHeader is sent on every request.
 const VersionHeader = "Mindfries-CLI-Version"
 
-// Client talks to the V2 API. Token is empty until the setup code has been
-// exchanged.
+// Client talks to the V2 API. Token is empty until a sign-in or a setup code
+// has produced the session token.
 type Client struct {
 	BaseURL    string
 	Token      string
