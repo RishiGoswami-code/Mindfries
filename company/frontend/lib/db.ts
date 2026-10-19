@@ -584,6 +584,25 @@ export async function bulkInviteCandidatesToRole(input: {
 export async function retryInvitationTask(companyId: string, assessmentId: string): Promise<void> {
   const c = db();
   if (!c) throw new Error("Supabase not configured");
+  // An invitation on a role waits for the role's one shared task, and fails
+  // when that does (candidate/backend db.SettleRoleInvitations). Retrying it
+  // means retrying the role's task — first, so the backend doesn't mark the
+  // invitation failed again in between.
+  const { data: inv } = await c
+    .from("assessments")
+    .select("job_role_id")
+    .eq("id", assessmentId)
+    .eq("company_id", companyId)
+    .maybeSingle();
+  if (inv?.job_role_id) {
+    const { error: roleError } = await c
+      .from("job_roles")
+      .update({ task_status: "pending", task_attempts: 0, task_error: null })
+      .eq("id", inv.job_role_id)
+      .eq("company_id", companyId)
+      .eq("task_status", "failed");
+    if (roleError) throw roleError;
+  }
   const { error } = await c
     .from("assessments")
     .update({ task_status: "pending", task_attempts: 0, task_error: null })
