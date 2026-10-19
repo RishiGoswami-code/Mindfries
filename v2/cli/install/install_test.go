@@ -1,5 +1,5 @@
-// Package install holds the one-line installers. These tests run them
-// against a local "release" and check that a tampered binary is refused.
+// These tests run the installers against a local "release" and check that
+// a tampered binary is refused.
 package install
 
 import (

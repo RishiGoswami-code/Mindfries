@@ -60,9 +60,8 @@ func newCode() string {
 	return sb.String()
 }
 
-// MintSetupCode creates a single-use setup code, as the dashboard does when
-// the candidate starts an assessment.
-func (s *Server) MintSetupCode(o SessionOptions) string {
+// withDefaults fills in what the options leave out.
+func (o SessionOptions) withDefaults() SessionOptions {
 	if o.Title == "" {
 		o.Title = "Demo assessment"
 	}
@@ -87,6 +86,13 @@ func (s *Server) MintSetupCode(o SessionOptions) string {
 	if o.Task == nil {
 		o.Task = DemoTask()
 	}
+	return o
+}
+
+// MintSetupCode creates a single-use setup code, as the dashboard does when
+// the candidate starts an assessment.
+func (s *Server) MintSetupCode(o SessionOptions) string {
+	o = o.withDefaults()
 	c := newCode()
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -141,27 +147,33 @@ func (s *Server) handleExchange(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	c.used = true
+	sess := s.newSession(c.opts)
+	writeJSON(w, http.StatusOK, api.ExchangeResponse{SessionToken: sess.token, ExpiresAt: sess.EndsAt, Session: sess.view()})
+}
+
+// newSession starts a session from o and issues its token. s.mu is held.
+func (s *Server) newSession(o SessionOptions) *session {
 	now := s.now()
 	sess := &session{
 		Session: api.Session{
 			ID:              randomID("ses_", 8),
 			AssessmentID:    randomID("asm_", 6),
-			AssessmentTitle: c.opts.Title,
+			AssessmentTitle: o.Title,
 			Status:          api.StatusActive,
 			StartedAt:       now,
-			EndsAt:          now.Add(c.opts.Duration),
-			Policy:          c.opts.Policy,
-			Intervals:       c.opts.Intervals,
-			Limits:          c.opts.Limits,
+			EndsAt:          now.Add(o.Duration),
+			Policy:          o.Policy,
+			Intervals:       o.Intervals,
+			Limits:          o.Limits,
 		},
 		token: randomID("mft_", 24),
-		task:  c.opts.Task,
+		task:  o.Task,
 		ext:   newExt(),
 	}
-	budget := *c.opts.Policy.AssistantBudget
+	budget := *o.Policy.AssistantBudget
 	sess.Policy.AssistantBudget = &budget
 	s.sessions[sess.ID] = sess
-	writeJSON(w, http.StatusOK, api.ExchangeResponse{SessionToken: sess.token, ExpiresAt: sess.EndsAt, Session: sess.view()})
+	return sess
 }
 
 // view is the session as the contract returns it.

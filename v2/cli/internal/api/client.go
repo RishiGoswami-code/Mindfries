@@ -163,6 +163,19 @@ func (c *Client) Exchange(ctx context.Context, in ExchangeRequest) (*ExchangeRes
 	return &out, c.doJSON(ctx, http.MethodPost, "/sessions/exchange", in, &out)
 }
 
+// StartSignIn begins a browser sign-in (POST /sessions/device).
+func (c *Client) StartSignIn(ctx context.Context, in DeviceRequest) (*DeviceAuthorization, error) {
+	var out DeviceAuthorization
+	return &out, c.doJSON(ctx, http.MethodPost, "/sessions/device", in, &out)
+}
+
+// PollSignIn asks whether the candidate has confirmed in the browser. Until
+// they have, it fails with authorization_pending (or slow_down).
+func (c *Client) PollSignIn(ctx context.Context, deviceCode string) (*ExchangeResponse, error) {
+	var out ExchangeResponse
+	return &out, c.doJSON(ctx, http.MethodPost, "/sessions/device/token", DeviceTokenRequest{DeviceCode: deviceCode}, &out)
+}
+
 func (c *Client) Session(ctx context.Context) (*Session, error) {
 	var s Session
 	return &s, c.doJSON(ctx, http.MethodGet, "/session", nil, &s)
