@@ -131,7 +131,17 @@ the real binary. The Windows Credential Manager was checked for real
 (`MINDFRIES_TEST_KEYCHAIN=1`). CI runs the same tests on Linux, macOS and
 Windows.
 
+Also verified by hand on Windows (2026-10-19): a fake API serving its own
+builds, then `irm .../install.ps1 | iex` in a clean PowerShell, then
+`mindfries start` with no variables, codes or flags beyond the sandbox's
+own folders: the sign-in page showed the same code, Connect let the
+terminal carry on, and `status` and `stop` worked by name.
+
 Not yet:
+- The hosted fake API on Render still runs the build from before the
+  browser sign-in; it has to be redeployed from this branch.
+- The installers' PATH changes were checked in the registry and in a fresh
+  `HOME`, not in a newly opened Windows Terminal or macOS/Linux shell.
 - CI hasn't run on GitHub, because nothing is pushed.
 - The macOS and Linux keychain paths are only exercised in CI, with the file
   store.

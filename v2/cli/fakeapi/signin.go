@@ -303,7 +303,7 @@ func (s *Server) handleDevicePage(w http.ResponseWriter, r *http.Request) {
 				p.Invitations = append(p.Invitations, invitationView{
 					ID:        inv.id,
 					Title:     inv.opts.Title,
-					Duration:  inv.opts.Duration.String(),
+					Duration:  fmt.Sprintf("%d minutes", int(inv.opts.Duration/time.Minute)),
 					Assistant: strings.ReplaceAll(inv.opts.Policy.AssistantMode, "_", " "),
 					Checked:   i == 0,
 				})
