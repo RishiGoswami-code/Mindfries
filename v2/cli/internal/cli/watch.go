@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"time"
 
 	"github.com/mindfries/v2/cli/internal/api"
 	"github.com/mindfries/v2/cli/internal/preflight"
@@ -36,6 +37,11 @@ func (a *App) watch(ctx context.Context, l *state.Local, c *api.Client, editor s
 	_, _ = q.Append("ide.launched", map[string]any{"ide": editor, "ok": true})
 	if ag := a.setup.agents; len(ag.matches) > 0 {
 		_, _ = q.Append("agent_signal.process", map[string]any{"matches": ag.matches, "phase": "start", "closed_by_candidate": ag.closed})
+	}
+
+	if prev, err := watcher.ReadStatus(dir); err == nil && !prev.Stopped && time.Since(prev.UpdatedAt) > watcher.StaleAfter {
+		fmt.Fprintf(a.Stdout, "The session watcher stopped unexpectedly at %s. Your files and Git history are as you left them.\n", prev.UpdatedAt.Local().Format("15:04"))
+		fmt.Fprintln(a.Stdout, "The time it wasn't running is recorded as a gap in the record; it isn't treated as anything you did.")
 	}
 
 	cfg := watcher.Config{Client: c, StateDir: dir, Local: l, Queue: q, Out: a.Stdout, Live: isTerminal(a.Stdout), Sys: a.sys(), VSCode: a.vscodePath()}

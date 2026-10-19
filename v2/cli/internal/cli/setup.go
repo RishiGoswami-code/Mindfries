@@ -114,7 +114,10 @@ func (a *App) setUpWorkspace(ctx context.Context, l *state.Local, c *api.Client,
 	fmt.Fprintf(a.Stdout, "Downloading %s…\n", m.TaskVersion)
 	archive, err := workspace.Download(ctx, c, m, stateDir, a.Stdout)
 	if err != nil {
-		return err
+		if errors.Is(err, workspace.ErrTampered) {
+			return fmt.Errorf("%w. Nothing was written to %s. Tell the hiring team; this isn't something you did", err, dir)
+		}
+		return &ExitError{Code: 1, Err: fmt.Errorf("%w.\nCheck your connection (or VPN/proxy) and run 'mindfries start' again: it keeps what was downloaded and carries on. Your session is kept, and none of this counts against you", err)}
 	}
 	staging := filepath.Join(stateDir, "staging")
 	if err := workspace.Extract(archive, staging, m); err != nil {

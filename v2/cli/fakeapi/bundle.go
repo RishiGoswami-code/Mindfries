@@ -123,6 +123,11 @@ func (s *Server) handleArchive(w http.ResponseWriter, r *http.Request, ss *sessi
 	if s.tamper.archive {
 		data = tamperArchive(ss.task)
 	}
+	if s.tamper.failArchive > 0 {
+		s.tamper.failArchive--
+		problem(w, http.StatusServiceUnavailable, api.CodeInternal, "Temporarily unavailable (scripted)", "")
+		return
+	}
 	if s.tamper.truncateArchiveOnce {
 		s.tamper.truncateArchiveOnce = false
 		// Send the headers for the full archive, then drop the connection
@@ -161,6 +166,7 @@ type tampering struct {
 	manifest            bool
 	archive             bool
 	truncateArchiveOnce bool
+	failArchive         int
 	refuseBatches       int
 	dropReplies         int
 }
@@ -177,3 +183,6 @@ func (s *Server) TruncateArchiveOnce() {
 	s.tamper.truncateArchiveOnce = true
 	s.mu.Unlock()
 }
+
+// FailArchive makes the next n archive downloads fail with 503.
+func (s *Server) FailArchive(n int) { s.mu.Lock(); s.tamper.failArchive = n; s.mu.Unlock() }
