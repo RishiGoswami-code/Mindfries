@@ -60,7 +60,7 @@ bin="$DIR/mindfries$ext"
 if [ -f "$bin" ] && [ "$(hash "$bin")" = "$want" ]; then
   say "mindfries is up to date."
 else
-  say "Downloading mindfries for $os/$arch…"
+  say "Downloading mindfries for ${os}/${arch}..."
   fetch "$BASE/$name" "$tmp/$name" || fail "couldn't download mindfries. Check your connection and run the setup command again."
   got="$(hash "$tmp/$name")"
   if [ "$got" != "$want" ]; then
