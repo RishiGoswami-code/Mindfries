@@ -43,7 +43,8 @@ candidate/v2/              A parked refactor of V1's browser workspace, from
                            before the V2 spec — not built or deployed; see
                            its README and v2/README.md
 v2/                        Mindfries V2: SPEC.md is the product spec (source
-                           of truth for V2); README.md maps it onto this repo.
+                           of truth for V2); README.md maps it onto this repo;
+                           ROLE_FLOWS.md walks through two example roles.
                            Specification only — V1 stays the live product and
                            is not changed for V2
 candidate/backend/         Go — the Application API/Orchestrator/Admin

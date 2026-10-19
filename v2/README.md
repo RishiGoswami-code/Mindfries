@@ -7,6 +7,12 @@ map onto the real pieces, where today's V1 differs from it, and what has to
 be decided before anything is built. It links to the spec rather than
 repeating it — two copies drift apart.
 
+**[`ROLE_FLOWS.md`](ROLE_FLOWS.md) shows V2 working end to end** for two
+roles — a Forward Deployed Engineer and a DevOps Engineer: recruiter setup,
+each stage of the candidate's session with the tabs and evidence involved,
+the rubric weights, scenario variations, and the final report. Both run on
+the same platform; only the scenario, tabs, stages and rubric change.
+
 **Status: specification only. Nothing in V2 is built, and V1 is unchanged.**
 
 ## V2 in one paragraph
