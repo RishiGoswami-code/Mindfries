@@ -14,6 +14,7 @@ import (
 	"github.com/mindfries/v2/cli/internal/api"
 	"github.com/mindfries/v2/cli/internal/buildinfo"
 	"github.com/mindfries/v2/cli/internal/sys"
+	"github.com/mindfries/v2/cli/internal/ui"
 )
 
 // App is one invocation's environment.
@@ -24,6 +25,8 @@ type App struct {
 	Getenv func(string) string
 	// Sys is the machine; nil means the real one.
 	Sys *sys.Sys
+
+	prompt *ui.UI
 }
 
 // Default is the real process environment.

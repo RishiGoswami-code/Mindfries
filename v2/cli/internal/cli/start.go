@@ -99,7 +99,7 @@ func titleOf(l *state.Local) string {
 // afterConnect is the rest of start: the workspace, the editor and the
 // watcher.
 func (a *App) afterConnect(ctx context.Context, l *state.Local, c *api.Client, o startOptions) error {
-	return nil
+	return a.setUpWorkspace(ctx, l, c, o)
 }
 
 // forget removes the local session after the server says it's over.

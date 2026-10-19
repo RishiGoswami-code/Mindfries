@@ -172,9 +172,18 @@ func (c *Client) Revoke(ctx context.Context, reason string) error {
 	return c.doJSON(ctx, http.MethodPost, "/session/revoke", RevokeRequest{Reason: reason}, nil)
 }
 
-func (c *Client) BundleManifest(ctx context.Context) (*BundleManifest, error) {
+// BundleManifest returns the manifest and the exact bytes received, which
+// the signature check needs.
+func (c *Client) BundleManifest(ctx context.Context) (*BundleManifest, []byte, error) {
+	var raw json.RawMessage
+	if err := c.doJSON(ctx, http.MethodGet, "/session/bundle", nil, &raw); err != nil {
+		return nil, nil, err
+	}
 	var m BundleManifest
-	return &m, c.doJSON(ctx, http.MethodGet, "/session/bundle", nil, &m)
+	if err := json.Unmarshal(raw, &m); err != nil {
+		return nil, nil, fmt.Errorf("reading the task manifest: %w", err)
+	}
+	return &m, raw, nil
 }
 
 // BundleArchive writes the archive to w, starting at offset bytes in (for a
