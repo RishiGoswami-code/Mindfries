@@ -23,7 +23,7 @@ the same accounts and screens, and V2 adds only what is new.
 | Stays V1, reused as is | New in V2 |
 |---|---|
 | Sign-in and accounts (candidates and companies) | The CLI and the V2 API it talks to |
-| Candidate dashboard, profile, settings, job portal | The workspace hub: setup code, live session status, stage view |
+| Candidate dashboard, profile, settings, job portal | The workspace hub: setup command, live session status, stage view |
 | Company portal: roles, invites, candidates, credits | `mindfries agent`, our coding and research assistant, in the terminal; and the floating panel for everything else |
 | Internal admin | The evidence timeline, evaluation and capability-profile report |
 | V1 assessments, from start to finish | Recruiter blueprints and versioned rubrics |
@@ -174,7 +174,19 @@ CLI, which runs only on a laptop, so Stage 1 can start alongside it.*
 
 The CLI is built against a **fake V2 API**, a small local server that
 follows the contract. It can therefore be finished and tested before the real
-backend exists. The candidate's flow is the spec's 14 steps.
+backend exists. The candidate's flow is the spec's 14 steps, with one change:
+steps 2–4 are a single command.
+
+In short:
+1. The candidate starts a V2 assessment on the dashboard and is shown **one
+   command**, unique to them and to that assessment.
+2. Running it installs `mindfries` and connects it to the portal (tasks 1.4, 1.12).
+3. The CLI downloads the codebase and `TASK.md`. `TASK.md` is locked (task 1.5).
+4. The candidate works in their own IDE, typing and using `mindfries agent`,
+   which can also research. They may research in their own browser too; outside
+   coding agents are not allowed and are flagged (task 1.8).
+5. The floating panel in the browser holds the camera and the other tabs (Stage 5).
+6. After submission, the evaluator assesses everything in the evidence (Stage 6).
 
 The commands are:
 
@@ -205,7 +217,7 @@ Two different things could both be called an "agent", so the plan names them apa
     - the minimum CLI version.
   - *Done when:* the contract is reviewed. Every later task is built against it.
 - [ ] **1.2 Skeleton and fake API.**
-  - Create the Go module `v2/cli` with the five commands as stubs, plus `v2/cli/fakeapi`, a scriptable server that serves the contract.
+  - Create the Go module `v2/cli` with the six commands as stubs, plus `v2/cli/fakeapi`, a scriptable server that serves the contract.
   - Add version output and a build for Windows, macOS and Linux (amd64 and arm64).
   - *Done when:* `mindfries --version` works on all three operating systems in CI.
 - [ ] **1.3 Preflight (`doctor`).**
@@ -219,7 +231,8 @@ Two different things could both be called an "agent", so the plan names them apa
   - Every failure prints the fix, as in the spec's [failure table](SPEC.md#environment-failure-handling). Nothing counts against the candidate.
   - *Done when:* each check has a unit test, including the missing-tool cases.
 - [ ] **1.4 Session authentication.**
-  - The browser shows a **single-use setup code** that expires in about 10 minutes. It is not a reusable secret, so shell history leaks nothing.
+  - The browser shows **one setup command**, unique to the candidate and the assessment. It installs the CLI if needed (1.12) and then runs `mindfries start <setup-code>`.
+  - The code inside it is **single-use** and expires in about 10 minutes. It is not a reusable secret, so shell history leaks nothing.
   - `start` exchanges the code for a session-scoped token. The token is stored in the OS keychain, or failing that in a file only the user can read. It is never printed.
   - The token expires with the session.
   - *Done when:* reusing a code, an expired code and an expired token are all refused (tested against the fake API).
@@ -229,8 +242,9 @@ Two different things could both be called an "agent", so the plan names them apa
   - It runs `git init`, or clones, then:
     - makes an assessment branch;
     - sets a local Git identity, scoped to the repo;
-    - writes `TASK.md`;
+    - writes `TASK.md` and marks it read-only;
     - makes a baseline commit.
+  - `TASK.md` is locked: the candidate can't change it. The CLI can't truly stop an edit on the candidate's own machine, so it also records the file's hash for 1.7 to watch, and the server's copy is the one that counts.
   - It refuses a folder that isn't empty unless the candidate confirms.
   - *Done when:* a tampered bundle is rejected, and a re-run resumes rather than duplicating.
 - [ ] **1.6 IDE launch.**
@@ -242,10 +256,13 @@ Two different things could both be called an "agent", so the plan names them apa
   - It sends a heartbeat.
   - It reads Git status and diff stats on an interval.
   - It sees file changes **inside the workspace only**, as the policy allows.
+  - It watches `TASK.md`'s hash. An edit is recorded as an observed event, and the file is restored from the bundle.
   - Its offline queue is a file in which every event is chained to the one before it, so tampering shows.
   - Events go in batches with retry and backoff. Batches are capped in size, and a batch the server refuses as malformed is dropped. These are the lessons from V1's telemetry backlog bug.
   - It shows "last synced …".
-  - *Done when:* if the network is cut for 10 minutes, nothing is lost and nothing is duplicated after reconnecting.
+  - *Done when:*
+    - if the network is cut for 10 minutes, nothing is lost and nothing is duplicated after reconnecting;
+    - an edit to `TASK.md` is recorded and undone.
 - [ ] **1.8 Coding-agent signals.**
   - The policy: candidates may use **our assistant, `mindfries agent`,** to write code, but not their own coding agents (Claude Code, Gemini CLI, Codex, Aider, Copilot CLI, Antigravity, Cursor's agent, Windsurf and the like). The candidate is told this, and told what the CLI checks, before they start.
   - The CLI collects five signals. None of them needs special permissions or reads anything private:
@@ -287,7 +304,7 @@ Two different things could both be called an "agent", so the plan names them apa
   - *Done when:* every row is covered.
 - [ ] **1.12 Signed, versioned distribution.**
   - Release builds for each OS, with checksums and a signature.
-  - A one-line installer that verifies the checksum before running the CLI.
+  - A one-line installer that verifies the checksum before running the CLI. It is the setup command from 1.4: it installs the CLI, then runs `start` with the candidate's single-use code.
   - The server refuses CLI versions older than its minimum.
   - Windows (Authenticode) and macOS (notarization) need certificates; see the decisions below.
   - *Done when:* a tampered binary is refused by the installer.
@@ -368,13 +385,14 @@ These follow the spec's phases ([§21](SPEC.md#21-mvp-to-v2-implementation-plan)
 Each will be split into tasks like Stage 1 when it starts.
 
 - **3. Candidate web app (`v2/web`):** only the new screens. Candidates arrive through the handoff from the V1 dashboard; there is no sign-in, dashboard or settings of its own.
-  - V2 consent: what the CLI checks, including 1.8;
-  - "Set up my workspace", which shows the setup code;
+  - V2 consent: what the CLI checks, including 1.8, and the camera;
+  - "Set up my workspace", which shows the setup command;
   - live session status from the agent;
   - the stage and journey view from [`ROLE_FLOWS.md`](ROLE_FLOWS.md);
   - the submission manifest review.
 - **4. Recruiter setup:** blueprints, competencies, versioned rubrics, AI policy mode, preview and dry-run ([§7](SPEC.md#7-recruiter-setup-flow)). The first role family comes from the open decision.
 - **5. The floating tabbed panel:** responsible for everything that isn't coding with the assistant ([§10](SPEC.md#10-the-unified-candidate-workspace)). It has no AI chat; that is `mindfries agent`. Its tabs:
+  - **Camera:** the candidate's camera view, with periodic stills kept as evidence, as in V1, after consent;
   - **Stage & Task:** the current stage, goal, time and deliverables;
   - **System Design** canvas;
   - **Debugging & Reliability:** hypotheses, logs, reproductions;
@@ -405,8 +423,8 @@ Each will be split into tasks like Stage 1 when it starts.
 ## Decisions
 
 The rest of the decisions in the [README](README.md#decisions-needed-before-building)
-can wait until Stage 2. The CLI needs these now, and the last three rows
-are already decided and shape everything after Stage 1.
+can wait until Stage 2. The CLI needs these now. The rows marked
+**Decided** are settled and shape everything after Stage 1.
 
 | Decision | Recommendation | Why |
 |---|---|---|
@@ -419,4 +437,8 @@ are already decided and shape everything after Stage 1.
 | Data | **Decided:** a `v2` schema in the current Supabase project, with a V2 database role that can only read V1 tables | Reuses V1's accounts and data with no migration. The database itself blocks V2 from writing V1 tables |
 | Accounts | **Decided:** shared with V1; V2 is entered through a signed handoff from V1 | Candidates and companies keep one login |
 | Web app | **Decided:** `v2/web` holds only the new V2 screens; the dashboard, settings, profile and company portal stay V1 | Least to rebuild, least to migrate |
+| Setup | **Decided:** one command from the dashboard, unique to the candidate and assessment, that installs the CLI and connects it | One step for the candidate; the code inside it is single-use and short-lived |
+| `TASK.md` | **Decided:** locked. Read-only, its hash watched, any edit flagged and restored | The task can't drift, and the server's copy is the one that counts |
+| How the candidate writes code | **Decided:** by typing in their IDE and with `mindfries agent`; research in their own browser is allowed; outside coding agents are not | Both kinds of edit are attributed (1.17); only outside agents are flagged (1.8) |
+| Camera | **Decided:** kept as in V1, in the floating panel, after consent | Departs from the spec's §16 default; see the README |
 | Where the assistant lives | **Decided:** in the terminal, as `mindfries agent`; the floating panel handles everything else | The candidate codes with an assistant where they code. Every edit it makes is attributed exactly, which makes spotting outside agents more reliable. This departs from the spec's floating AI Help tab ([§13](SPEC.md#13-floating-ai-help-assistant-and-tool-permissions)); its policy gateway still applies |

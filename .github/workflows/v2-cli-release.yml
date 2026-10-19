@@ -1,0 +1,73 @@
+# Release the V2 CLI (v2/PLAN.md task 1.12). Runs when the owner pushes a
+# tag like v2-cli-v0.1.0; nothing here runs on ordinary pushes or PRs.
+#
+# Produces, on a GitHub release for the tag:
+#   mindfries_<os>_<arch>[.exe]  for windows, darwin and linux on amd64 and arm64
+#   checksums.txt                SHA-256 of each binary (the installers check it)
+#   checksums.txt.sig            Ed25519 signature over checksums.txt
+#   install.sh, install.ps1      the one-line installers
+#
+# Repository settings it reads:
+#   secrets.V2_RELEASE_SIGNING_KEY  base64 Ed25519 private key (mfsign genkey)
+#   vars.V2_API_URL                 the V2 API base URL built into the binary
+#   vars.V2_MANIFEST_KEYS           "key-id:base64-public-key,..." for task manifests
+#
+# Windows Authenticode and macOS notarization need certificates that don't
+# exist yet (v2/PLAN.md, Decisions); until then the binaries are unsigned
+# at the OS level and SmartScreen/Gatekeeper will warn.
+name: V2 CLI release
+
+on:
+  push:
+    tags: ["v2-cli-v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: v2/cli
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: v2/cli/go.mod
+          cache: false
+      - name: Test
+        run: go vet ./... && go test ./...
+      - name: Build every target
+        env:
+          API_URL: ${{ vars.V2_API_URL }}
+          MANIFEST_KEYS: ${{ vars.V2_MANIFEST_KEYS }}
+        run: |
+          version="${GITHUB_REF_NAME#v2-cli-v}"
+          pkg=github.com/mindfries/v2/cli/internal
+          flags="-s -w -X $pkg/buildinfo.Version=$version -X $pkg/buildinfo.Commit=${GITHUB_SHA::12}"
+          [ -n "$API_URL" ] && flags="$flags -X $pkg/buildinfo.DefaultAPI=$API_URL"
+          [ -n "$MANIFEST_KEYS" ] && flags="$flags -X $pkg/trust.ManifestKeys=$MANIFEST_KEYS"
+          mkdir -p dist
+          for t in windows/amd64 windows/arm64 darwin/amd64 darwin/arm64 linux/amd64 linux/arm64; do
+            os=${t%/*}; arch=${t#*/}; ext=""
+            [ "$os" = windows ] && ext=".exe"
+            GOOS=$os GOARCH=$arch CGO_ENABLED=0 go build -trimpath -ldflags "$flags" -o "dist/mindfries_${os}_${arch}${ext}" ./cmd/mindfries
+          done
+          cp install/install.sh install/install.ps1 dist/
+      - name: Checksums and signature
+        env:
+          MFSIGN_KEY: ${{ secrets.V2_RELEASE_SIGNING_KEY }}
+        run: |
+          cd dist
+          sha256sum mindfries_* > checksums.txt
+          cat checksums.txt
+          if [ -z "$MFSIGN_KEY" ]; then
+            echo "::error::V2_RELEASE_SIGNING_KEY is not set; refusing to publish an unsigned release"
+            exit 1
+          fi
+          go run ../cmd/mfsign sign checksums.txt > checksums.txt.sig
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" --title "Mindfries CLI ${GITHUB_REF_NAME#v2-cli-v}" --notes "Mindfries V2 CLI. See v2/cli/README.md." dist/*

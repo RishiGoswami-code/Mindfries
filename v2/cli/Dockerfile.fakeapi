@@ -1,0 +1,17 @@
+# The fake V2 API, for a throwaway deployment (see DEPLOY-FAKEAPI.md).
+# Not the real V2 API: everything is in memory and lost on restart.
+FROM golang:1.25-alpine AS build
+RUN apk add --no-cache git
+WORKDIR /src
+COPY go.mod ./
+COPY . .
+RUN CGO_ENABLED=0 go build -trimpath -o /out/fakeapi ./cmd/fakeapi
+
+FROM alpine:3.20
+# git is needed to check submitted bundles.
+RUN apk add --no-cache git ca-certificates && adduser -D -u 10001 app
+USER app
+COPY --from=build /out/fakeapi /usr/local/bin/fakeapi
+ENV PORT=10000
+EXPOSE 10000
+ENTRYPOINT ["fakeapi"]

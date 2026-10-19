@@ -19,7 +19,20 @@ company portal, so cut-over is a switch, not a migration. It also covers the
 guards that keep V1 safe, the path to production, and the tasks in order,
 with the CLI first.
 
-**Status: specification only. Nothing in V2 is built, and V1 is unchanged.**
+**Status: the CLI (Stage 1 and 1b) is built and tested against a fake API ([`cli/`](cli)); the V2 API, web screens and database aren't started. V1 is unchanged.**
+
+## Layout
+
+Every line of V2 lives under `v2/` ([PLAN, Part 1 §1](PLAN.md#1-one-folder-and-a-check-that-enforces-it)).
+Each folder's README says what goes there and the rules it follows.
+
+| Folder | What it is | Built in |
+|---|---|---|
+| [`cli/`](cli) | The `mindfries` CLI (Go): setup, the session watcher, `mindfries agent`, submit, plus a fake API for testing | Stage 1: built |
+| [`contracts/`](contracts) | OpenAPI contracts between the pieces, starting with `cli-api.yaml` | Task 1.1: drafted |
+| [`api/`](api) | The V2 API (Go), its own Railway service | Stage 2 |
+| [`db/`](db) | Migrations for the `v2` schema, with their own runner | Stage 2 |
+| [`web/`](web) | Only the new V2 screens and the floating panel (Next.js), its own Vercel project | Stage 3 |
 
 ## V2 in one paragraph
 
@@ -27,7 +40,8 @@ V2 turns the assessment from "code in our browser IDE, chat with our
 assistant" into an evidence-first work session across several kinds of work.
 - **Where the candidate codes:** in their own IDE, set up by a session-scoped local CLI and a short-lived agent ([§9](SPEC.md#9-local-cli-and-assessment-agent-no-ide-extension)).
 - **The assistant:** `mindfries agent`, a coding and research assistant in the terminal, under the assessment's policy (see [below](#where-this-repos-v2-departs-from-the-spec)).
-- **The browser:** stays the hub, with one floating panel of tabs. Stage & Task, System Design, Debugging, Notes & Evidence, Conversation and Submission review cover everything except coding with the assistant ([§10](SPEC.md#10-the-unified-candidate-workspace)).
+- **Getting started:** starting a V2 assessment on the dashboard gives the candidate one command, unique to them and that assessment. Running it installs `mindfries`, connects it to the portal, and downloads the codebase plus a locked `TASK.md`.
+- **The browser:** stays the hub, with one floating panel of tabs. Camera, Stage & Task, System Design, Debugging, Notes & Evidence, Conversation and Submission review cover everything except coding with the assistant ([§10](SPEC.md#10-the-unified-candidate-workspace)).
 - **Routes:** each assessment adapts to the candidate — a common core, an evidence-driven route and targeted follow-ups — and "not assessed" is kept apart from "weak" ([§11](SPEC.md#11-adaptive-assessment-candidates-can-be-strong-in-different-ways)).
 - **Policy:** a backend policy gateway decides what the assistant and developer platforms may do ([§13](SPEC.md#13-floating-ai-help-assistant-and-tool-permissions)).
 - **Result:** a capability profile — per competency: score, confidence, coverage, evidence links. The avatar is capped at about 5% ([§14](SPEC.md#14-evaluation-and-weighting-model), [§19](SPEC.md#19-candidate-report--capability-profile)).
@@ -67,7 +81,7 @@ V1 stays as it is; these are points where V2 is meant to work differently,
 so V1 code can't simply be carried over:
 
 1. **Coding surface.** V1 is a browser IDE: Monaco, Pyodide, an in-browser shell and git, or a Daytona sandbox. V2 puts coding in the candidate's own IDE through the CLI; a browser workspace is at most a fallback ([§9 failure handling](SPEC.md#environment-failure-handling)).
-2. **Monitoring.** V1 keeps camera stills every 30 seconds, screen stills, and microphone clips on noise, and flags leaving the workspace, pastes and second windows. V2 says to avoid webcam, microphone and screen capture unless specifically necessary and separately consented ([§16](SPEC.md#privacy-and-security-safeguards)), and says window switching or pasting is not proof of anything ([§16](SPEC.md#signals-that-are-not-proof-by-themselves)).
+2. **Monitoring.** V1 keeps camera stills every 30 seconds, screen stills, and microphone clips on noise, and flags leaving the workspace, pastes and second windows. V2 keeps the camera, with separate consent ([departure 6](#where-this-repos-v2-departs-from-the-spec)), but says window switching or pasting is not proof of anything ([§16](SPEC.md#signals-that-are-not-proof-by-themselves)).
 3. **Flags.** V1 labels flags High / Medium / Low. V2 has three distinct categories, plus a candidate response and appeal process ([§16](SPEC.md#integrity-workflow)).
 4. **Report.** V1's report leads with a recommendation (Strong hire … No hire). V2 forbids single-score verdicts. It is a capability profile with confidence, coverage and explicit unknowns, and the decision is recorded as a human one ([§19](SPEC.md#19-candidate-report--capability-profile)).
 5. **Assistant.** V1's assistant is prompt-limited, with a message cap. V2 needs server-side policy enforcement: tool, domain, scope, credentials, audit ([§13](SPEC.md#assistant-policy-gateway)).
@@ -80,8 +94,11 @@ Owner decisions that change what [`SPEC.md`](SPEC.md) says. The spec is
 otherwise unchanged and still governs.
 
 1. **The assistant lives in the terminal.** The spec puts AI Help in the floating panel ([§13](SPEC.md#13-floating-ai-help-assistant-and-tool-permissions)). Here it is `mindfries agent`, a terminal coding and research assistant run by the CLI. Its policy gateway, modes, logging and limits still follow §13. The floating panel has no chat and handles everything else. Where [`ROLE_FLOWS.md`](ROLE_FLOWS.md) says "AI Help", read `mindfries agent`.
-2. **Outside coding agents are not allowed.** Candidates code with `mindfries agent`, not their own agents. The CLI looks for outside agents and reports what it finds as review signals ([PLAN, task 1.8](PLAN.md#stage-1--the-cli-9-17)). Agent-first IDEs are not offered.
+2. **Outside coding agents are not allowed.** Candidates code with `mindfries agent` and by typing in their own IDE, not with their own agents. The CLI looks for outside agents and reports what it finds as review signals ([PLAN, task 1.8](PLAN.md#stage-1--the-cli-9-17)). Agent-first IDEs are not offered. The candidate may research in their own browser; only coding agents are ruled out.
 3. **V2 reuses V1.** It uses V1's accounts, dashboard and company portal, and keeps its data in a `v2` schema in the same database. The spec permits this; its default is a separate project. Cut-over is therefore a switch ([PLAN, Part 1](PLAN.md#part-1--how-v2-reuses-v1-and-how-v1-stays-safe)).
+4. **One setup command.** The spec has the browser show a command that fetches the CLI and then authenticates ([§9](SPEC.md#example-candidate-flow)). Here that is a single command, unique to the candidate and the assessment, that installs `mindfries` and connects it to the portal in one go. It carries a single-use code that expires in minutes, so the command can't be reused ([PLAN, tasks 1.4 and 1.12](PLAN.md#stage-1--the-cli-9-17)).
+5. **`TASK.md` is locked.** The candidate can't change it. On their own laptop we can't truly prevent an edit, so the CLI marks it read-only, watches its hash, flags any edit and restores the file. The server's copy is the one that counts ([PLAN, tasks 1.5 and 1.7](PLAN.md#stage-1--the-cli-9-17)).
+6. **The camera stays.** The spec says to avoid the webcam unless necessary and separately consented ([§16](SPEC.md#privacy-and-security-safeguards)). Here it is kept as in V1: a Camera tab in the floating panel, with periodic stills kept as evidence, after explicit consent. Like every other signal, what it shows is evidence for a human, not a verdict.
 
 ## About `candidate/v2/`
 
@@ -108,6 +125,9 @@ Already decided, see [PLAN, Decisions](PLAN.md#decisions):
 - **Web app:** only the new V2 screens.
 - **Supported IDEs:** no agent-first IDEs.
 - **What the CLI observes.**
+- **Setup:** one command that installs the CLI and connects it.
+- **`TASK.md`:** locked; edits are flagged and undone.
+- **Camera:** kept, with consent.
 
 Still open:
 
