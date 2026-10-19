@@ -49,16 +49,11 @@ func main() {
 
 	cfg := fakeapi.Config{MinVersion: *min, AdminToken: token, PublicURL: publicURL, DistDir: *dist}
 	// The candidate's GitHub: the Mindfries OAuth app's client ID (public;
-	// device flow enabled) and who reviews. Without a client ID the work
-	// stays local and is handed in as a bundle.
+	// device flow enabled). Without one the work stays local and is handed
+	// in as a bundle. Reviewers belong to each assessment: set them with
+	// the admin API (/__admin/invitations), never here.
 	if id := os.Getenv("FAKEAPI_GITHUB_CLIENT_ID"); id != "" {
-		g := &api.GitHub{ClientID: id, Required: os.Getenv("FAKEAPI_GITHUB_OPTIONAL") != "1", Deployment: true}
-		for _, r := range strings.Split(os.Getenv("FAKEAPI_GITHUB_REVIEWERS"), ",") {
-			if r = strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(r), "@")); r != "" {
-				g.Reviewers = append(g.Reviewers, r)
-			}
-		}
-		cfg.GitHub = g
+		cfg.GitHub = &api.GitHub{ClientID: id, Required: os.Getenv("FAKEAPI_GITHUB_OPTIONAL") != "1", Deployment: true}
 	}
 	s := fakeapi.New(cfg)
 	s.Invite(fakeapi.SessionOptions{Title: "Demo assessment: rate limiter"})
@@ -69,7 +64,7 @@ func main() {
 	log.Printf("fake V2 API on %s%s", base, fakeapi.Prefix)
 	log.Printf("sign-in page: %s/device (a fake browser session; two demo assessments)", base)
 	if cfg.GitHub != nil {
-		log.Printf("GitHub: the work goes to the candidate's own GitHub (OAuth app %s; reviewers %v)", cfg.GitHub.ClientID, cfg.GitHub.Reviewers)
+		log.Printf("GitHub: the work goes to the candidate's own GitHub (OAuth app %s); set each assessment's reviewers with PUT /__admin/invitations/<id>/reviewers", cfg.GitHub.ClientID)
 	} else {
 		log.Printf("GitHub: off (set FAKEAPI_GITHUB_CLIENT_ID to turn it on)")
 	}

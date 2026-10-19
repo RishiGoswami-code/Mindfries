@@ -101,6 +101,9 @@ func (a *App) submit(args []string) error {
 			return err
 		}
 	}
+	if sess.GitHub != nil {
+		a.syncReviewers(ctx, l, sess.GitHub.Reviewers)
+	}
 	pushed := a.pushForSubmit(ctx, l)
 	deployment := strings.TrimSpace(*deployURL)
 	if deployment == "" && l.GitHub != nil && l.GitHub.Deployment && !*yes {
