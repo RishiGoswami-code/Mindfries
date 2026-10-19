@@ -7,6 +7,8 @@
 package ide
 
 import (
+	"path/filepath"
+
 	"github.com/mindfries/v2/cli/internal/sys"
 )
 
@@ -113,12 +115,21 @@ func Supported(eds []Editor) []Editor {
 	return out
 }
 
-// Launch opens dir in the editor without waiting for it.
+// Launch opens dir in the editor without waiting for it. VS Code gets a
+// window of its own with TASK.md open, so the workspace doesn't vanish into
+// a window the candidate already had open.
 func Launch(s *sys.Sys, e Editor, dir string) error {
-	if e.macApp {
-		return s.Start("open", "-na", e.Path, "--args", dir)
+	args := []string{dir}
+	if e.Family == VSCode {
+		args = []string{"--new-window", dir}
+		if task := filepath.Join(dir, "TASK.md"); s.Exists(task) {
+			args = append(args, task)
+		}
 	}
-	return s.Start(e.Path, dir)
+	if e.macApp {
+		return s.Start("open", append([]string{"-na", e.Path, "--args"}, args...)...)
+	}
+	return s.Start(e.Path, args...)
 }
 
 // ByID finds an editor by id among eds.

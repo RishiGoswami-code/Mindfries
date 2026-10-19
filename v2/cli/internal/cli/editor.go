@@ -53,6 +53,9 @@ func (a *App) openEditor(l *state.Local, flagIDE string, yes bool) string {
 		return string(ide.Manual)
 	}
 	fmt.Fprintf(a.Stdout, "Opened the workspace in %s.\n", chosen.Name)
+	if chosen.Family == ide.VSCode {
+		fmt.Fprintln(a.Stdout, "It's a new VS Code window with TASK.md open; if you don't see it, it may be behind this terminal.")
+	}
 	return chosen.ID
 }
 
