@@ -93,7 +93,18 @@ func (x *Executor) resolve(p string) (string, error) {
 	if !workspace.ValidPath(p) {
 		return "", refuse("%q isn't a path inside the task folder", p)
 	}
-	return filepath.Join(x.Root, filepath.FromSlash(p)), nil
+	if isCredentialPath(p) {
+		return "", refuse("%s looks like a credentials file, which is off limits", p)
+	}
+	full := filepath.Join(x.Root, filepath.FromSlash(p))
+	ok, err := inside(x.Root, full)
+	if err != nil {
+		return "", err
+	}
+	if !ok {
+		return "", refuse("%s leads outside the task folder", p)
+	}
+	return full, nil
 }
 
 func (x *Executor) readFile(in api.ReadFileInput) (string, error) {
@@ -238,7 +249,20 @@ func rel(root, dir string) string {
 }
 
 // checkCommand refuses commands the assistant may never run.
-func (x *Executor) checkCommand(cmd string) error { return nil }
+func (x *Executor) checkCommand(cmd string) error {
+	for _, b := range blockedCommands {
+		if b.re.MatchString(cmd) {
+			return refuse("%s", b.why)
+		}
+	}
+	return nil
+}
 
 // commandWarnings are shown before the candidate decides.
-func (x *Executor) commandWarnings(cmd string) []string { return nil }
+func (x *Executor) commandWarnings(cmd string) []string {
+	var w []string
+	if installCommands.MatchString(cmd) {
+		w = append(w, "Warning: this downloads and installs software on your computer. Say no unless you want that.")
+	}
+	return w
+}
