@@ -19,7 +19,7 @@ company portal, so cut-over is a switch, not a migration. It also covers the
 guards that keep V1 safe, the path to production, and the tasks in order,
 with the CLI first.
 
-**Status: specification and empty module folders. No V2 code is built yet, and V1 is unchanged.**
+**Status: the CLI (Stage 1 and 1b) is built and tested against a fake API ([`cli/`](cli)); the V2 API, web screens and database aren't started. V1 is unchanged.**
 
 ## Layout
 
@@ -28,8 +28,8 @@ Each folder's README says what goes there and the rules it follows.
 
 | Folder | What it is | Built in |
 |---|---|---|
-| [`cli/`](cli) | The `mindfries` CLI (Go): setup, the session watcher, `mindfries agent`, submit, plus a fake API for testing | Stage 1 |
-| [`contracts/`](contracts) | OpenAPI contracts between the pieces, starting with `cli-api.yaml` | Task 1.1 |
+| [`cli/`](cli) | The `mindfries` CLI (Go): setup, the session watcher, `mindfries agent`, submit, plus a fake API for testing | Stage 1: built |
+| [`contracts/`](contracts) | OpenAPI contracts between the pieces, starting with `cli-api.yaml` | Task 1.1: drafted |
 | [`api/`](api) | The V2 API (Go), its own Railway service | Stage 2 |
 | [`db/`](db) | Migrations for the `v2` schema, with their own runner | Stage 2 |
 | [`web/`](web) | Only the new V2 screens and the floating panel (Next.js), its own Vercel project | Stage 3 |
