@@ -92,6 +92,7 @@ func (a *App) forget(l *state.Local) {
 		_ = secret.Keychain.Delete(l.SessionID)
 	}
 	_ = secret.File{Dir: state.Dir(home)}.Delete(l.SessionID)
+	a.forgetGitHub(home, l)
 	if err := state.Remove(home); err != nil {
 		fmt.Fprintf(a.Stdout, "Couldn't remove %s (%v); delete it by hand.\n", state.Dir(home), err)
 	}

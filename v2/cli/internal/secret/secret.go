@@ -64,11 +64,41 @@ func Open(home, name string) Store {
 // File stores the token in Dir/token with owner-only permissions. On
 // Windows the file inherits the user profile's ACL, which already limits it
 // to the user.
-type File struct{ Dir string }
+type File struct {
+	Dir string
+	// Base is the file's name in Dir; default "token".
+	Base string
+}
 
 func (File) Name() string { return "file" }
 
-func (f File) path() string { return filepath.Join(f.Dir, "token") }
+func (f File) path() string {
+	if f.Base != "" {
+		return filepath.Join(f.Dir, f.Base)
+	}
+	return filepath.Join(f.Dir, "token")
+}
+
+// GitHubID is the store key for the candidate's GitHub token in a session.
+func GitHubID(sessionID string) string { return "github:" + sessionID }
+
+// ChooseGitHub is Choose for the GitHub token: the keychain, else its own
+// owner-only file next to the session token.
+func ChooseGitHub(home string, getenv func(string) string) []Store {
+	file := File{Dir: state.Dir(home), Base: "github-token"}
+	if strings.EqualFold(getenv("MINDFRIES_TOKEN_STORE"), "file") || Keychain == nil {
+		return []Store{file}
+	}
+	return []Store{Keychain, file}
+}
+
+// OpenGitHub is Open for the GitHub token.
+func OpenGitHub(home, name string) Store {
+	if name == "keychain" && Keychain != nil {
+		return Keychain
+	}
+	return File{Dir: state.Dir(home), Base: "github-token"}
+}
 
 func (f File) Set(id, token string) error {
 	return state.WriteFileAtomic(f.path(), []byte(id+"\n"+token+"\n"), 0o600)

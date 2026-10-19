@@ -65,6 +65,7 @@ func (a *App) remember(apiURL string, c *api.Client, res *api.ExchangeResponse) 
 		Intervals:    res.Session.Intervals,
 		Limits:       res.Session.Limits,
 		ConnectedAt:  time.Now().UTC(),
+		GitHub:       res.Session.GitHub,
 	}
 	if err := state.Save(home, l); err != nil {
 		_ = secret.Open(home, store).Delete(l.SessionID)

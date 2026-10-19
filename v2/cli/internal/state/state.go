@@ -64,6 +64,22 @@ type Local struct {
 	Runtimes      []api.Runtime `json:"runtimes,omitempty"`
 	CheckCommands []string      `json:"check_commands,omitempty"`
 	IDE           string        `json:"ide,omitempty"`
+
+	// GitHub is the session's GitHub setting, when the work goes to the
+	// candidate's own GitHub; Repo is set once the repository exists.
+	GitHub      *api.GitHub `json:"github,omitempty"`
+	Repo        *Repo       `json:"repo,omitempty"`
+	GitHubStore string      `json:"github_store,omitempty"`
+}
+
+// Repo is the candidate's repository for the assessment.
+type Repo struct {
+	Login    string `json:"login"`
+	FullName string `json:"full_name"`
+	HTMLURL  string `json:"html_url"`
+	CloneURL string `json:"clone_url"`
+	// Branch is the remote branch the workspace branch pushes to.
+	Branch string `json:"branch"`
 }
 
 // ErrNone means there is no active session on this computer.

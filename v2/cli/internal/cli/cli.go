@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"sort"
 	"strings"
 	"time"
 
@@ -35,6 +34,9 @@ type App struct {
 	tuneWatcher func(*watcher.Config)
 	// tunePoll lets tests shorten the browser sign-in's polling interval.
 	tunePoll func(time.Duration) time.Duration
+	// selfPath is this program, for git's credential helper; "" means
+	// os.Executable. Tests set it to a built mindfries.
+	selfPath string
 }
 
 // Default is the real process environment.
@@ -76,6 +78,8 @@ var commands = map[string]command{
 	"submit": {"Review the diff and hand in", (*App).submit},
 	"stop":   {"End the session and clean up (your code stays)", (*App).stop},
 	"doctor": {"Run the preflight checks only", (*App).doctor},
+	// Hidden: git calls it, not the candidate.
+	"git-credential": {"", (*App).gitCredential},
 }
 
 // order is how help lists the commands.
@@ -147,15 +151,7 @@ func (a *App) printError(err error) {
 
 func (a *App) usage(w io.Writer) {
 	fmt.Fprintf(w, "mindfries %s — the Mindfries assessment CLI\n\nUsage:\n  mindfries <command> [flags]\n\nCommands:\n", buildinfo.Version)
-	names := append([]string(nil), order...)
-	if len(names) != len(commands) {
-		names = names[:0]
-		for n := range commands {
-			names = append(names, n)
-		}
-		sort.Strings(names)
-	}
-	for _, n := range names {
+	for _, n := range order {
 		fmt.Fprintf(w, "  %-8s %s\n", n, commands[n].summary)
 	}
 	fmt.Fprintln(w, "\nRun 'mindfries <command> --help' for a command's flags.")
