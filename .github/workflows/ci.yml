@@ -1,0 +1,107 @@
+# CI for the whole repo (v2/PLAN.md, task 0.2):
+#   - the V1 guard: a V2 PR may not change V1, and a v1-seam PR may not touch v2/
+#   - V1: typecheck, lint and build for the three Next apps; vet and test for the Go backends
+#   - V2: go test for every Go module under v2/ (none yet)
+name: CI
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  v1-guard:
+    name: V1 guard
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Guard's own tests
+        run: bash .github/scripts/v1-guard.test.sh
+      - name: Check the PR's changed paths
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
+        run: git diff --name-only "$BASE_SHA...$HEAD_SHA" | bash .github/scripts/v1-guard.sh
+
+  v1-web:
+    name: V1 ${{ matrix.app }}
+    if: github.event_name == 'push' || github.event.action != 'labeled' && github.event.action != 'unlabeled'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        app: [candidate/frontend, company/frontend, internal-admin/frontend]
+    defaults:
+      run:
+        working-directory: ${{ matrix.app }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: ${{ matrix.app }}/package-lock.json
+      - run: npm ci
+      - name: Typecheck
+        run: npx tsc --noEmit -p .
+      - name: Lint
+        run: npm run lint
+      - name: Build
+        run: npm run build
+
+  v1-go:
+    name: V1 ${{ matrix.module }}
+    if: github.event_name == 'push' || github.event.action != 'labeled' && github.event.action != 'unlabeled'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        module: [candidate/backend, company/backend]
+    defaults:
+      run:
+        working-directory: ${{ matrix.module }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: ${{ matrix.module }}/go.mod
+          cache-dependency-path: ${{ matrix.module }}/go.sum
+      - run: go vet ./...
+      - run: go test ./...
+
+  v2:
+    name: V2
+    if: github.event_name == 'push' || github.event.action != 'labeled' && github.event.action != 'unlabeled'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: stable
+          cache: false
+      - name: Test every Go module under v2/
+        run: |
+          mods=$(find v2 -name go.mod -not -path '*/node_modules/*' | sort)
+          if [ -z "$mods" ]; then
+            echo "No V2 Go modules yet."
+            exit 0
+          fi
+          for mod in $mods; do
+            dir=$(dirname "$mod")
+            echo "::group::$dir"
+            (cd "$dir" && go vet ./... && go test ./...)
+            echo "::endgroup::"
+          done
