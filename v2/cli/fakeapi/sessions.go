@@ -21,6 +21,11 @@ type SessionOptions struct {
 	Task      *Task // default DemoTask()
 	// GitHub overrides Config.GitHub for this assessment.
 	GitHub *api.GitHub
+	// Reviewers are the hiring team's GitHub usernames for this
+	// assessment, invited to the candidate's repository with read access.
+	// They belong to the assessment (the company portal sets them), never
+	// to server configuration.
+	Reviewers []string
 }
 
 type setupCode struct {
@@ -36,6 +41,8 @@ type session struct {
 	token   string
 	revoked bool
 	task    *Task
+	// invitation is the invitation it started from, if any.
+	invitation string
 	// Filled by later parts of the contract.
 	ext sessionExt
 }

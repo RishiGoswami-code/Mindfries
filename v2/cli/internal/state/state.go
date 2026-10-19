@@ -80,6 +80,8 @@ type Repo struct {
 	CloneURL string `json:"clone_url"`
 	// Branch is the remote branch the workspace branch pushes to.
 	Branch string `json:"branch"`
+	// Invited are the reviewers given read access so far.
+	Invited []string `json:"invited,omitempty"`
 }
 
 // ErrNone means there is no active session on this computer.

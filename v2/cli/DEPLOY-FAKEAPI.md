@@ -43,7 +43,6 @@ installers. A tester needs no environment variables, keys or codes.
    | `FAKEAPI_DIST` | `dist` (the folder the build command fills) |
    | `FAKEAPI_ADMIN_TOKEN` | a long random string |
    | `FAKEAPI_GITHUB_CLIENT_ID` | the Mindfries OAuth app's Client ID (below); leave it out to keep work local |
-   | `FAKEAPI_GITHUB_REVIEWERS` | GitHub usernames to invite with read access, comma-separated |
    | `FAKEAPI_GITHUB_OPTIONAL` | `1` to let candidates skip GitHub; by default it's required |
 
    Render sets `PORT` and `RENDER_EXTERNAL_URL` itself.
@@ -52,7 +51,7 @@ installers. A tester needs no environment variables, keys or codes.
    ```text
    fake V2 API on https://<service>.onrender.com/v2/cli
    sign-in page: https://<service>.onrender.com/device (a fake browser session; two demo assessments)
-   GitHub: the work goes to the candidate's own GitHub (OAuth app Ov23li…; reviewers [hiring-team])
+   GitHub: the work goes to the candidate's own GitHub (OAuth app Ov23li…); set each assessment's reviewers with PUT /__admin/invitations/<id>/reviewers
    install: irm https://<service>.onrender.com/install.ps1 | iex      (Windows PowerShell)
    install: curl -fsSL https://<service>.onrender.com/install.sh | sh   (macOS, Linux)
    ```
@@ -116,11 +115,28 @@ sh v2/cli/install/dev-install.sh
 Both take another API address as an argument (`-Api <url>` on Windows).
 `mindfries --version` shows which API a build talks to.
 
-## More invitations, or setup codes
+## Invitations and their reviewers
+
+Reviewers are the hiring team for an assessment, so they're set on each
+invitation (in the real product, the company portal does this), never in
+the server's environment. Any number of GitHub usernames:
 
 ```bash
-curl -X POST -H "Authorization: Bearer <FAKEAPI_ADMIN_TOKEN>" https://<service>.onrender.com/__admin/invitations -d '{"title":"My task","duration_minutes":45}'
+# A new assessment with its reviewers
+curl -X POST -H "Authorization: Bearer <FAKEAPI_ADMIN_TOKEN>" https://<service>.onrender.com/__admin/invitations -d '{"title":"Backend task","duration_minutes":45,"reviewers":["alice","bob","carol"]}'
+
+# The invitations, with their IDs and reviewers (including the two demos)
+curl -H "Authorization: Bearer <FAKEAPI_ADMIN_TOKEN>" https://<service>.onrender.com/__admin/invitations
+
+# Replace an assessment's reviewers
+curl -X PUT -H "Authorization: Bearer <FAKEAPI_ADMIN_TOKEN>" https://<service>.onrender.com/__admin/invitations/<invitation_id>/reviewers -d '{"reviewers":["alice","dave"]}'
 ```
+
+A change reaches candidates already working on that assessment: their CLI
+invites the new reviewers on its next `mindfries start` and at submit. It
+never removes anyone, since the repository is the candidate's. Like
+everything else in the fake, invitations are lost when the service
+restarts; the two demos come back without reviewers.
 
 The old setup codes still work, for testing `mindfries start <code>`:
 `POST /__admin/setup-codes` the same way.

@@ -166,14 +166,20 @@ func init() {
 	registerAdmin(func(s *Server, mux *http.ServeMux) {
 		mux.HandleFunc("POST /__admin/invitations", func(w http.ResponseWriter, r *http.Request) {
 			var in struct {
-				Title           string `json:"title"`
-				DurationMinutes int    `json:"duration_minutes"`
-				AssistantMode   string `json:"assistant_mode"`
+				Title           string   `json:"title"`
+				DurationMinutes int      `json:"duration_minutes"`
+				AssistantMode   string   `json:"assistant_mode"`
+				Reviewers       []string `json:"reviewers"`
 			}
 			if r.ContentLength != 0 && !decode(w, r, &in) {
 				return
 			}
-			o := SessionOptions{Title: in.Title, Duration: time.Duration(in.DurationMinutes) * time.Minute}
+			reviewers, err := CleanReviewers(in.Reviewers)
+			if err != nil {
+				problem(w, http.StatusBadRequest, api.CodeMalformed, sentence(err), "")
+				return
+			}
+			o := SessionOptions{Title: in.Title, Duration: time.Duration(in.DurationMinutes) * time.Minute, Reviewers: reviewers}
 			o.Policy.AssistantMode = in.AssistantMode
 			writeJSON(w, http.StatusCreated, map[string]string{"invitation_id": s.Invite(o)})
 		})
@@ -266,6 +272,7 @@ func (s *Server) handleDeviceToken(w http.ResponseWriter, r *http.Request) {
 	}
 	si.used = true
 	sess := s.newSession(si.approved.opts)
+	sess.invitation = si.approved.id
 	si.session = sess.ID
 	writeJSON(w, http.StatusOK, api.ExchangeResponse{SessionToken: sess.token, ExpiresAt: sess.EndsAt, Session: sess.view()})
 }

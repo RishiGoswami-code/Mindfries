@@ -142,6 +142,39 @@ func TestGitHubRefusedKeepsTheSession(t *testing.T) {
 	}
 }
 
+func TestReviewersAddedLaterAreInvited(t *testing.T) {
+	h := newHarness(t)
+	gh := withGitHub(t, h, api.GitHub{RepoName: "mindfries-backend"})
+	inv := h.srv.Invite(fakeapi.SessionOptions{Title: "Backend", Task: quickTask(), Reviewers: []string{"alice"}})
+	confirmed := h.confirmInBrowser(inv, true)
+	dir := filepath.Join(t.TempDir(), "ws")
+	if exit, out := h.run("", "start", "--dir", dir, "--yes", "--no-browser"); exit != 0 {
+		t.Fatalf("start: %d\n%s", exit, out)
+	}
+	<-confirmed
+	full := "octocandidate/mindfries-backend"
+	if got := gh.Collaborators(full); len(got) != 1 || got["alice"] != "pull" {
+		t.Fatalf("at start: %v", got)
+	}
+
+	// The hiring team grows; the next start invites the newcomer.
+	if err := h.srv.SetReviewers(inv, []string{"alice", "bob"}); err != nil {
+		t.Fatal(err)
+	}
+	if exit, out := h.run("", "start", "--yes"); exit != 0 || !strings.Contains(out, "Invited @bob") {
+		t.Fatalf("resume: %d\n%s", exit, out)
+	}
+	// And submit invites anyone added after that.
+	_ = h.srv.SetReviewers(inv, []string{"alice", "bob", "carol"})
+	writeFile(t, dir, "notes.md", "done\n")
+	if exit, out := h.run("", "submit", "-m", "x", "--yes"); exit != 0 || !strings.Contains(out, "Invited @carol") {
+		t.Fatalf("submit: %d\n%s", exit, out)
+	}
+	if got := gh.Collaborators(full); len(got) != 3 {
+		t.Fatalf("finally: %v", got)
+	}
+}
+
 func TestNoGitHubWhenTheSessionDoesntUseIt(t *testing.T) {
 	h := newHarness(t)
 	dir := h.started(fakeapi.SessionOptions{Task: quickTask()})

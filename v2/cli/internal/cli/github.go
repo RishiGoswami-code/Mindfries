@@ -35,7 +35,14 @@ func (a *App) githubClient() *github.Client {
 // connectGitHub runs once per session, after the workspace is set up.
 func (a *App) connectGitHub(ctx context.Context, l *state.Local, c *api.Client) error {
 	g := l.GitHub
-	if g == nil || l.Repo != nil {
+	if g == nil {
+		return nil
+	}
+	if l.Repo != nil {
+		// Already connected: invite anyone the hiring team added since.
+		if sess, err := c.Session(ctx); err == nil && sess.GitHub != nil {
+			a.syncReviewers(ctx, l, sess.GitHub.Reviewers)
+		}
 		return nil
 	}
 	home, err := a.home()
@@ -85,7 +92,7 @@ func (a *App) connectGitHub(ctx context.Context, l *state.Local, c *api.Client) 
 	if branch == "" {
 		branch = "main"
 	}
-	l.Repo = &state.Repo{Login: user.Login, FullName: repo.FullName, HTMLURL: repo.HTMLURL, CloneURL: repo.CloneURL, Branch: branch}
+	l.Repo = &state.Repo{Login: user.Login, FullName: repo.FullName, HTMLURL: repo.HTMLURL, CloneURL: repo.CloneURL, Branch: branch, Invited: invited}
 
 	r := &gitx.Repo{Dir: l.Workspace}
 	name := user.Name
@@ -222,6 +229,45 @@ func (a *App) push(ctx context.Context, l *state.Local, token string) error {
 	}}
 	_, err = r.Run(ctx, "push", "-q", "-u", "origin", l.Branch+":"+l.Repo.Branch)
 	return err
+}
+
+// syncReviewers invites the assessment's reviewers who aren't invited yet:
+// the hiring team can change after the repository was made. Reviewers are
+// never removed here; that's the candidate's repository.
+func (a *App) syncReviewers(ctx context.Context, l *state.Local, want []string) {
+	if l.Repo == nil {
+		return
+	}
+	have := map[string]bool{}
+	for _, r := range l.Repo.Invited {
+		have[strings.ToLower(r)] = true
+	}
+	var missing []string
+	for _, r := range want {
+		if !have[strings.ToLower(r)] {
+			missing = append(missing, r)
+		}
+	}
+	if len(missing) == 0 {
+		return
+	}
+	tok, err := a.githubToken(l)
+	if err != nil {
+		return
+	}
+	gh := a.githubClient()
+	gh.Token = tok
+	for _, r := range missing {
+		if err := gh.Invite(ctx, l.Repo.FullName, r); err != nil {
+			fmt.Fprintf(a.Stdout, "Couldn't invite the reviewer @%s to %s (%v).\n", r, l.Repo.FullName, err)
+			continue
+		}
+		l.Repo.Invited = append(l.Repo.Invited, r)
+		fmt.Fprintf(a.Stdout, "Invited @%s from the hiring team to %s (read access).\n", r, l.Repo.FullName)
+	}
+	if home, err := a.home(); err == nil {
+		_ = state.Save(home, l)
+	}
 }
 
 // pushForSubmit pushes the final commit, and returns it if that worked.

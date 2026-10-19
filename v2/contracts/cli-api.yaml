@@ -1075,7 +1075,12 @@ components:
           type: array
           items:
             type: string
-          description: GitHub users invited with read access.
+          description: |
+            The assessment's hiring team, as GitHub usernames, invited with
+            read access. They belong to the assessment (the company portal
+            sets them) and can change during the session: the CLI invites
+            anyone new on its next `start` and at submit, and never removes
+            anyone.
         deployment:
           type: boolean
           description: The task asks for a deployed URL at submit.
