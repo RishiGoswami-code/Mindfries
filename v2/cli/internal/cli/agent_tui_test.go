@@ -22,8 +22,12 @@ type lockedBuf struct {
 	b  bytes.Buffer
 }
 
-func (l *lockedBuf) Write(p []byte) (int, error) { l.mu.Lock(); defer l.mu.Unlock(); return l.b.Write(p) }
-func (l *lockedBuf) String() string              { l.mu.Lock(); defer l.mu.Unlock(); return l.b.String() }
+func (l *lockedBuf) Write(p []byte) (int, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.b.Write(p)
+}
+func (l *lockedBuf) String() string { l.mu.Lock(); defer l.mu.Unlock(); return l.b.String() }
 
 // typist types into the TUI once the screen shows what it waits for.
 type typist struct {
@@ -86,7 +90,7 @@ func TestAgentTerminalInterface(t *testing.T) {
 	for _, want := range []string{
 		"Rate limiter", "cwd: " + dir, // the welcome box
 		"/new", "/budget", // help
-		"> create notes.md with hello", // the message echoed
+		"> create notes.md with hello",       // the message echoed
 		"⏺ Create(notes.md)", "1 +", "hello", // the diff
 		"❯ 1. Yes", "Updated notes.md with 1 addition and 0 removals",
 		"⏺ Bash(git --version)", "⎿  git version", "✓ exit code 0",
