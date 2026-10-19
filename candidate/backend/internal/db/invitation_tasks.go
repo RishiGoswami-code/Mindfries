@@ -43,6 +43,14 @@ type InvitationTaskJob struct {
 // standing order to keep spending.
 const MaxInvitationTaskAttempts = 1
 
+// A generation runs for at most orchestrator's invitationTaskCap (15 minutes),
+// so one still 'generating' after 20 was cut off — the backend restarted or
+// was redeployed mid-run — and nobody is working on it. The claims below give
+// such a run one more try even though its attempt was counted (with
+// MaxInvitationTaskAttempts at 1, requiring attempts < max, as they once did,
+// meant it was never picked up again and the candidate saw "being prepared"
+// for ever). FailStalledTasks marks one that stalls a second time as failed.
+
 // ClaimInvitationTask takes the oldest invitation waiting for a task — or
 // one whose generation was started so long ago that whoever started it must
 // have stopped — and marks it 'generating'. Nil when there is nothing to do.
@@ -54,9 +62,11 @@ func (d *DB) ClaimInvitationTask(ctx context.Context) (*InvitationTaskJob, error
 		with next as (
 			select a.id from assessments a
 			where a.status = 'invited'
-			  and a.task_attempts < $1
-			  and (a.task_status = 'pending'
-			       or (a.task_status = 'generating' and a.task_started_at < now() - interval '15 minutes'))
+			  and ((a.task_status = 'pending' and a.task_attempts < $1)
+			       -- A generation cut off by a restart: its attempt was already
+			       -- counted, so it gets one more (see FailStalledTasks).
+			       or (a.task_status = 'generating' and a.task_started_at < now() - interval '20 minutes'
+			           and a.task_attempts < $1 + 1))
 			  -- Only invitations whose task isn't being provided at the role
 			  -- level: one with no role, or a legacy role that has no role-level
 			  -- task ('none'). A role that is generating, has, or failed its own
@@ -216,4 +226,62 @@ func (d *DB) FailInvitationTask(ctx context.Context, job InvitationTaskJob, reas
 		where id = $1 and task_status = 'generating'
 	`, job.ID, status, reason)
 	return err
+}
+
+// StalledTask is a task generation that was cut off twice and is now marked
+// failed, for the worker to alert someone about. CandidateEmail is empty for a
+// role's task.
+type StalledTask struct {
+	ID, RoleTitle, CandidateEmail string
+}
+
+// stalledTaskReason is what a twice-interrupted generation records.
+const stalledTaskReason = "Task generation failed and will not be retried automatically. It was interrupted twice before it finished (the backend restarted while it ran)."
+
+// FailStalledTasks marks failed every task generation — role or invitation —
+// that stalled again after its one extra try, so it says so instead of
+// "being prepared" for ever. The company can retry it from its portal.
+func (d *DB) FailStalledTasks(ctx context.Context) ([]StalledTask, error) {
+	var out []StalledTask
+	rows, err := d.pool.Query(ctx, `
+		update job_roles
+		set task_status = 'failed', task_error = $2
+		where task_status = 'generating' and task_started_at < now() - interval '20 minutes'
+		  and task_attempts >= $1 + 1
+		returning id, coalesce(title, '')
+	`, MaxRoleTaskAttempts, stalledTaskReason)
+	if err != nil {
+		return nil, err
+	}
+	for rows.Next() {
+		var t StalledTask
+		if err := rows.Scan(&t.ID, &t.RoleTitle); err != nil {
+			rows.Close()
+			return out, err
+		}
+		out = append(out, t)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return out, err
+	}
+	rows, err = d.pool.Query(ctx, `
+		update assessments
+		set task_status = 'failed', task_error = $2
+		where status = 'invited' and task_status = 'generating' and task_started_at < now() - interval '20 minutes'
+		  and task_attempts >= $1 + 1
+		returning id, coalesce(role, ''), coalesce(candidate_email, '')
+	`, MaxInvitationTaskAttempts, stalledTaskReason)
+	if err != nil {
+		return out, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var t StalledTask
+		if err := rows.Scan(&t.ID, &t.RoleTitle, &t.CandidateEmail); err != nil {
+			return out, err
+		}
+		out = append(out, t)
+	}
+	return out, rows.Err()
 }

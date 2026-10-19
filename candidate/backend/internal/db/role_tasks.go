@@ -41,9 +41,11 @@ func (d *DB) ClaimRoleTask(ctx context.Context) (*RoleTaskJob, error) {
 	err := d.pool.QueryRow(ctx, `
 		with next as (
 			select id from job_roles
-			where task_attempts < $1
-			  and (task_status = 'pending'
-			       or (task_status = 'generating' and task_started_at < now() - interval '15 minutes'))
+			where (task_status = 'pending' and task_attempts < $1)
+			   -- A generation cut off by a restart: its attempt was already
+			   -- counted, so it gets one more (see FailStalledTasks).
+			   or (task_status = 'generating' and task_started_at < now() - interval '20 minutes'
+			       and task_attempts < $1 + 1)
 			order by created_at
 			limit 1
 			for update skip locked
@@ -126,6 +128,50 @@ func (d *DB) SaveRoleTask(ctx context.Context, job RoleTaskJob, task InvitationT
 		return "", err
 	}
 	return templateID, tx.Commit(ctx)
+}
+
+// SettleRoleInvitations brings invitations that are waiting on their role's
+// task in line with the role, and reports how many it moved each way.
+//
+// SaveRoleTask backfills the invitations that exist when the role's task is
+// saved, but an invitation can also be created after that, by a door that
+// doesn't copy the role's task — a candidate applying from the job board, or a
+// company inviting from an application. Such an invitation is 'pending' with no
+// task while the role is 'ready', and nothing else would ever give it one: the
+// invitation worker leaves role-owned invitations to the role. Those adopt the
+// role's task here. A 'failed' one does too, once its role has a task.
+//
+// When the role's task failed, its waiting invitations would otherwise say
+// "being prepared" for ever; they are marked failed with the role's reason, so
+// the candidate and the company both see it and the company can retry.
+func (d *DB) SettleRoleInvitations(ctx context.Context) (adopted, failed int64, err error) {
+	tag, err := d.pool.Exec(ctx, `
+		update assessments a
+		set template_id = r.template_id, task_status = 'ready', task_error = null
+		from job_roles r
+		where a.job_role_id = r.id
+		  and r.task_status = 'ready' and r.template_id is not null
+		  and a.status = 'invited' and a.template_id is null
+		  and a.task_status in ('pending', 'generating', 'failed')
+	`)
+	if err != nil {
+		return 0, 0, err
+	}
+	adopted = tag.RowsAffected()
+	tag, err = d.pool.Exec(ctx, `
+		update assessments a
+		set task_status = 'failed',
+		    task_error = 'The role''s task couldn''t be generated. ' || coalesce(r.task_error, '')
+		from job_roles r
+		where a.job_role_id = r.id
+		  and r.task_status = 'failed'
+		  and a.status = 'invited' and a.template_id is null
+		  and a.task_status in ('pending', 'generating')
+	`)
+	if err != nil {
+		return adopted, 0, err
+	}
+	return adopted, tag.RowsAffected(), nil
 }
 
 // FailRoleTask records why a role's task couldn't be generated. The role goes
