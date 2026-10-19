@@ -486,7 +486,7 @@ export async function getSessionReport(sessionId: string): Promise<ReportView> {
           .eq("report_id", data.id)
           .order("created_at", { ascending: true });
         if (evRows) {
-          dbEvidence = evRows.map((e: any) => ({
+          dbEvidence = evRows.map((e: EvidenceItemView) => ({
             category: e.category,
             observation: e.observation,
           }));
