@@ -12,30 +12,37 @@ through [`../contracts/cli-api.yaml`](../contracts/cli-api.yaml), which
 
 ## The candidate's flow
 
-1. On the dashboard they start a V2 assessment and get one command, unique
-   to them and the assessment:
-   ```sh
-   curl -fsSL https://<v2-domain>/install.sh | sh -s -- K7QM-2XRP-9WDA
-   ```
+1. They install the CLI once, with a command the dashboard shows:
    ```powershell
-   powershell -ExecutionPolicy Bypass -c "& ([scriptblock]::Create((irm https://<v2-domain>/install.ps1))) K7QM-2XRP-9WDA"
+   irm https://<v2-domain>/install.ps1 | iex
+   ```
+   ```sh
+   curl -fsSL https://<v2-domain>/install.sh | sh
    ```
    The installer checks the binary against the release checksum, refuses a
-   tampered one, and runs `mindfries start <code>`.
-2. `start` shows the rules and what it records, asks them to close any
-   coding agent, trades the single-use code for a session token (kept in the
-   OS keychain), downloads and verifies the task, creates the workspace with
-   a locked `TASK.md`, opens their editor, and runs the session watcher until
-   the session ends.
+   tampered one, puts `mindfries` in a per-user folder
+   (`%LOCALAPPDATA%\Mindfries\bin`, or `~/.local/bin`) and adds it to
+   their PATH without admin rights. It says when a new terminal is needed.
+2. In any terminal they type `mindfries start`. It shows the rules and what
+   it records, asks them to close any coding agent, and opens a Mindfries
+   sign-in page in the browser with a short code. They sign in, check the
+   page shows the same code, and pick the assessment they were invited to.
+   The CLI receives that session's token (kept in the OS keychain), downloads
+   and verifies the task, creates the workspace with a locked `TASK.md`,
+   opens their editor, and runs the session watcher until the session ends.
 3. They work in their editor, with `mindfries agent` in another terminal.
 4. `mindfries submit` runs the checks, shows the diff, commits and hands in.
    `mindfries stop` ends the session without submitting.
+
+Nothing to configure: the API address is baked into each build
+(`buildinfo.DefaultAPI`, set by the release workflow). A dashboard command
+with a single-use setup code, `mindfries start <code>`, also still works.
 
 ## Commands
 
 | Command | What it does |
 |---|---|
-| `mindfries start <setup-code>` | Sets up the workspace and runs the session watcher. Run it again without a code to carry on after a restart, or to reopen the editor. |
+| `mindfries start` | Signs in through the browser, sets up the workspace and runs the session watcher. Run it again to carry on after a restart, or to reopen the editor. `--no-browser` prints the sign-in address instead. |
 | `mindfries agent` | The coding and research assistant, in the terminal |
 | `mindfries status` | The session, watcher, sync and Git state, or the last submission |
 | `mindfries submit` | Runs the task's checks, shows the diff, commits and hands in |
@@ -44,17 +51,39 @@ through [`../contracts/cli-api.yaml`](../contracts/cli-api.yaml), which
 
 ## Try it locally
 
-```sh
-cd v2/cli
-go run ./cmd/fakeapi            # prints a setup code
-go run ./cmd/mindfries start <code> --api http://localhost:8787/v2/cli
+One command builds this checkout and installs it on your PATH, the same way
+a candidate's install does (needs Go):
+
+```powershell
+powershell -ExecutionPolicy Bypass -File v2/cli/install/dev-install.ps1 -Api http://localhost:8787/v2/cli
 ```
 
-`MINDFRIES_HOME` moves the CLI's own state (default: the user config
-folder), and `MINDFRIES_TOKEN_STORE=file` skips the keychain.
+```sh
+sh v2/cli/install/dev-install.sh http://localhost:8787/v2/cli
+```
 
-To try it against a URL on the internet, deploy the fake API as a
-throwaway service: see [DEPLOY-FAKEAPI.md](DEPLOY-FAKEAPI.md).
+Then run the fake API and sign in:
+
+```sh
+cd v2/cli && go run ./cmd/fakeapi   # serves the sign-in page; any email works
+mindfries start                      # in another terminal
+```
+
+Without an argument the dev install talks to the fake API hosted on Render,
+which also serves its own installers and builds: see
+[DEPLOY-FAKEAPI.md](DEPLOY-FAKEAPI.md). `mindfries --version` shows which API
+a dev build talks to.
+
+Build-time settings (`-ldflags -X github.com/mindfries/v2/cli/internal/...`):
+`buildinfo.DefaultAPI` is the API address; `buildinfo.TrustDevKey=1` lets a
+dev build trust the fake API's signing key from that address, not only from
+localhost (release builds ignore it); `trust.ManifestKeys` holds the release
+signing keys.
+
+Developer overrides, never needed by a candidate: `--api` or `MINDFRIES_API`
+(another API), `MINDFRIES_HOME` (the CLI's own state; default: the user
+config folder), `MINDFRIES_TOKEN_STORE=file` (skip the keychain),
+`MINDFRIES_TRUST_DEV_KEY=1` (dev builds only), `MINDFRIES_NO_BROWSER=1`.
 
 ## Layout
 
@@ -63,7 +92,7 @@ throwaway service: see [DEPLOY-FAKEAPI.md](DEPLOY-FAKEAPI.md).
 | `cmd/mindfries` | The binary; `main` only calls `internal/cli` |
 | `cmd/fakeapi` | The fake V2 API, to run by hand |
 | `cmd/mfsign` | Ed25519 keys, signing and checking for releases |
-| `fakeapi/` | The fake API: setup codes, bundles, events, snapshots, the assistant gateway with a scripted model, submissions. Tests drive it from Go. |
+| `fakeapi/` | The fake API: browser sign-in with its `/device` page, invitations, setup codes, bundles, events, snapshots, the assistant gateway with a scripted model, submissions, and (with `-dist`) hosted installers and builds. Tests drive it from Go. |
 | `internal/cli` | Argument parsing and the six commands |
 | `internal/api` | The contract's types and a client, including the assistant's event stream |
 | `internal/preflight` | `doctor`'s checks |
@@ -73,7 +102,7 @@ throwaway service: see [DEPLOY-FAKEAPI.md](DEPLOY-FAKEAPI.md).
 | `internal/assistant` | `mindfries agent`: the chat, the tools and their limits |
 | `internal/ledger` | The record of every edit the assistant applies |
 | `internal/secret`, `internal/state`, `internal/trust` | Token storage, the local session record, manifest signatures |
-| `install/` | The one-line installers and their tests |
+| `install/` | The one-line installers, the dev installers, and their tests |
 | `e2e/` | The real binary through whole sessions against the fake API |
 
 ## What it records, and what it doesn't
@@ -102,7 +131,17 @@ the real binary. The Windows Credential Manager was checked for real
 (`MINDFRIES_TEST_KEYCHAIN=1`). CI runs the same tests on Linux, macOS and
 Windows.
 
+Also verified by hand on Windows (2026-10-19): a fake API serving its own
+builds, then `irm .../install.ps1 | iex` in a clean PowerShell, then
+`mindfries start` with no variables, codes or flags beyond the sandbox's
+own folders: the sign-in page showed the same code, Connect let the
+terminal carry on, and `status` and `stop` worked by name.
+
 Not yet:
+- The hosted fake API on Render still runs the build from before the
+  browser sign-in; it has to be redeployed from this branch.
+- The installers' PATH changes were checked in the registry and in a fresh
+  `HOME`, not in a newly opened Windows Terminal or macOS/Linux shell.
 - CI hasn't run on GitHub, because nothing is pushed.
 - The macOS and Linux keychain paths are only exercised in CI, with the file
   store.

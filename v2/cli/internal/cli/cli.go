@@ -10,6 +10,7 @@ import (
 	"os"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/mindfries/v2/cli/internal/api"
 	"github.com/mindfries/v2/cli/internal/buildinfo"
@@ -32,6 +33,8 @@ type App struct {
 	setup  setupResult
 	// tuneWatcher lets tests shorten the watcher's intervals.
 	tuneWatcher func(*watcher.Config)
+	// tunePoll lets tests shorten the browser sign-in's polling interval.
+	tunePoll func(time.Duration) time.Duration
 }
 
 // Default is the real process environment.
@@ -102,6 +105,13 @@ func (a *App) Run(args []string) int {
 	switch args[0] {
 	case "--version", "-version", "version", "-v":
 		fmt.Fprintf(a.Stdout, "mindfries %s (%s)\n", buildinfo.Version, buildinfo.Commit)
+		if buildinfo.IsDev() {
+			fmt.Fprintf(a.Stdout, "dev build for %s", buildinfo.DefaultAPI)
+			if trust.AllowDevKeyAnywhere {
+				fmt.Fprint(a.Stdout, ", trusting the fake API's development key")
+			}
+			fmt.Fprintln(a.Stdout)
+		}
 		return 0
 	case "help", "--help", "-h", "-help":
 		a.usage(a.Stdout)
@@ -192,17 +202,23 @@ func renderError(err error) string {
 }
 
 // devKeyOptIn lets a dev build trust the fake API's signing key from a
-// remote server (a throwaway deployment of cmd/fakeapi). Release builds
-// ignore the variable.
+// remote server (a throwaway deployment of cmd/fakeapi): either baked in at
+// build time (buildinfo.TrustDevKey) or, as a developer override,
+// MINDFRIES_TRUST_DEV_KEY=1. Release builds ignore both.
 func (a *App) devKeyOptIn() {
 	trust.AllowDevKeyAnywhere = false
-	if a.Getenv("MINDFRIES_TRUST_DEV_KEY") != "1" {
+	env := a.Getenv("MINDFRIES_TRUST_DEV_KEY") == "1"
+	if !env && buildinfo.TrustDevKey != "1" {
 		return
 	}
-	if !strings.Contains(buildinfo.Version, "-dev") {
-		fmt.Fprintln(a.Stderr, "mindfries: MINDFRIES_TRUST_DEV_KEY is ignored by release builds.")
+	if !buildinfo.IsDev() {
+		if env {
+			fmt.Fprintln(a.Stderr, "mindfries: MINDFRIES_TRUST_DEV_KEY is ignored by release builds.")
+		}
 		return
 	}
 	trust.AllowDevKeyAnywhere = true
-	fmt.Fprintln(a.Stderr, "mindfries: dev build trusting the fake API's development key from any server (MINDFRIES_TRUST_DEV_KEY=1). Only for testing.")
+	if env {
+		fmt.Fprintln(a.Stderr, "mindfries: dev build trusting the fake API's development key from any server (MINDFRIES_TRUST_DEV_KEY=1). Only for testing.")
+	}
 }

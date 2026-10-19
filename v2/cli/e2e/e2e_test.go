@@ -5,10 +5,14 @@ package e2e
 
 import (
 	"bytes"
+	"io"
+	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strings"
 	"sync"
@@ -53,19 +57,24 @@ func binary(t *testing.T) string {
 type session struct {
 	t    *testing.T
 	srv  *fakeapi.Server
+	url  string
 	env  []string
 	home string
 	ws   string
 }
 
 func newSession(t *testing.T) *session {
-	s := &session{t: t, srv: fakeapi.New(fakeapi.Config{}), home: t.TempDir(), ws: filepath.Join(t.TempDir(), "workspace")}
+	s := &session{t: t, srv: fakeapi.New(fakeapi.Config{SignInInterval: time.Second}), home: t.TempDir(), ws: filepath.Join(t.TempDir(), "workspace")}
 	ts := httptest.NewServer(s.srv.Handler())
 	t.Cleanup(ts.Close)
+	s.url = ts.URL
+	// MINDFRIES_API only points the binary at this test server; a
+	// candidate's build has its API baked in.
 	s.env = append(os.Environ(),
 		"MINDFRIES_HOME="+s.home,
 		"MINDFRIES_API="+ts.URL+fakeapi.Prefix,
 		"MINDFRIES_TOKEN_STORE=file",
+		"MINDFRIES_NO_BROWSER=1",
 	)
 	return s
 }
@@ -106,12 +115,13 @@ func (b *syncBuf) String() string              { b.mu.Lock(); defer b.mu.Unlock(
 // ends) and waits until the watcher is up.
 func (s *session) start() (wait func() string) {
 	s.t.Helper()
-	code := s.srv.MintSetupCode(fakeapi.SessionOptions{
+	inv := s.srv.Invite(fakeapi.SessionOptions{
 		Title:     "E2E task",
 		Task:      task(),
 		Intervals: api.Intervals{HeartbeatSeconds: 1, SnapshotSeconds: 2, AgentScanSeconds: 2},
 	})
-	c := s.cmd("start", code, "--dir", s.ws, "--ide", "manual", "--yes")
+	// No code: start signs in through the browser page.
+	c := s.cmd("start", "--dir", s.ws, "--ide", "manual", "--yes")
 	var out syncBuf
 	c.Stdout, c.Stderr = &out, &out
 	if err := c.Start(); err != nil {
@@ -119,6 +129,7 @@ func (s *session) start() (wait func() string) {
 	}
 	done := make(chan error, 1)
 	go func() { done <- c.Wait() }()
+	s.confirmInBrowser(&out, inv)
 	s.eventually("watcher running", &out, func() bool {
 		return strings.Contains(s.run("status"), "Watcher      running")
 	})
@@ -133,6 +144,43 @@ func (s *session) start() (wait func() string) {
 			s.t.Fatalf("start didn't finish\n%s", out.String())
 		}
 		return out.String()
+	}
+}
+
+var linkRe = regexp.MustCompile(`(http://\S+/device\?code=)(\S+)`)
+
+// confirmInBrowser does what the candidate does: open the link start
+// prints, check the code, pick the invitation and press Connect.
+func (s *session) confirmInBrowser(out *syncBuf, invitationID string) {
+	s.t.Helper()
+	var link, code string
+	s.eventually("the sign-in link", out, func() bool {
+		m := linkRe.FindStringSubmatch(out.String())
+		if m == nil {
+			return false
+		}
+		link, code = m[0], m[2]
+		return true
+	})
+	if !strings.HasPrefix(link, s.url) || !strings.Contains(out.String(), "Check the page shows this code: "+code) {
+		s.t.Fatalf("sign-in instructions:\n%s", out.String())
+	}
+	resp, err := http.Get(link)
+	if err != nil {
+		s.t.Fatal(err)
+	}
+	page, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if !strings.Contains(string(page), code) || !strings.Contains(string(page), invitationID) {
+		s.t.Fatalf("sign-in page:\n%s", page)
+	}
+	resp, err = http.PostForm(s.url+"/device", url.Values{"code": {code}, "email": {"e2e@example.com"}, "invitation": {invitationID}, "action": {"approve"}})
+	if err != nil {
+		s.t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		s.t.Fatalf("confirming: %d", resp.StatusCode)
 	}
 }
 

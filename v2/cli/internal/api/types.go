@@ -39,17 +39,24 @@ const (
 	CodeSetupCodeUsed    = "setup_code_used"
 	CodeSetupCodeExpired = "setup_code_expired"
 	CodeSetupCodeInvalid = "setup_code_invalid"
-	CodeTokenMissing     = "token_missing"
-	CodeTokenInvalid     = "token_invalid"
-	CodeTokenExpired     = "token_expired"
-	CodeTokenRevoked     = "token_revoked"
-	CodeSessionNotActive = "session_not_active"
-	CodeAssistantOff     = "assistant_off"
-	CodeBudgetExhausted  = "budget_exhausted"
-	CodeTurnNotWaiting   = "turn_not_waiting"
-	CodeAlreadySubmitted = "already_submitted"
-	CodeBundleMismatch   = "bundle_mismatch"
-	CodeInternal         = "internal"
+	// Browser sign-in (POST /sessions/device/token).
+	CodeAuthorizationPending = "authorization_pending"
+	CodeSlowDown             = "slow_down"
+	CodeAccessDenied         = "access_denied"
+	CodeDeviceCodeExpired    = "device_code_expired"
+	CodeDeviceCodeUsed       = "device_code_used"
+	CodeDeviceCodeInvalid    = "device_code_invalid"
+	CodeTokenMissing         = "token_missing"
+	CodeTokenInvalid         = "token_invalid"
+	CodeTokenExpired         = "token_expired"
+	CodeTokenRevoked         = "token_revoked"
+	CodeSessionNotActive     = "session_not_active"
+	CodeAssistantOff         = "assistant_off"
+	CodeBudgetExhausted      = "budget_exhausted"
+	CodeTurnNotWaiting       = "turn_not_waiting"
+	CodeAlreadySubmitted     = "already_submitted"
+	CodeBundleMismatch       = "bundle_mismatch"
+	CodeInternal             = "internal"
 )
 
 type Mismatch struct {
@@ -74,6 +81,28 @@ type Device struct {
 type ExchangeRequest struct {
 	SetupCode string `json:"setup_code"`
 	Device    Device `json:"device"`
+}
+
+// DeviceRequest starts a browser sign-in.
+type DeviceRequest struct {
+	Device Device `json:"device"`
+}
+
+// DeviceAuthorization is what the candidate confirms in the browser. The
+// device code is the CLI's secret for polling; the user code is shown in
+// both the terminal and the browser so the candidate can check they match.
+type DeviceAuthorization struct {
+	DeviceCode              string    `json:"device_code"`
+	UserCode                string    `json:"user_code"`
+	VerificationURI         string    `json:"verification_uri"`
+	VerificationURIComplete string    `json:"verification_uri_complete"`
+	ExpiresAt               time.Time `json:"expires_at"`
+	IntervalSeconds         int       `json:"interval_seconds"`
+}
+
+// DeviceTokenRequest polls for the session token.
+type DeviceTokenRequest struct {
+	DeviceCode string `json:"device_code"`
 }
 
 type ExchangeResponse struct {

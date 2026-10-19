@@ -27,6 +27,16 @@ type Config struct {
 	Now           func() time.Time
 	// AdminToken, if set, is required on every /__admin request.
 	AdminToken string
+	// PublicURL is the fake's address as the candidate's browser sees it,
+	// for the sign-in page link. Default: worked out from each request.
+	PublicURL string
+	// SignInInterval is how often the CLI may poll a browser sign-in.
+	// Default 5 seconds.
+	SignInInterval time.Duration
+	// DistDir, if set, is a folder of CLI builds (mindfries_<os>_<arch>)
+	// served at /cli/latest with a generated checksums.txt, next to the
+	// installers at /install.sh and /install.ps1.
+	DistDir string
 }
 
 // Server is the fake V2 API.
@@ -42,6 +52,8 @@ type Server struct {
 
 	codes    map[string]*setupCode
 	sessions map[string]*session
+	invites  []*invitation
+	signIns  map[string]*signIn // by device code
 	tamper   tampering
 	model    Model
 }
@@ -57,7 +69,10 @@ func New(cfg Config) *Server {
 	if cfg.Now == nil {
 		cfg.Now = time.Now
 	}
-	return &Server{cfg: cfg, requests: map[string]int{}, codes: map[string]*setupCode{}, sessions: map[string]*session{}}
+	if cfg.SignInInterval == 0 {
+		cfg.SignInInterval = 5 * time.Second
+	}
+	return &Server{cfg: cfg, requests: map[string]int{}, codes: map[string]*setupCode{}, sessions: map[string]*session{}, signIns: map[string]*signIn{}}
 }
 
 func (s *Server) now() time.Time { return s.cfg.Now().UTC() }
@@ -76,8 +91,9 @@ func (s *Server) Requests(key string) int {
 	return s.requests[key]
 }
 
-// Handler serves the contract under Prefix, and the admin controls under
-// /__admin.
+// Handler serves the contract under Prefix, the admin controls under
+// /__admin, and the pages a browser opens: the sign-in page at /device and
+// the installers.
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	route := func(pattern string, h http.HandlerFunc) {
@@ -87,6 +103,7 @@ func (s *Server) Handler() http.Handler {
 	route("GET /version", s.handleVersion)
 	s.routes(route)
 	s.adminRoutes(mux)
+	s.pageRoutes(mux)
 	return mux
 }
 

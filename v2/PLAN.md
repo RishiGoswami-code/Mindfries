@@ -175,12 +175,15 @@ CLI, which runs only on a laptop, so Stage 1 can start alongside it.*
 The CLI is built against a **fake V2 API**, a small local server that
 follows the contract. It can therefore be finished and tested before the real
 backend exists. The candidate's flow is the spec's 14 steps, with one change:
-steps 2–4 are a single command.
+steps 2–4 are "install once, then `mindfries start`", which signs in through
+the browser ([README, decision 4](README.md)).
 
 In short:
-1. The candidate starts a V2 assessment on the dashboard and is shown **one
-   command**, unique to them and to that assessment.
-2. Running it installs `mindfries` and connects it to the portal (tasks 1.4, 1.12).
+1. The candidate installs `mindfries` once with **one command**, which puts it
+   on their PATH (task 1.12).
+2. `mindfries start` opens a Mindfries sign-in page, where they confirm the
+   code their terminal shows and pick the assessment they were invited to;
+   the CLI receives that session's token (task 1.4).
 3. The CLI downloads the codebase and `TASK.md`. `TASK.md` is locked (task 1.5).
 4. The candidate works in their own IDE, typing and using `mindfries agent`,
    which can also research. They may research in their own browser too; outside
@@ -192,7 +195,7 @@ The commands are:
 
 | Command | What it does |
 |---|---|
-| `mindfries start <setup-code>` | Sets up the workspace and runs the session watcher |
+| `mindfries start` | Signs in through the browser, sets up the workspace and runs the session watcher |
 | `mindfries agent` | Opens **our coding and research assistant** in the terminal (tasks 1.14–1.17) |
 | `mindfries status` | Shows the session, sync and Git state |
 | `mindfries submit` | Reviews the diff and hands in |
@@ -205,7 +208,7 @@ Two different things could both be called an "agent", so the plan names them apa
 
 - [ ] **1.1 The CLI ↔ API contract.**
   - Write `v2/contracts/cli-api.yaml` (OpenAPI). It covers:
-    - exchanging the setup code;
+    - the browser sign-in, and exchanging a setup code;
     - the session token and its expiry;
     - the task bundle and its manifest;
     - heartbeat;
@@ -231,11 +234,11 @@ Two different things could both be called an "agent", so the plan names them apa
   - Every failure prints the fix, as in the spec's [failure table](SPEC.md#environment-failure-handling). Nothing counts against the candidate.
   - *Done when:* each check has a unit test, including the missing-tool cases.
 - [ ] **1.4 Session authentication.**
-  - The browser shows **one setup command**, unique to the candidate and the assessment. It installs the CLI if needed (1.12) and then runs `mindfries start <setup-code>`.
-  - The code inside it is **single-use** and expires in about 10 minutes. It is not a reusable secret, so shell history leaks nothing.
-  - `start` exchanges the code for a session-scoped token. The token is stored in the OS keychain, or failing that in a file only the user can read. It is never printed.
+  - `mindfries start` signs the candidate in through the browser (an RFC 8628 device sign-in): it opens a Mindfries page showing the same short code as the terminal, the candidate confirms and picks the assessment they were invited to, and the CLI receives that one session's token. Nothing is pasted, so shell history holds nothing.
+  - A dashboard setup command (`mindfries start <setup-code>`) still works: the code is **single-use** and expires in about 10 minutes.
+  - Either way `start` ends up with a session-scoped token. The token is stored in the OS keychain, or failing that in a file only the user can read. It is never printed.
   - The token expires with the session.
-  - *Done when:* reusing a code, an expired code and an expired token are all refused (tested against the fake API).
+  - *Done when:* reusing a code, an expired code, an expired token, and a refused or expired sign-in are all refused (tested against the fake API).
 - [ ] **1.5 Workspace setup.**
   - The candidate confirms the target folder.
   - The CLI downloads the task bundle and checks every file's hash against the manifest. It records the task version.
@@ -304,7 +307,8 @@ Two different things could both be called an "agent", so the plan names them apa
   - *Done when:* every row is covered.
 - [ ] **1.12 Signed, versioned distribution.**
   - Release builds for each OS, with checksums and a signature.
-  - A one-line installer that verifies the checksum before running the CLI. It is the setup command from 1.4: it installs the CLI, then runs `start` with the candidate's single-use code.
+  - A one-line installer that verifies the checksum, puts `mindfries` in a per-user folder and adds that folder to the user's PATH (no admin rights), so the candidate then types `mindfries start`. Given a setup code, it also runs `start` with it.
+  - The API address is baked into each build; the candidate sets no environment variables.
   - The server refuses CLI versions older than its minimum.
   - Windows (Authenticode) and macOS (notarization) need certificates; see the decisions below.
   - *Done when:* a tampered binary is refused by the installer.
@@ -386,7 +390,8 @@ Each will be split into tasks like Stage 1 when it starts.
 
 - **3. Candidate web app (`v2/web`):** only the new screens. Candidates arrive through the handoff from the V1 dashboard; there is no sign-in, dashboard or settings of its own.
   - V2 consent: what the CLI checks, including 1.8, and the camera;
-  - "Set up my workspace", which shows the setup command;
+  - "Set up my workspace", which shows the install command and `mindfries start`;
+  - the sign-in page that `mindfries start` opens (confirm the code, pick the assessment);
   - live session status from the agent;
   - the stage and journey view from [`ROLE_FLOWS.md`](ROLE_FLOWS.md);
   - the submission manifest review.

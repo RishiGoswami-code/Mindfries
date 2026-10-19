@@ -160,7 +160,7 @@ func checkAPI(ctx context.Context, o Options) Check {
 		p, _ := api.AsProblem(err)
 		c.Status = Fail
 		c.Detail = "this mindfries is too old (need " + p.MinimumVersion + ")"
-		c.Fix = []string{"Run the setup command from your Mindfries dashboard again; it installs the latest version."}
+		c.Fix = []string{"Run the Mindfries install command again; it installs the latest version."}
 	case err != nil:
 		c.Status = Fail
 		c.Detail = "can't reach it: " + err.Error()
@@ -174,7 +174,7 @@ func checkAPI(ctx context.Context, o Options) Check {
 			if latest, ok := semver.Find(v.LatestVersion); ok && semver.Less(cur, latest) {
 				c.Status = Warn
 				c.Detail = "reachable; a newer mindfries (" + v.LatestVersion + ") is available"
-				c.Fix = []string{"Run the setup command from your dashboard again to update."}
+				c.Fix = []string{"Run the Mindfries install command again to update."}
 			}
 		}
 	}

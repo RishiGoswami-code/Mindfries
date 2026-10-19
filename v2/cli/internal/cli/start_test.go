@@ -84,9 +84,7 @@ func TestUnknownAndMalformedCodes(t *testing.T) {
 	if exit, out := h.run("", "start", "hello"); exit == 0 || !strings.Contains(out, "doesn't look like a setup code") {
 		t.Fatalf("malformed: %s", out)
 	}
-	if exit, out := h.run("", "start"); exit == 0 || !strings.Contains(out, "needs the setup code") {
-		t.Fatalf("missing: %s", out)
-	}
+	// Without a code, start signs in instead (signin_test.go).
 }
 
 func TestExpiredTokenIsRefused(t *testing.T) {
@@ -128,7 +126,7 @@ func TestOldCLIIsRefused(t *testing.T) {
 	defer ts.Close()
 	h.env["MINDFRIES_API"] = ts.URL + fakeapi.Prefix
 	exit, out := h.run("", "start", old.MintSetupCode(fakeapi.SessionOptions{}))
-	if exit == 0 || !strings.Contains(out, "too old (need 9.0.0") || !strings.Contains(out, "Run the setup command from your dashboard again") {
+	if exit == 0 || !strings.Contains(out, "too old (need 9.0.0") || !strings.Contains(out, "Run the Mindfries install command again") {
 		t.Fatalf("%d\n%s", exit, out)
 	}
 }

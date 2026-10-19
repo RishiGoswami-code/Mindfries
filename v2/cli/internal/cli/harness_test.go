@@ -36,7 +36,7 @@ func newHarness(t *testing.T) *harness {
 	t.Helper()
 	workspace.Backoff = []time.Duration{10 * time.Millisecond, 10 * time.Millisecond}
 	h := &harness{t: t, home: t.TempDir()}
-	h.srv = fakeapi.New(fakeapi.Config{Now: h.now})
+	h.srv = fakeapi.New(fakeapi.Config{Now: h.now, SignInInterval: 10 * time.Millisecond})
 	ts := httptest.NewServer(h.srv.Handler())
 	t.Cleanup(ts.Close)
 	h.url = ts.URL + fakeapi.Prefix
@@ -75,6 +75,7 @@ func (h *harness) app(stdin string, out *bytes.Buffer) *App {
 		Getenv:      func(k string) string { return h.env[k] },
 		Sys:         h.machine.Sys("linux", "amd64"),
 		tuneWatcher: h.tune,
+		tunePoll:    func(time.Duration) time.Duration { return 20 * time.Millisecond },
 	}
 }
 

@@ -10,11 +10,15 @@ info:
 
     ## How a session uses it
 
-    1. The dashboard shows one setup command. It installs the CLI if needed,
-       checking `GET /version`, then runs `mindfries start <setup-code>`.
-    2. `start` trades the single-use setup code for a session token
-       (`POST /sessions/exchange`). Everything after that sends the token as a
-       bearer credential.
+    1. The candidate installs the CLI once (the installer checks
+       `GET /version`) and runs `mindfries start`, with nothing to paste.
+    2. `start` signs them in through the browser (`POST /sessions/device`,
+       then polling `POST /sessions/device/token`): Mindfries shows a short
+       code in the terminal and on the sign-in page, the candidate checks
+       they match and picks the assessment they were invited to, and the CLI
+       receives that one session's token. A single-use setup code from the
+       dashboard (`POST /sessions/exchange`) still works as a shortcut.
+       Everything after that sends the token as a bearer credential.
     3. `start` fetches the task manifest and archive, checks every file's
        hash, and sets up the workspace (`GET /session/bundle`,
        `GET /session/bundle/archive`).
@@ -50,7 +54,7 @@ tags:
   - name: Version
     description: Which CLI versions the server accepts.
   - name: Session
-    description: Setup code, session token, revoke.
+    description: Browser sign-in, setup code, session token, revoke.
   - name: Bundle
     description: The task files and their manifest.
   - name: Watcher
@@ -86,7 +90,8 @@ paths:
       operationId: exchangeSetupCode
       summary: Trade a single-use setup code for a session token
       description: |
-        The setup code is shown on the dashboard inside the setup command. It
+        The shortcut alongside the browser sign-in: the dashboard can show a
+        command with a setup code in it (`mindfries start <code>`). The code
         is unique to the candidate and the assessment, works once and
         expires after about 10 minutes, so shell history leaks nothing
         reusable. The returned token is stored in the OS keychain (or a file
@@ -121,6 +126,108 @@ paths:
           $ref: "#/components/responses/CliTooOld"
         "429":
           $ref: "#/components/responses/RateLimited"
+
+  /sessions/device:
+    post:
+      tags: [Session]
+      operationId: startSignIn
+      summary: Start a browser sign-in
+      description: |
+        What `mindfries start` calls when no session is set up on the
+        computer, following the OAuth device authorization grant
+        ([RFC 8628](https://www.rfc-editor.org/rfc/rfc8628)). The CLI opens
+        `verification_uri_complete` in the browser (or prints it) and shows
+        `user_code`. On that page the candidate signs in to Mindfries, checks
+        the code matches their terminal, sees which device asked, and picks
+        the assessment they were invited to, or refuses. The CLI then polls
+        `/sessions/device/token`.
+
+        `device_code` is the CLI's secret for polling and is never shown.
+        The user code is short, avoids look-alike characters, and is useless
+        without the candidate's own sign-in. A sign-in lasts about 10
+        minutes. The page must make clear that confirming connects a
+        terminal to an assessment, so a candidate can't be talked into
+        approving someone else's request.
+      security: []
+      parameters:
+        - $ref: "#/components/parameters/CliVersion"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DeviceRequest"
+      responses:
+        "200":
+          description: The sign-in to confirm in the browser.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeviceAuthorization"
+        "400":
+          $ref: "#/components/responses/Malformed"
+        "426":
+          $ref: "#/components/responses/CliTooOld"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+  /sessions/device/token:
+    post:
+      tags: [Session]
+      operationId: pollSignIn
+      summary: Collect the session token once the candidate has confirmed
+      description: |
+        Polled every `interval_seconds`. Until the candidate confirms, the
+        answer is `authorization_pending`; polling faster earns `slow_down`,
+        after which the CLI waits 5 seconds longer each time. Once confirmed,
+        the answer is the same as `/sessions/exchange` and the device code
+        is spent. The CLI stores the token as it does for a setup code; it
+        never receives an account credential.
+
+        Which assessments are offered, and what happens if the candidate
+        already connected the same one from another computer, is the V2
+        API's decision (an open question in `v2/README.md`).
+      security: []
+      parameters:
+        - $ref: "#/components/parameters/CliVersion"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DeviceTokenRequest"
+      responses:
+        "200":
+          description: Confirmed. The session token and the session.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExchangeResponse"
+        "400":
+          description: |
+            `authorization_pending` (keep polling), `slow_down` (poll less
+            often) or `malformed`.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "403":
+          description: "`access_denied`: the candidate refused it on the page."
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "410":
+          description: |
+            `device_code_expired`, `device_code_used` or
+            `device_code_invalid`. The CLI tells the candidate to run
+            `mindfries start` again.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "426":
+          $ref: "#/components/responses/CliTooOld"
 
   /session:
     get:
@@ -526,7 +633,8 @@ components:
       type: http
       scheme: bearer
       description: |
-        The opaque token from `/sessions/exchange`. Scoped to one session,
+        The opaque token from `/sessions/device/token` or
+        `/sessions/exchange`. Scoped to one session,
         it expires with it and is revoked by `/session/revoke`.
 
   parameters:
@@ -649,6 +757,12 @@ components:
             - setup_code_used
             - setup_code_expired
             - setup_code_invalid
+            - authorization_pending
+            - slow_down
+            - access_denied
+            - device_code_expired
+            - device_code_used
+            - device_code_invalid
             - token_missing
             - token_invalid
             - token_expired
@@ -716,6 +830,48 @@ components:
         arch:
           type: string
           enum: [amd64, arm64]
+
+    DeviceRequest:
+      type: object
+      required: [device]
+      properties:
+        device:
+          $ref: "#/components/schemas/Device"
+
+    DeviceAuthorization:
+      type: object
+      required: [device_code, user_code, verification_uri, expires_at, interval_seconds]
+      properties:
+        device_code:
+          type: string
+          minLength: 32
+          description: The CLI's secret for polling. Never print or log it.
+        user_code:
+          type: string
+          description: Shown in the terminal and on the page, to compare.
+          pattern: "^[A-Z0-9]{4}-[A-Z0-9]{4}$"
+          examples: ["BCDF-GHJK"]
+        verification_uri:
+          type: string
+          format: uri
+          description: The sign-in page on the Mindfries web app.
+        verification_uri_complete:
+          type: string
+          format: uri
+          description: The same page with the code filled in. The CLI opens this one.
+        expires_at:
+          $ref: "#/components/schemas/Timestamp"
+        interval_seconds:
+          type: integer
+          minimum: 1
+          description: How long to wait between polls.
+
+    DeviceTokenRequest:
+      type: object
+      required: [device_code]
+      properties:
+        device_code:
+          type: string
 
     ExchangeRequest:
       type: object

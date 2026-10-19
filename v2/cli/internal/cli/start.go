@@ -12,20 +12,23 @@ import (
 
 // startOptions are start's flags.
 type startOptions struct {
-	api  string
-	dir  string
-	ide  string
-	yes  bool
-	code string
+	api       string
+	dir       string
+	ide       string
+	yes       bool
+	code      string
+	noBrowser bool
 }
 
 func (a *App) start(args []string) error {
-	fs := a.newFlags("start [setup-code] [flags]",
-		"Connects this computer to your assessment, sets up the workspace, opens your editor\n"+
-			"and runs the session watcher until you submit or stop. Run it again without a code\n"+
-			"to carry on after a restart.")
+	fs := a.newFlags("start [flags]",
+		"Signs you in through your browser, connects this computer to the assessment you\n"+
+			"were invited to, sets up the workspace, opens your editor and runs the session\n"+
+			"watcher until you submit or stop. Run it again to carry on after a restart.\n"+
+			"(A setup code from the dashboard, 'mindfries start <code>', also still works.)")
 	var o startOptions
-	fs.StringVar(&o.api, "api", "", "V2 API base URL (default: $MINDFRIES_API or the built-in one)")
+	fs.StringVar(&o.api, "api", "", "V2 API base URL, for development (default: the built-in one)")
+	fs.BoolVar(&o.noBrowser, "no-browser", false, "print the sign-in address instead of opening the browser")
 	fs.StringVar(&o.dir, "dir", "", "folder for the workspace (default: asks)")
 	fs.StringVar(&o.ide, "ide", "", "editor to open: an id such as vscode, pycharm or zed, or 'manual'")
 	fs.BoolVar(&o.yes, "yes", false, "accept the defaults instead of asking")
@@ -71,16 +74,20 @@ func (a *App) start(args []string) error {
 		}
 		fmt.Fprintf(a.Stdout, "Carrying on with %s.\n", titleOf(local))
 	case errors.Is(err, state.ErrNone):
-		if o.code == "" {
-			return errors.New("start needs the setup code from your Mindfries dashboard: mindfries start <setup-code>")
-		}
-		code, ok := normalizeCode(o.code)
-		if !ok {
-			return errors.New("that doesn't look like a setup code (it's three groups of four letters and digits).\nCopy the whole setup command from your dashboard again")
+		code := ""
+		if o.code != "" {
+			var ok bool
+			if code, ok = normalizeCode(o.code); !ok {
+				return errors.New("that doesn't look like a setup code (it's three groups of four letters and digits).\nRun 'mindfries start' without it to sign in instead")
+			}
 		}
 		fmt.Fprintf(a.Stdout, "%s\n", policyNotice)
 		a.setup.agents = a.checkAgentsBeforeStart(ctx, o.yes)
-		local, client, err = a.connect(ctx, a.apiURL(o.api), code)
+		if code == "" {
+			local, client, err = a.signIn(ctx, a.apiURL(o.api), o.noBrowser)
+		} else {
+			local, client, err = a.connect(ctx, a.apiURL(o.api), code)
+		}
 		if err != nil {
 			return err
 		}
