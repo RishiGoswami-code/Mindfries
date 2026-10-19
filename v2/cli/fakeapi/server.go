@@ -37,10 +37,12 @@ type Config struct {
 	// served at /cli/latest with a generated checksums.txt, next to the
 	// installers at /install.sh and /install.ps1.
 	DistDir string
-	// GitHub, if set (with a ClientID), makes every new session put the
-	// work in a repository in the candidate's GitHub, unless the
-	// invitation says otherwise.
+	// GitHub, if set, makes every new session put the work in a repository
+	// in the candidate's GitHub, unless the invitation says otherwise. It
+	// needs GitHubApp.
 	GitHub *api.GitHub
+	// GitHubApp is the Mindfries OAuth app candidates authorise.
+	GitHubApp GitHubApp
 }
 
 // Server is the fake V2 API.
@@ -57,7 +59,8 @@ type Server struct {
 	codes    map[string]*setupCode
 	sessions map[string]*session
 	invites  []*invitation
-	signIns  map[string]*signIn // by device code
+	signIns  map[string]*signIn  // by device code
+	ghStates map[string]ghTarget // GitHub OAuth state → who it's for
 	tamper   tampering
 	model    Model
 }
@@ -76,7 +79,7 @@ func New(cfg Config) *Server {
 	if cfg.SignInInterval == 0 {
 		cfg.SignInInterval = 5 * time.Second
 	}
-	return &Server{cfg: cfg, requests: map[string]int{}, codes: map[string]*setupCode{}, sessions: map[string]*session{}, signIns: map[string]*signIn{}}
+	return &Server{cfg: cfg, requests: map[string]int{}, codes: map[string]*setupCode{}, sessions: map[string]*session{}, signIns: map[string]*signIn{}, ghStates: map[string]ghTarget{}}
 }
 
 func (s *Server) now() time.Time { return s.cfg.Now().UTC() }

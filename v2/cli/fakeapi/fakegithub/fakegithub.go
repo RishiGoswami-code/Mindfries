@@ -1,17 +1,19 @@
-// Package fakegithub is a stand-in for the parts of GitHub the CLI uses,
-// for tests: the device login, /user, creating repositories, inviting
+// Package fakegithub is a stand-in for the parts of GitHub Mindfries uses,
+// for tests: OAuth web sign-in, /user, creating repositories, inviting
 // collaborators, and a real Git server (git http-backend over CGI) to push
-// to. Web pages and the device login are at the server's root, the REST
-// API under /api, and repositories under /git.
+// to. The OAuth pages are at the server's root, the REST API under /api,
+// and repositories under /git.
 package fakegithub
 
 import (
 	"crypto/subtle"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/cgi"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -27,18 +29,18 @@ type Server struct {
 	API   string // the "api.github.com" root
 	Login string // the user who signs in
 	Token string
+	// ClientSecret is the OAuth app's secret the code exchange needs.
+	ClientSecret string
+	// Authorizations counts visits to the authorize page.
+	Authorizations int
 
 	t     *testing.T
 	root  string // bare repositories
 	mu    sync.Mutex
-	codes map[string]bool // device code → approved
-	// AutoApprove approves a device login on its first poll, as if the
-	// candidate entered the code at once.
-	AutoApprove bool
-	// Deny makes the next device login fail with access_denied.
+	codes map[string]bool // OAuth code → used
+	// Deny makes the authorize page refuse, as "Cancel" on GitHub does.
 	Deny  bool
 	repos map[string]*repo
-	polls int
 }
 
 type repo struct {
@@ -48,11 +50,10 @@ type repo struct {
 // Start runs a fake GitHub for the test.
 func Start(t *testing.T) *Server {
 	t.Helper()
-	s := &Server{t: t, Login: "octocandidate", Token: "gho_fakeTOKEN0123456789", root: t.TempDir(), codes: map[string]bool{}, repos: map[string]*repo{}, AutoApprove: true}
+	s := &Server{t: t, Login: "octocandidate", Token: "gho_fakeTOKEN0123456789", root: t.TempDir(), codes: map[string]bool{}, repos: map[string]*repo{}, ClientSecret: "fake-client-secret"}
 	mux := http.NewServeMux()
-	mux.HandleFunc("POST /login/device/code", s.deviceCode)
+	mux.HandleFunc("GET /login/oauth/authorize", s.authorize)
 	mux.HandleFunc("POST /login/oauth/access_token", s.accessToken)
-	mux.HandleFunc("GET /login/device", func(w http.ResponseWriter, r *http.Request) { _, _ = w.Write([]byte("enter the code")) })
 	mux.HandleFunc("GET /api/user", s.authed(s.user))
 	mux.HandleFunc("POST /api/user/repos", s.authed(s.createRepo))
 	mux.HandleFunc("PUT /api/repos/{owner}/{name}/collaborators/{user}", s.authed(s.invite))
@@ -69,48 +70,55 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 	_ = json.NewEncoder(w).Encode(v)
 }
 
-func (s *Server) deviceCode(w http.ResponseWriter, r *http.Request) {
-	_ = r.ParseForm()
-	if r.PostForm.Get("client_id") == "" {
-		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "incorrect_client_credentials"})
+// authorize is GitHub's "Authorize Mindfries" page. The fake grants it at
+// once (as GitHub does for an app the user authorised before), or refuses
+// when Deny is set, and sends the browser back with a one-time code.
+func (s *Server) authorize(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	back, err := url.Parse(q.Get("redirect_uri"))
+	if err != nil || q.Get("client_id") == "" || back.Host == "" {
+		http.Error(w, "bad authorize request", http.StatusBadRequest)
 		return
 	}
+	v := url.Values{"state": {q.Get("state")}}
 	s.mu.Lock()
-	code := "dc_" + string(rune('a'+len(s.codes)))
-	s.codes[code] = false
+	s.Authorizations++
+	if s.Deny {
+		v.Set("error", "access_denied")
+	} else {
+		code := fmt.Sprintf("code_%d", len(s.codes)+1)
+		s.codes[code] = false
+		v.Set("code", code)
+	}
 	s.mu.Unlock()
-	writeJSON(w, http.StatusOK, map[string]any{
-		"device_code": code, "user_code": "WDJB-MJHT", "verification_uri": s.URL + "/login/device",
-		"expires_in": 900, "interval": 1,
-	})
+	back.RawQuery = v.Encode()
+	http.Redirect(w, r, back.String(), http.StatusFound)
 }
 
+// accessToken trades a code for the token; it needs the app's secret, and
+// each code works once.
 func (s *Server) accessToken(w http.ResponseWriter, r *http.Request) {
 	_ = r.ParseForm()
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.polls++
-	code := r.PostForm.Get("device_code")
-	approved, ok := s.codes[code]
+	code := r.PostForm.Get("code")
+	used, ok := s.codes[code]
 	switch {
-	case !ok:
-		writeJSON(w, http.StatusOK, map[string]string{"error": "expired_token"})
-	case s.Deny:
-		writeJSON(w, http.StatusOK, map[string]string{"error": "access_denied"})
-	case approved || s.AutoApprove:
-		writeJSON(w, http.StatusOK, map[string]string{"access_token": s.Token, "token_type": "bearer", "scope": r.PostForm.Get("scope")})
+	case r.PostForm.Get("client_secret") != s.ClientSecret:
+		writeJSON(w, http.StatusOK, map[string]string{"error": "incorrect_client_credentials"})
+	case !ok || used:
+		writeJSON(w, http.StatusOK, map[string]string{"error": "bad_verification_code"})
 	default:
-		writeJSON(w, http.StatusOK, map[string]string{"error": "authorization_pending"})
+		s.codes[code] = true
+		writeJSON(w, http.StatusOK, map[string]string{"access_token": s.Token, "token_type": "bearer", "scope": "repo"})
 	}
 }
 
-// Approve lets every pending device login through.
-func (s *Server) Approve() {
+// SetDeny makes the authorize page refuse (true) or grant (false).
+func (s *Server) SetDeny(on bool) {
 	s.mu.Lock()
-	defer s.mu.Unlock()
-	for c := range s.codes {
-		s.codes[c] = true
-	}
+	s.Deny = on
+	s.mu.Unlock()
 }
 
 func (s *Server) authed(h http.HandlerFunc) http.HandlerFunc {

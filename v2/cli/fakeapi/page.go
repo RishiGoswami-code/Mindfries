@@ -45,11 +45,13 @@ type devicePage struct {
 	Approved   bool
 	Assessment string
 	Waiting    string // what the page waits for; it refreshes while set
-	GitHubCode string
-	GitHubURL  string
-	Repo       string
-	RepoURL    string
-	Done       string
+	// GitHub: Connect is the link to (re)try; Connected once authorised.
+	GitHubConnect   string
+	GitHubConnected bool
+	GitHubError     string
+	Repo            string
+	RepoURL         string
+	Done            string
 }
 
 // findLocked is the sign-in with that user code, in any state.
@@ -106,19 +108,33 @@ func (s *Server) handleDevicePage(w http.ResponseWriter, r *http.Request) {
 func (s *Server) statusLocked(si *signIn, p *devicePage) {
 	p.Approved, p.Assessment = true, si.approved.opts.Title
 	ss := s.sessions[si.session]
+	usesGitHub := s.githubFor(si.approved.opts) != nil
+	if !usesGitHub {
+		if ss == nil {
+			p.Waiting = "Finishing in your terminal…"
+		} else {
+			p.Done = "Go back to your terminal: mindfries is setting up your workspace. You can close this tab."
+		}
+		return
+	}
+	connected, failure := si.ghToken != "", si.ghErr
+	if ss != nil {
+		connected = connected || ss.ext.ghToken != "" || ss.ext.ghCollected || ss.ext.ghRepo != nil
+		if ss.ext.ghErr != "" {
+			failure = ss.ext.ghErr
+		}
+	}
+	p.GitHubConnect = "/github/start?code=" + url.QueryEscape(si.userCode)
 	switch {
-	case ss == nil:
-		p.Waiting = "Finishing in your terminal…"
-	case ss.GitHub == nil:
-		p.Done = "Go back to your terminal: mindfries is setting up your workspace. You can close this tab."
-	case ss.ext.ghRepo != nil:
+	case ss != nil && ss.ext.ghRepo != nil:
+		p.GitHubConnected = true
 		p.Repo, p.RepoURL = ss.ext.ghRepo.FullName, ss.ext.ghRepo.HTMLURL
-		p.Done = "GitHub is connected and your work will be pushed there. Go back to your terminal; you can close this tab."
-	case ss.ext.ghLogin != nil:
-		p.GitHubCode, p.GitHubURL = ss.ext.ghLogin.UserCode, ss.ext.ghLogin.VerificationURI
-		p.Waiting = "Waiting for GitHub…"
-	default:
-		p.Waiting = "Setting up your workspace; GitHub comes next…"
+		p.Done = "Your work will be pushed there. Go back to your terminal; you can close this tab."
+	case connected:
+		p.GitHubConnected = true
+		p.Waiting = "Creating your repository from your terminal…"
+	case failure != "":
+		p.GitHubError = failure + "."
 	}
 }
 
@@ -144,7 +160,16 @@ func (s *Server) handleDeviceForm(w http.ResponseWriter, r *http.Request) {
 		renderPage(w, http.StatusConflict, devicePage{Error: sentence(err)})
 		return
 	}
-	http.Redirect(w, r, "/device?code="+url.QueryEscape(normalizeUserCode(code)), http.StatusSeeOther)
+	next := "/device?code=" + url.QueryEscape(normalizeUserCode(code))
+	if r.PostForm.Get("action") != "deny" {
+		s.mu.Lock()
+		if si := s.findLocked(code); si != nil && si.approved != nil && s.githubFor(si.approved.opts) != nil {
+			// Straight on to GitHub: one click there, then back here.
+			next = s.authorizeURL(r, ghTarget{userCode: si.userCode})
+		}
+		s.mu.Unlock()
+	}
+	http.Redirect(w, r, next, http.StatusSeeOther)
 }
 
 func sentence(err error) string {
@@ -197,16 +222,14 @@ var pageTmpl = template.Must(template.New("device").Parse(`<!doctype html>
 {{if .Approved}}
   <h1>Connect your terminal</h1>
   {{if .Assessment}}<div class="step"><span class="ok">✓</span><span>Connected to <strong>{{.Assessment}}</strong></span></div>{{end}}
-  {{if .GitHubCode}}
+  {{if .GitHubConnected}}<div class="step"><span class="ok">✓</span><span>GitHub connected</span></div>{{end}}
+  {{if .Repo}}<div class="step"><span class="ok">✓</span><span>Repository <a href="{{.RepoURL}}" target="_blank" rel="noopener">{{.Repo}}</a> (private)</span></div>{{end}}
+  {{if and .GitHubConnect (not .GitHubConnected)}}
     <h2>Connect GitHub</h2>
-    <p class="muted">Your work goes to a new private repository in your GitHub account, so the hiring team can see your commits, CI and deployment. On GitHub, enter this code and authorise Mindfries:</p>
-    <div class="code" id="ghcode">{{.GitHubCode}}</div>
-    <div class="row">
-      <a class="button primary" href="{{.GitHubURL}}" target="_blank" rel="noopener">Open GitHub</a>
-      <button type="button" onclick="navigator.clipboard.writeText(document.getElementById('ghcode').textContent)">Copy code</button>
-    </div>
+    {{if .GitHubError}}<p class="error">{{.GitHubError}}</p>{{end}}
+    <p class="muted">Your work goes to a new private repository in your GitHub account, so the hiring team can see your commits, CI and deployment.</p>
+    <div class="row"><a class="button primary" href="{{.GitHubConnect}}">Connect GitHub</a></div>
   {{end}}
-  {{if .Repo}}<div class="step"><span class="ok">✓</span><span>GitHub repository <a href="{{.RepoURL}}" target="_blank" rel="noopener">{{.Repo}}</a></span></div>{{end}}
   {{if .Waiting}}<p class="muted">{{.Waiting}}</p>{{end}}
   {{if .Done}}<p>{{.Done}}</p>{{end}}
 {{else if and .Code (not .Error)}}

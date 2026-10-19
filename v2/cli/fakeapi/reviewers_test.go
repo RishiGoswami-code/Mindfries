@@ -13,7 +13,7 @@ import (
 )
 
 func TestReviewersBelongToTheAssessment(t *testing.T) {
-	s := New(Config{SignInInterval: time.Millisecond, GitHub: &api.GitHub{ClientID: "Iv1.x"}})
+	s := New(Config{SignInInterval: time.Millisecond, GitHub: &api.GitHub{}, GitHubApp: GitHubApp{ClientID: "Iv1.x"}})
 	ts := httptest.NewServer(s.Handler())
 	t.Cleanup(ts.Close)
 	admin := func(method, path, body string) *http.Response {

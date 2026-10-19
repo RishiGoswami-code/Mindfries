@@ -1,7 +1,7 @@
-// Package github is the little of GitHub the CLI uses, with the
-// candidate's own account: GitHub's device login (so the token comes from
-// GitHub, never from Mindfries), the signed-in user, creating the
-// assessment's private repository, and inviting the reviewers.
+// Package github is the little of GitHub's API the CLI uses, with the
+// candidate's own token (which they authorise on the Mindfries sign-in
+// page): the signed-in user, creating the assessment's private
+// repository, and inviting the reviewers.
 package github
 
 import (
@@ -17,8 +17,8 @@ import (
 	"time"
 )
 
-// Client talks to GitHub. Web is github.com (the device login), API is
-// api.github.com; tests point both at a fake.
+// Client talks to GitHub. Web is github.com, API is api.github.com; tests
+// point both at a fake.
 type Client struct {
 	Web, API string
 	Token    string
@@ -34,89 +34,6 @@ func New(web, apiURL string) *Client {
 		apiURL = "https://api.github.com"
 	}
 	return &Client{Web: strings.TrimRight(web, "/"), API: strings.TrimRight(apiURL, "/"), HTTP: &http.Client{Timeout: 30 * time.Second}}
-}
-
-// DeviceCode is GitHub's answer to starting a device login.
-type DeviceCode struct {
-	DeviceCode      string `json:"device_code"`
-	UserCode        string `json:"user_code"`
-	VerificationURI string `json:"verification_uri"`
-	ExpiresIn       int    `json:"expires_in"`
-	Interval        int    `json:"interval"`
-}
-
-// Errors from polling the device login.
-var (
-	ErrPending  = errors.New("authorization_pending")
-	ErrSlowDown = errors.New("slow_down")
-	ErrExpired  = errors.New("the GitHub code expired before it was entered")
-	ErrDenied   = errors.New("the GitHub authorisation was cancelled")
-)
-
-func (c *Client) form(ctx context.Context, path string, v url.Values, out any) error {
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.Web+path, strings.NewReader(v.Encode()))
-	if err != nil {
-		return err
-	}
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	req.Header.Set("Accept", "application/json")
-	resp, err := c.HTTP.Do(req)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-	b, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
-	if resp.StatusCode >= 400 {
-		return fmt.Errorf("GitHub answered %s: %s", resp.Status, strings.TrimSpace(string(b)))
-	}
-	return json.Unmarshal(b, out)
-}
-
-// StartDeviceLogin asks GitHub for a device code for the OAuth app.
-func (c *Client) StartDeviceLogin(ctx context.Context, clientID string, scopes []string) (*DeviceCode, error) {
-	var dc DeviceCode
-	err := c.form(ctx, "/login/device/code", url.Values{"client_id": {clientID}, "scope": {strings.Join(scopes, " ")}}, &dc)
-	if err != nil {
-		return nil, err
-	}
-	if dc.DeviceCode == "" || dc.UserCode == "" {
-		return nil, errors.New("GitHub didn't send a device code; is device login enabled for the Mindfries OAuth app?")
-	}
-	return &dc, nil
-}
-
-// PollDeviceLogin asks once whether the candidate has authorised it. It
-// returns ErrPending or ErrSlowDown while waiting.
-func (c *Client) PollDeviceLogin(ctx context.Context, clientID, deviceCode string) (string, error) {
-	var out struct {
-		AccessToken string `json:"access_token"`
-		Error       string `json:"error"`
-		Description string `json:"error_description"`
-	}
-	err := c.form(ctx, "/login/oauth/access_token", url.Values{
-		"client_id":   {clientID},
-		"device_code": {deviceCode},
-		"grant_type":  {"urn:ietf:params:oauth:grant-type:device_code"},
-	}, &out)
-	if err != nil {
-		return "", err
-	}
-	switch out.Error {
-	case "":
-		if out.AccessToken == "" {
-			return "", errors.New("GitHub sent no token")
-		}
-		return out.AccessToken, nil
-	case "authorization_pending":
-		return "", ErrPending
-	case "slow_down":
-		return "", ErrSlowDown
-	case "expired_token":
-		return "", ErrExpired
-	case "access_denied":
-		return "", ErrDenied
-	}
-	return "", fmt.Errorf("GitHub: %s %s", out.Error, out.Description)
 }
 
 // APIError is a failed api.github.com request.

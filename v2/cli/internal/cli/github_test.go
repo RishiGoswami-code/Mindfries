@@ -4,10 +4,12 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/mindfries/v2/cli/fakeapi"
 	"github.com/mindfries/v2/cli/fakeapi/fakegithub"
@@ -22,15 +24,35 @@ func withGitHub(t *testing.T, h *harness, g api.GitHub) *fakegithub.Server {
 	gh := fakegithub.Start(t)
 	h.env["MINDFRIES_GITHUB_URL"] = gh.URL
 	h.env["MINDFRIES_GITHUB_API"] = gh.API
-	if g.ClientID == "" {
-		g.ClientID = "Iv1.mindfriestest"
-	}
-	h.srv = fakeapi.New(fakeapi.Config{Now: h.now, GitHub: &g})
+	h.srv = fakeapi.New(fakeapi.Config{Now: h.now, SignInInterval: 10 * time.Millisecond, GitHub: &g,
+		GitHubApp: fakeapi.GitHubApp{ClientID: "Iv1.mindfriestest", ClientSecret: gh.ClientSecret, Web: gh.URL}})
 	ts := httptest.NewServer(h.srv.Handler())
 	t.Cleanup(ts.Close)
 	h.url = ts.URL + fakeapi.Prefix
 	h.env["MINDFRIES_API"] = h.url
+	browseGitHub(t, h.srv)
 	return gh
+}
+
+// browseGitHub plays the candidate's browser: whenever the CLI waits for
+// GitHub, it opens the connect link and follows it to GitHub and back.
+func browseGitHub(t *testing.T, srv *fakeapi.Server) {
+	stop := make(chan struct{})
+	t.Cleanup(func() { close(stop) })
+	go func() {
+		for {
+			select {
+			case <-stop:
+				return
+			case <-time.After(20 * time.Millisecond):
+			}
+			for _, u := range srv.WaitingForGitHub() {
+				if resp, err := http.Get(u); err == nil {
+					resp.Body.Close()
+				}
+			}
+		}
+	}()
 }
 
 func gitOut(t *testing.T, dir string, args ...string) string {
@@ -127,18 +149,45 @@ func TestStartPutsTheWorkInTheCandidatesGitHub(t *testing.T) {
 func TestGitHubRefusedKeepsTheSession(t *testing.T) {
 	h := newHarness(t)
 	gh := withGitHub(t, h, api.GitHub{Required: true})
-	gh.Deny = true
+	// The candidate first presses Cancel on GitHub, then thinks again.
+	gh.SetDeny(true)
+	time.AfterFunc(time.Second, func() { gh.SetDeny(false) })
 	dir := filepath.Join(t.TempDir(), "ws")
 	code := h.srv.MintSetupCode(fakeapi.SessionOptions{Task: quickTask()})
 	exit, out := h.run("", "start", code, "--dir", dir, "--yes")
-	if exit == 0 || !strings.Contains(out, "cancelled") || !strings.Contains(out, "run 'mindfries start' to connect GitHub again") {
-		t.Fatalf("denied: %d\n%s", exit, out)
+	if exit != 0 || !strings.Contains(out, "You didn't authorise Mindfries on GitHub") || !strings.Contains(out, "Signed in to GitHub as @octocandidate") {
+		t.Fatalf("refused, then allowed: %d\n%s", exit, out)
 	}
-	// Trying again works and doesn't set the workspace up twice.
-	gh.Deny = false
-	exit, out = h.run("", "start", "--dir", dir, "--yes")
-	if exit != 0 || !strings.Contains(out, "Signed in to GitHub as @octocandidate") || strings.Contains(out, "Downloading") {
-		t.Fatalf("retry: %d\n%s", exit, out)
+	if strings.Count(out, "Connect GitHub:") != 1 {
+		t.Fatalf("explained more than once:\n%s", out)
+	}
+}
+
+func TestGitHubConnectedOnTheSignInPageNeedsNoWaiting(t *testing.T) {
+	h := newHarness(t)
+	gh := withGitHub(t, h, api.GitHub{})
+	inv := h.srv.Invite(fakeapi.SessionOptions{Title: "Backend", Task: quickTask()})
+	// The browser: Connect on the page goes straight to GitHub and back.
+	go func() {
+		for i := 0; i < 500; i++ {
+			if codes := h.srv.PendingSignIns(); len(codes) > 0 {
+				resp, err := http.PostForm(strings.TrimSuffix(h.url, fakeapi.Prefix)+"/device", url.Values{"code": {codes[0]}, "invitation": {inv}, "action": {"approve"}})
+				if err == nil {
+					resp.Body.Close()
+				}
+				return
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
+	}()
+	exit, out := h.run("", "start", "--dir", filepath.Join(t.TempDir(), "ws"), "--yes", "--no-browser")
+	if exit != 0 || !strings.Contains(out, "Signed in to GitHub as @octocandidate") {
+		t.Fatalf("start: %d\n%s", exit, out)
+	}
+	// One trip to GitHub's page, on the sign-in page; the CLI didn't need
+	// to send the candidate there again or explain anything.
+	if gh.Authorizations != 1 || strings.Contains(out, "Waiting for you to authorise") {
+		t.Fatalf("authorizations %d\n%s", gh.Authorizations, out)
 	}
 }
 
