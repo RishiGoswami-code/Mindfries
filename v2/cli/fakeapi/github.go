@@ -10,14 +10,13 @@ import (
 )
 
 // The candidate's own GitHub: the session says whether the work goes to a
-// repository there (api.GitHub), the CLI shows GitHub's device code on the
-// sign-in page (POST /session/github/login) and reports the repository it
+// repository there (api.GitHub), the candidate authorises it in one click
+// on the sign-in page (oauth.go), and the CLI reports the repository it
 // created (POST /session/github/repo). GitHub itself is never faked here;
 // tests use fakegithub.
 
 func init() {
 	register(func(s *Server, route func(string, http.HandlerFunc)) {
-		route("POST /session/github/login", s.authed(s.handleGitHubLogin))
 		route("POST /session/github/repo", s.authed(s.handleGitHubRepo))
 	})
 }
@@ -29,16 +28,10 @@ func (s *Server) githubFor(o SessionOptions) *api.GitHub {
 	if g == nil {
 		g = s.cfg.GitHub
 	}
-	if g == nil {
+	if g == nil || s.cfg.GitHubApp.ClientID == "" {
 		return nil
 	}
 	c := *g
-	if c.ClientID == "" && s.cfg.GitHub != nil {
-		c.ClientID = s.cfg.GitHub.ClientID
-	}
-	if c.ClientID == "" {
-		return nil
-	}
 	if len(c.Scopes) == 0 {
 		c.Scopes = []string{"repo"}
 	}
@@ -162,23 +155,6 @@ func slug(s string) string {
 		out = strings.TrimSuffix(out[:60], "-")
 	}
 	return out
-}
-
-func (s *Server) handleGitHubLogin(w http.ResponseWriter, r *http.Request, ss *session) {
-	var in api.GitHubLogin
-	if !decode(w, r, &in) || !requireActive(w, ss) {
-		return
-	}
-	if ss.GitHub == nil {
-		problem(w, http.StatusConflict, api.CodeMalformed, "This session doesn't use GitHub", "")
-		return
-	}
-	if in.UserCode == "" || !strings.HasPrefix(in.VerificationURI, "https://") && !strings.HasPrefix(in.VerificationURI, "http://") {
-		problem(w, http.StatusBadRequest, api.CodeMalformed, "user_code and an http(s) verification_uri are required", "")
-		return
-	}
-	ss.ext.ghLogin = &in
-	w.WriteHeader(http.StatusNoContent)
 }
 
 func (s *Server) handleGitHubRepo(w http.ResponseWriter, r *http.Request, ss *session) {

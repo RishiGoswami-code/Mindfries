@@ -14,8 +14,14 @@ type sessionExt struct {
 	submission *submission
 	bundle     []byte
 	assistant  assistantState
-	ghLogin    *api.GitHubLogin
 	ghRepo     *api.GitHubRepo
+	// The candidate's GitHub token, from the OAuth callback, until the CLI
+	// collects it; then only ghCollected stays.
+	ghToken     string
+	ghErr       string
+	ghCollected bool
+	ghKey       string // the connect URL's key
+	ghWaiting   string // the connect URL, while the CLI waits
 }
 
 func newExt() sessionExt {

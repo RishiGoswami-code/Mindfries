@@ -40,7 +40,9 @@ type signIn struct {
 	email    string
 	denied   bool
 	session  string // the session it started, once the CLI collected it
-	used     bool
+	// GitHub, when authorised on the page before the session exists.
+	ghToken, ghErr string
+	used           bool
 }
 
 // Invite adds an assessment that signed-in candidates can connect to, as a
@@ -273,6 +275,8 @@ func (s *Server) handleDeviceToken(w http.ResponseWriter, r *http.Request) {
 	si.used = true
 	sess := s.newSession(si.approved.opts)
 	sess.invitation = si.approved.id
+	sess.ext.ghToken, sess.ext.ghErr = si.ghToken, si.ghErr
+	si.ghToken = ""
 	si.session = sess.ID
 	writeJSON(w, http.StatusOK, api.ExchangeResponse{SessionToken: sess.token, ExpiresAt: sess.EndsAt, Session: sess.view()})
 }
@@ -282,5 +286,6 @@ func (s *Server) handleDeviceToken(w http.ResponseWriter, r *http.Request) {
 func (s *Server) pageRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /device", s.handleDevicePage)
 	mux.HandleFunc("POST /device", s.handleDeviceForm)
+	s.githubRoutes(mux)
 	s.distRoutes(mux)
 }

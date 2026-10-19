@@ -50,18 +50,7 @@ func (a *App) connectGitHub(ctx context.Context, l *state.Local, c *api.Client) 
 		return err
 	}
 	gh := a.githubClient()
-	fmt.Fprintln(a.Stdout, "\nConnect GitHub: your work goes to a new private repository in your own GitHub")
-	fmt.Fprintln(a.Stdout, "account, so the hiring team can see your commits, CI and deployment.")
-	dc, err := gh.StartDeviceLogin(ctx, g.ClientID, g.Scopes)
-	if err != nil {
-		return gitHubFailed(g, fmt.Errorf("couldn't start the GitHub sign-in: %w", err))
-	}
-	if err := c.ReportGitHubLogin(ctx, api.GitHubLogin{UserCode: dc.UserCode, VerificationURI: dc.VerificationURI, ExpiresAt: time.Now().Add(time.Duration(dc.ExpiresIn) * time.Second).UTC()}); err != nil {
-		fmt.Fprintf(a.Stdout, "  (The Mindfries page couldn't be updated: %v.)\n", err)
-	}
-	fmt.Fprintf(a.Stdout, "  The Mindfries page in your browser shows this code with an Open GitHub button,\n  or go to %s yourself.\n  GitHub code: %s\n\nWaiting for you to authorise Mindfries on GitHub (Ctrl+C to stop; run 'mindfries start' to try again)...\n", dc.VerificationURI, dc.UserCode)
-
-	token, err := a.pollGitHub(ctx, gh, g.ClientID, dc)
+	token, err := a.collectGitHub(ctx, c)
 	if err != nil {
 		return gitHubFailed(g, err)
 	}
@@ -131,32 +120,60 @@ func gitHubFailed(g *api.GitHub, err error) error {
 	return fmt.Errorf("%v (your work stays on this computer and is handed in with 'mindfries submit')", err)
 }
 
-func (a *App) pollGitHub(ctx context.Context, gh *github.Client, clientID string, dc *github.DeviceCode) (string, error) {
-	interval := time.Duration(max(dc.Interval, 1)) * time.Second
+// githubGrace is how long the CLI waits before opening the connect link
+// itself: right after Connect the browser is usually still on GitHub.
+var githubGrace = 15 * time.Second
+
+// collectGitHub gets the candidate's GitHub token from Mindfries, once.
+// Usually it's there already: they authorised GitHub straight after
+// Connect on the sign-in page. If not (they closed the tab, said no, or
+// used a setup code), it opens the connect link and waits.
+func (a *App) collectGitHub(ctx context.Context, c *api.Client) (string, error) {
+	interval := 2 * time.Second
 	if a.tunePoll != nil {
 		interval = a.tunePoll(interval)
 	}
-	deadline := time.Now().Add(time.Duration(max(dc.ExpiresIn, 60)) * time.Second)
-	for time.Now().Before(deadline) {
+	start := time.Now()
+	deadline := start.Add(10 * time.Minute)
+	told, opened := false, ""
+	for {
+		res, err := c.GitHubToken(ctx)
+		switch {
+		case err != nil && !api.IsRetryable(err):
+			return "", fmt.Errorf("couldn't get your GitHub sign-in from Mindfries: %w", err)
+		case err == nil && res.Status == api.GitHubConnected && res.AccessToken != "":
+			return res.AccessToken, nil
+		case err == nil:
+			if !told {
+				fmt.Fprintln(a.Stdout, "\nConnect GitHub: your work goes to a new private repository in your own GitHub")
+				fmt.Fprintln(a.Stdout, "account, so the hiring team can see your commits, CI and deployment.")
+				fmt.Fprintln(a.Stdout, "Waiting for you to authorise Mindfries on GitHub in your browser (one click; Ctrl+C to stop)...")
+				told = true
+			}
+			if res.Status == api.GitHubFailed {
+				fmt.Fprintf(a.Stdout, "%s.\n", res.Error)
+			}
+			// Open the link ourselves when the page didn't get them there:
+			// at once after a refusal, otherwise after a grace period.
+			due := res.Status != api.GitHubPending || time.Since(start) > githubGrace
+			if due && res.ConnectURL != "" && res.ConnectURL != opened && webLink(res.ConnectURL) {
+				if a.Getenv("MINDFRIES_NO_BROWSER") != "1" && a.openBrowser(res.ConnectURL) {
+					fmt.Fprintf(a.Stdout, "  Opened GitHub in your browser. If nothing appeared, go to:\n    %s\n", res.ConnectURL)
+				} else {
+					fmt.Fprintf(a.Stdout, "  Open this address in your browser:\n    %s\n", res.ConnectURL)
+				}
+				opened = res.ConnectURL
+			}
+		}
+		if time.Now().After(deadline) {
+			return "", errors.New("GitHub wasn't connected in time")
+		}
 		select {
 		case <-ctx.Done():
 			return "", ctx.Err()
 		case <-time.After(interval):
 		}
-		tok, err := gh.PollDeviceLogin(ctx, clientID, dc.DeviceCode)
-		switch {
-		case err == nil:
-			return tok, nil
-		case errors.Is(err, github.ErrPending):
-		case errors.Is(err, github.ErrSlowDown):
-			interval += 5 * time.Second
-		case errors.Is(err, github.ErrExpired), errors.Is(err, github.ErrDenied):
-			return "", err
-		default:
-			// A network blip: keep waiting.
-		}
 	}
-	return "", github.ErrExpired
 }
 
 // credentialKey is git's config key for a helper for the repo's host.

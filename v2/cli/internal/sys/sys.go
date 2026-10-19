@@ -77,7 +77,7 @@ func output(ctx context.Context, dir, name string, args ...string) (string, erro
 }
 
 func start(name string, args ...string) error {
-	cmd := exec.Command(name, args...)
+	cmd := startCommand(name, args...)
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = nil, nil, nil
 	if err := cmd.Start(); err != nil {
 		return err

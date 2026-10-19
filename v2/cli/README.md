@@ -30,10 +30,10 @@ through [`../contracts/cli-api.yaml`](../contracts/cli-api.yaml), which
    The CLI receives that session's token (kept in the OS keychain), downloads
    and verifies the task, creates the workspace with a locked `TASK.md`,
    opens their editor, and runs the session watcher until the session ends.
-   When the assessment uses GitHub, the same page then shows GitHub's
-   own device code: they authorise Mindfries on GitHub, and `start` creates
-   a private repository in their account, invites the hiring team, and
-   pushes. They deploy from it (AWS, Supabase, Render, Actions) as the task
+   When the assessment uses GitHub, Connect takes them on to GitHub's
+   "Authorize Mindfries" page (one click, only the first time) and back,
+   and `start` creates a private repository in their account, invites the
+   hiring team, and pushes. They deploy from it (AWS, Supabase, Render, Actions) as the task
    asks.
 3. They work in their editor (VS Code opens in a new window on
    `TASK.md`), commit and `git push` as usual, with `mindfries agent` in
@@ -102,7 +102,7 @@ config folder), `MINDFRIES_TOKEN_STORE=file` (skip the keychain),
 | `fakeapi/fakegithub` | A fake GitHub for tests, with a real `git http-backend` to push to |
 | `fakeapi/` | The fake API: browser sign-in with its `/device` page, invitations, setup codes, bundles, events, snapshots, the assistant gateway with a scripted model, submissions, and (with `-dist`) hosted installers and builds. Tests drive it from Go. |
 | `internal/cli` | Argument parsing, the six commands, and the hidden `git-credential` helper |
-| `internal/github` | GitHub's device login, the user, creating the repo, inviting reviewers |
+| `internal/github` | GitHub's API with the candidate's token: the user, creating the repo, inviting reviewers |
 | `internal/term`, `internal/tui` | Raw terminal mode, keys, the input box, spinner, menus and streamed Markdown for `mindfries agent` |
 | `internal/api` | The contract's types and a client, including the assistant's event stream |
 | `internal/preflight` | `doctor`'s checks |

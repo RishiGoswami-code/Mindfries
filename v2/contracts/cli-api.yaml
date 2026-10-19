@@ -42,9 +42,9 @@ info:
     - The CLI never receives a model key or any V1 credential from
       Mindfries. It holds the session token and, when the session uses the
       candidate's GitHub (`Session.github`), the candidate's own GitHub token,
-      which comes from GitHub's device login, never from this API, stays in
-      the OS keychain, is never sent to this API, and is deleted when the
-      session ends.
+      which this API hands over once (`POST /session/github/token`) and
+      doesn't keep; it stays in the OS keychain, is never sent back here,
+      and is deleted when the session ends.
 servers:
   - url: https://api.v2.mindfries.example/v2/cli
     description: Placeholder; the V2 API's domain is an open decision.
@@ -253,18 +253,24 @@ paths:
         "426":
           $ref: "#/components/responses/CliTooOld"
 
-  /session/github/login:
+  /session/github/token:
     post:
       tags: [Session]
-      operationId: reportGitHubLogin
-      summary: Show GitHub's device code on the Mindfries sign-in page
+      operationId: collectGitHubToken
+      summary: Collect the candidate's GitHub token, once
       description: |
-        When `Session.github` is set, `start` runs GitHub's own device login
-        (github.com/login/device, with the Mindfries OAuth app in
-        `client_id`) after the workspace is set up. It sends GitHub's user
-        code here so the sign-in page the candidate still has open shows it
-        next to an "Open GitHub" button, the same flow in one browser tab.
-        The GitHub token itself never comes here.
+        When `Session.github` is set, the candidate connects GitHub in one
+        click: Connect on the sign-in page takes the browser to GitHub's
+        "Authorize Mindfries" page (skipped once they've authorised it
+        before), GitHub sends it back to the Mindfries web app, and the
+        server exchanges GitHub's one-time code for the candidate's token
+        with the OAuth app's secret. No code to type, no device login.
+
+        After the workspace is set up, `start` collects the token here. The
+        server hands it over once and forgets it (`collected` afterwards).
+        While it isn't there yet (`pending`), or GitHub said no (`failed`),
+        `connect_url` is a page that starts the GitHub step again; the CLI
+        opens it if the candidate didn't get there from the sign-in page.
       parameters:
         - $ref: "#/components/parameters/CliVersion"
       requestBody:
@@ -272,12 +278,14 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/GitHubLogin"
+              type: object
       responses:
-        "204":
-          description: Shown.
-        "400":
-          $ref: "#/components/responses/Malformed"
+        "200":
+          description: Where the GitHub step stands.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GitHubToken"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "409":
@@ -1055,14 +1063,11 @@ components:
         Set when the work goes to a repository in the candidate's own GitHub
         account, so deployment can be assessed (CI on Actions, a deploy to
         AWS, Supabase, Render…).
-      required: [required, client_id]
+      required: [required]
       properties:
         required:
           type: boolean
           description: "`start` doesn't go on until GitHub is connected."
-        client_id:
-          type: string
-          description: The Mindfries OAuth app's client ID (public), with device flow enabled.
         scopes:
           type: array
           items:
@@ -1085,18 +1090,23 @@ components:
           type: boolean
           description: The task asks for a deployed URL at submit.
 
-    GitHubLogin:
+    GitHubToken:
       type: object
-      required: [user_code, verification_uri, expires_at]
+      required: [status]
       properties:
-        user_code:
+        status:
           type: string
-          examples: ["WDJB-MJHT"]
-        verification_uri:
+          enum: [connected, pending, failed, collected]
+        access_token:
+          type: string
+          description: Only with `connected`, and only the first time. Store in the OS keychain; never print or log it.
+        connect_url:
           type: string
           format: uri
-        expires_at:
-          $ref: "#/components/schemas/Timestamp"
+          description: A page that sends the browser to GitHub to connect (again).
+        error:
+          type: string
+          description: Only with `failed`, for people.
 
     GitHubRepo:
       type: object

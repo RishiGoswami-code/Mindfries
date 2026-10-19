@@ -143,13 +143,13 @@ type Session struct {
 	GitHub *GitHub `json:"github,omitempty"`
 }
 
-// GitHub says how the session uses the candidate's GitHub: the CLI signs
-// them in with GitHub's own device login (the Mindfries OAuth app,
-// ClientID), creates a private repository, invites the reviewers and
-// pushes the work there, so deployment can be assessed too.
+// GitHub says how the session uses the candidate's GitHub: on the sign-in
+// page they authorise the Mindfries OAuth app on GitHub (one click), the CLI
+// collects the token once (POST /session/github/token), creates a private
+// repository, invites the reviewers and pushes the work there, so
+// deployment can be assessed too.
 type GitHub struct {
 	Required bool     `json:"required"`
-	ClientID string   `json:"client_id"`
 	Scopes   []string `json:"scopes,omitempty"`
 	// RepoName is a suggested repository name; the CLI adds a suffix if
 	// the candidate already has one by that name.
@@ -159,12 +159,21 @@ type GitHub struct {
 	Deployment bool `json:"deployment,omitempty"`
 }
 
-// GitHubLogin is GitHub's device code, sent so the Mindfries sign-in page
-// can show it next to an "Open GitHub" button.
-type GitHubLogin struct {
-	UserCode        string    `json:"user_code"`
-	VerificationURI string    `json:"verification_uri"`
-	ExpiresAt       time.Time `json:"expires_at"`
+// GitHub token statuses.
+const (
+	GitHubConnected = "connected" // AccessToken is set, this once
+	GitHubPending   = "pending"   // not authorised yet: open ConnectURL
+	GitHubFailed    = "failed"    // GitHub said no; ConnectURL tries again
+	GitHubCollected = "collected" // already handed to the CLI
+)
+
+// GitHubToken answers POST /session/github/token: the candidate's GitHub
+// token, handed over once and then forgotten by the server.
+type GitHubToken struct {
+	Status      string `json:"status"`
+	AccessToken string `json:"access_token,omitempty"`
+	ConnectURL  string `json:"connect_url,omitempty"`
+	Error       string `json:"error,omitempty"`
 }
 
 // GitHubRepo is the repository the work goes to.

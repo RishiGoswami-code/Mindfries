@@ -43,6 +43,7 @@ installers. A tester needs no environment variables, keys or codes.
    | `FAKEAPI_DIST` | `dist` (the folder the build command fills) |
    | `FAKEAPI_ADMIN_TOKEN` | a long random string |
    | `FAKEAPI_GITHUB_CLIENT_ID` | the Mindfries OAuth app's Client ID (below); leave it out to keep work local |
+   | `FAKEAPI_GITHUB_CLIENT_SECRET` | that app's client secret; keep it only here |
    | `FAKEAPI_GITHUB_OPTIONAL` | `1` to let candidates skip GitHub; by default it's required |
 
    Render sets `PORT` and `RENDER_EXTERNAL_URL` itself.
@@ -63,20 +64,25 @@ the same environment variables (`FAKEAPI_DIST` is set by the image), and
 ## The GitHub OAuth app (once)
 
 The candidate's work goes to a private repository in their own GitHub, so
-deployment can be assessed. The CLI signs them in with GitHub's own device
-login, which needs an OAuth app:
+deployment can be assessed. They connect it in one click from the sign-in
+page, which needs an OAuth app (an **OAuth App**, at
+`github.com/settings/applications/new`, not a GitHub App):
 
 1. On GitHub, under the account or organisation that should own it:
    **Settings → Developer settings → OAuth Apps → New OAuth App**.
-2. Application name `Mindfries`, Homepage URL your site, Authorization
-   callback URL the same (device login doesn't use it).
-3. **Tick "Enable Device Flow"**, then **Register application**.
-4. Copy the **Client ID** into `FAKEAPI_GITHUB_CLIENT_ID`. No client secret
-   is needed or used.
+2. Application name `Mindfries`, Homepage URL your site.
+3. **Authorization callback URL** (Redirect URI):
+   `https://mindfries-cli.onrender.com/github/callback`, the fake API's
+   address plus `/github/callback`. Leave wildcard matching off. Device
+   Flow isn't needed. "Expire user access tokens" can stay on.
+4. **Register application**, then **Generate a new client secret**.
+5. Put the **Client ID** in `FAKEAPI_GITHUB_CLIENT_ID` and the secret in
+   `FAKEAPI_GITHUB_CLIENT_SECRET` on Render. The secret stays on the
+   server; candidates never see it.
 
-Candidates see "Mindfries wants to access your account" with the `repo`
-scope; the token stays in their OS keychain and is deleted when the session
-ends.
+Candidates see "Authorize Mindfries" with the `repo` scope the first time
+only. The token is handed to their CLI once, kept in their OS keychain and
+deleted when the session ends.
 
 ## Try it as a candidate would
 
@@ -94,9 +100,9 @@ curl -fsSL https://mindfries-cli.onrender.com/install.sh | sh
 
 Then, in a new terminal, `mindfries start`. It opens the sign-in page; check
 the code matches, pick a demo assessment and press **Connect**. If GitHub is
-on, the same page then shows GitHub's code: press **Open GitHub**, enter it
-and authorise. The terminal creates the repository, pushes, and opens VS
-Code. From other terminals: `mindfries agent`, `mindfries status`,
+on, the browser goes on to GitHub: press **Authorize** (the first time
+only) and it comes back to the page. The terminal creates the repository,
+pushes, and opens VS Code. From other terminals: `mindfries agent`, `mindfries status`,
 `mindfries submit`, `mindfries stop`, `mindfries doctor`.
 
 ## A build from your own checkout

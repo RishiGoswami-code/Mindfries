@@ -18,7 +18,12 @@ import (
 // deployment URL.
 func TestStartPushSubmitWithGitHub(t *testing.T) {
 	gh := fakegithub.Start(t)
-	s := newSessionWith(t, fakeapi.Config{GitHub: &api.GitHub{ClientID: "Iv1.e2e", Reviewers: []string{"hiring-team"}, Deployment: true}})
+	// The sign-in page's Connect goes on to GitHub and back, as a browser
+	// does, so the token is waiting when start asks for it.
+	s := newSessionWith(t, fakeapi.Config{
+		GitHub:    &api.GitHub{Reviewers: []string{"hiring-team"}, Deployment: true},
+		GitHubApp: fakeapi.GitHubApp{ClientID: "Iv1.e2e", ClientSecret: gh.ClientSecret, Web: gh.URL},
+	})
 	s.env = append(s.env, "MINDFRIES_GITHUB_URL="+gh.URL, "MINDFRIES_GITHUB_API="+gh.API)
 	wait := s.start()
 	full := "octocandidate/mindfries-e2e-task"
