@@ -57,6 +57,10 @@ jobs:
           cache: npm
           cache-dependency-path: ${{ matrix.app }}/package-lock.json
       - run: npm ci
+      # Next.js generates route types (LayoutProps, PageProps…) into .next/types
+      # only during dev, build or typegen; a clean checkout has none yet.
+      - name: Generate Next.js route types
+        run: npx next typegen
       - name: Typecheck
         run: npx tsc --noEmit -p .
       - name: Lint
