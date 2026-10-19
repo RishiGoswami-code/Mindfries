@@ -34,8 +34,11 @@ func (a *App) watch(ctx context.Context, l *state.Local, c *api.Client, editor s
 	}
 	_, _ = q.Append("workspace.ready", map[string]any{"task_version": l.TaskVersion, "base_commit": l.BaseCommit, "resumed": a.setup.resumed})
 	_, _ = q.Append("ide.launched", map[string]any{"ide": editor, "ok": true})
+	if ag := a.setup.agents; len(ag.matches) > 0 {
+		_, _ = q.Append("agent_signal.process", map[string]any{"matches": ag.matches, "phase": "start", "closed_by_candidate": ag.closed})
+	}
 
-	cfg := watcher.Config{Client: c, StateDir: dir, Local: l, Queue: q, Out: a.Stdout, Live: isTerminal(a.Stdout)}
+	cfg := watcher.Config{Client: c, StateDir: dir, Local: l, Queue: q, Out: a.Stdout, Live: isTerminal(a.Stdout), Sys: a.sys(), VSCode: a.vscodePath()}
 	if a.tuneWatcher != nil {
 		a.tuneWatcher(&cfg)
 	}

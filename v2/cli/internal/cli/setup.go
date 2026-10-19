@@ -33,6 +33,7 @@ func (a *App) ui(yes bool) *ui.UI {
 type setupResult struct {
 	resumed bool
 	checks  []preflight.Check
+	agents  startAgents
 }
 
 // blocking checks stop setup; the rest can be fixed later.

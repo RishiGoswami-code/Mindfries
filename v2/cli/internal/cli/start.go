@@ -79,6 +79,8 @@ func (a *App) start(args []string) error {
 		if !ok {
 			return errors.New("that doesn't look like a setup code (it's three groups of four letters and digits).\nCopy the whole setup command from your dashboard again")
 		}
+		fmt.Fprintf(a.Stdout, "%s\n", policyNotice)
+		a.setup.agents = a.checkAgentsBeforeStart(ctx, o.yes)
 		local, client, err = a.connect(ctx, a.apiURL(o.api), code)
 		if err != nil {
 			return err

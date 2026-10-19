@@ -31,6 +31,10 @@ type Sys struct {
 	Processes func(ctx context.Context) ([]string, error)
 	// Start launches a program without waiting for it.
 	Start func(name string, args ...string) error
+	// ReadDir lists the names in a directory; ReadFile reads a file. Used
+	// only for editor settings and plugin folders (v2/PLAN.md task 1.8).
+	ReadDir  func(string) ([]string, error)
+	ReadFile func(string) ([]byte, error)
 }
 
 // Real is the actual machine.
@@ -45,6 +49,15 @@ func Real() *Sys {
 		DiskFree:  diskFree,
 		Processes: processes,
 		Start:     start,
+		ReadDir: func(p string) ([]string, error) {
+			ents, err := os.ReadDir(p)
+			names := make([]string, 0, len(ents))
+			for _, e := range ents {
+				names = append(names, e.Name())
+			}
+			return names, err
+		},
+		ReadFile: os.ReadFile,
 	}
 }
 

@@ -3,6 +3,7 @@ package sys
 import (
 	"context"
 	"errors"
+	"os"
 	"os/exec"
 	"strings"
 	"sync"
@@ -24,6 +25,19 @@ type Fake struct {
 	Started []string
 	// StartErr makes Start fail.
 	StartErr error
+	// Dirs maps a directory to the names in it; Data maps a file to its
+	// contents.
+	Dirs map[string][]string
+	Data map[string]string
+	// Reads records every Output, ReadDir and ReadFile call, so tests can
+	// check nothing else is looked at.
+	Reads []string
+}
+
+func (f *Fake) record(s string) {
+	f.mu.Lock()
+	f.Reads = append(f.Reads, s)
+	f.mu.Unlock()
 }
 
 // Sys returns a *Sys backed by f.
@@ -41,12 +55,27 @@ func (f *Fake) Sys(goos, goarch string) *Sys {
 		Exists: func(p string) bool { return f.Files[p] },
 		Output: func(_ context.Context, _ string, name string, args ...string) (string, error) {
 			key := strings.Join(append([]string{name}, args...), " ")
+			f.record("run " + key)
 			if out, ok := f.Outputs[key]; ok {
 				return out, nil
 			}
 			return "", errors.New("fake: no output scripted for " + key)
 		},
 		DiskFree: func(string) (uint64, error) { return f.Free, nil },
+		ReadDir: func(p string) ([]string, error) {
+			f.record("readdir " + p)
+			if d, ok := f.Dirs[p]; ok {
+				return d, nil
+			}
+			return nil, os.ErrNotExist
+		},
+		ReadFile: func(p string) ([]byte, error) {
+			f.record("read " + p)
+			if d, ok := f.Data[p]; ok {
+				return []byte(d), nil
+			}
+			return nil, os.ErrNotExist
+		},
 		Processes: func(context.Context) ([]string, error) {
 			f.mu.Lock()
 			defer f.mu.Unlock()

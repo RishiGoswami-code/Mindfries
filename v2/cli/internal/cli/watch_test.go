@@ -1,6 +1,9 @@
 package cli
 
 import (
+	"bytes"
+	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -66,5 +69,52 @@ func TestStartRunsTheWatcherUntilTheSessionEnds(t *testing.T) {
 	}
 	if _, err := state.Load(h.home); err != state.ErrNone {
 		t.Error("the local session survived the session ending")
+	}
+}
+
+func TestAgentOpenAtStart(t *testing.T) {
+	for _, tc := range []struct {
+		name, stdin string
+		closed      bool
+	}{
+		{"started anyway", "n\n", false},
+		{"closed it", "y\n", true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			h := newHarness(t)
+			h.machine.SetProcs("aider")
+			app := h.app(tc.stdin+wsDir(t)+"\n", &bytes.Buffer{})
+			var out bytes.Buffer
+			app.Stdout, app.Stderr = &out, &out
+			if tc.closed {
+				orig := app.Sys.Processes
+				calls := 0
+				app.Sys.Processes = func(ctx context.Context) ([]string, error) {
+					calls++
+					if calls > 1 {
+						return nil, nil
+					}
+					return orig(ctx)
+				}
+			}
+			if code := app.Run([]string{"start", h.srv.MintSetupCode(fakeapi.SessionOptions{})}); code != 0 {
+				t.Fatalf("start: %d\n%s", code, out.String())
+			}
+			if !strings.Contains(out.String(), "Before you start") || !strings.Contains(out.String(), "These coding agents are running: aider") {
+				t.Fatalf("output:\n%s", out.String())
+			}
+			var found bool
+			for _, e := range h.srv.Events(h.srv.OnlySessionID()) {
+				if e.Type == "agent_signal.process" && strings.Contains(string(e.Data), `"phase":"start"`) {
+					found = true
+					if want := fmt.Sprintf(`"closed_by_candidate":%v`, tc.closed); !strings.Contains(string(e.Data), want) {
+						t.Errorf("event %s lacks %s", e.Data, want)
+					}
+				}
+			}
+			if !found {
+				t.Fatal("no start-phase process signal")
+			}
+		})
 	}
 }

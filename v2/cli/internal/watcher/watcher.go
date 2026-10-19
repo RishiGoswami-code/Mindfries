@@ -17,7 +17,9 @@ import (
 
 	"github.com/mindfries/v2/cli/internal/api"
 	"github.com/mindfries/v2/cli/internal/gitx"
+	"github.com/mindfries/v2/cli/internal/signals"
 	"github.com/mindfries/v2/cli/internal/state"
+	"github.com/mindfries/v2/cli/internal/sys"
 	"github.com/mindfries/v2/cli/internal/workspace"
 )
 
@@ -49,6 +51,12 @@ type Config struct {
 	FlushTimeout time.Duration
 	// PauseAfter, for tests, ends the watch as Ctrl+C would.
 	PauseAfter time.Duration
+
+	// Sys is the machine, for the coding-agent checks; nil skips the
+	// process and extension checks.
+	Sys *sys.Sys
+	// VSCode is the VS Code launcher, for listing its extensions.
+	VSCode string
 }
 
 // Watcher runs one session's watch.
@@ -64,6 +72,7 @@ type Watcher struct {
 	snapSeq      int64
 	snapHash     string
 	lastLine     string
+	agents       *agentState
 
 	stopOnce sync.Once
 	stopCh   chan string
@@ -116,8 +125,10 @@ func New(cfg Config) *Watcher {
 		endsAt: cfg.Local.EndsAt,
 		stopCh: make(chan string, 1),
 		wake:   make(chan struct{}, 1),
+		agents: newAgentState(),
 	}
 	w.loadSnapMeta()
+	w.loadCommits()
 	return w
 }
 
@@ -155,6 +166,7 @@ func (w *Watcher) Run(ctx context.Context) (string, error) {
 		return "", fmt.Errorf("can't read the workspace: %w", err)
 	}
 	w.checkLocked()
+	w.scanAgents(ctx)
 
 	wctx, cancel := context.WithCancel(context.Background())
 	var wg sync.WaitGroup
@@ -203,6 +215,7 @@ func (w *Watcher) Run(ctx context.Context) (string, error) {
 
 	// Last look at the workspace, then flush.
 	w.tick(context.Background())
+	w.checkCommits(context.Background())
 	if reason != ReasonInterrupted {
 		w.emit("watcher.stopped", map[string]string{"reason": reason})
 		if reason == ReasonStop || reason == ReasonSubmitted {
@@ -254,13 +267,20 @@ func (w *Watcher) tick(ctx context.Context) {
 	w.handleChanges(changes)
 }
 
-// handleChanges records file changes.
+// handleChanges records file changes and looks for bursts and agent
+// files among them.
 func (w *Watcher) handleChanges(changes []Change) {
+	leftover := false
 	for _, c := range changes {
 		w.emit("file.changed", map[string]any{
 			"path": c.Path, "change": c.Kind,
 			"lines_added": c.LinesAdded, "lines_removed": c.LinesRemoved, "bytes_after": c.BytesAfter,
 		})
+		w.noteArrival(c)
+		leftover = leftover || (c.Kind == "created" && signals.IsLeftover(c.Path))
+	}
+	if leftover {
+		w.checkLeftovers()
 	}
 }
 
