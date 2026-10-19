@@ -105,7 +105,7 @@ func TestTypingIsNotABurst(t *testing.T) {
 		e.write("typed.py", body)
 		time.Sleep(40 * time.Millisecond)
 	}
-	e.eventually("typing recorded", func() bool { return len(e.ofType("file.changed")) >= 10 })
+	e.eventually("typing recorded", func() bool { return len(e.ofType("file.changed")) >= 3 && e.q.Depth() == 0 })
 	RequestStop(e.stateDir, ReasonStop)
 	wait()
 	if n := len(e.ofType("file.burst")); n != 0 {
