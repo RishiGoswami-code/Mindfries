@@ -13,6 +13,9 @@ each stage of the candidate's session with the tabs and evidence involved,
 the rubric weights, scenario variations, and the final report. Both run on
 the same platform; only the scenario, tabs, stages and rubric change.
 
+**[`PLAN.md`](PLAN.md) is how V2 gets built:** the guards that keep V1
+safe, the path to production, and the tasks in order — the CLI first.
+
 **Status: specification only. Nothing in V2 is built, and V1 is unchanged.**
 
 ## V2 in one paragraph
