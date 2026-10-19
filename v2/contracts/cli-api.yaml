@@ -900,6 +900,11 @@ components:
           description: Commands that install the task's dependencies. The CLI shows each one and runs it only after the candidate confirms.
           items:
             type: string
+        check_commands:
+          type: array
+          description: Tests and builds `submit` runs before handing in. Their results go in the submission manifest's `checks`.
+          items:
+            type: string
         signature:
           type: object
           description: |
