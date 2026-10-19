@@ -176,6 +176,16 @@ func (c *Client) PollSignIn(ctx context.Context, deviceCode string) (*ExchangeRe
 	return &out, c.doJSON(ctx, http.MethodPost, "/sessions/device/token", DeviceTokenRequest{DeviceCode: deviceCode}, &out)
 }
 
+// ReportGitHubLogin shows GitHub's device code on the Mindfries sign-in page.
+func (c *Client) ReportGitHubLogin(ctx context.Context, in GitHubLogin) error {
+	return c.doJSON(ctx, http.MethodPost, "/session/github/login", in, nil)
+}
+
+// ReportGitHubRepo records the repository the work goes to.
+func (c *Client) ReportGitHubRepo(ctx context.Context, in GitHubRepo) error {
+	return c.doJSON(ctx, http.MethodPost, "/session/github/repo", in, nil)
+}
+
 func (c *Client) Session(ctx context.Context) (*Session, error) {
 	var s Session
 	return &s, c.doJSON(ctx, http.MethodGet, "/session", nil, &s)

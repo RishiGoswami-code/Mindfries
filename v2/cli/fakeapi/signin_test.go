@@ -63,12 +63,22 @@ func TestSignInThroughThePage(t *testing.T) {
 	}
 	page, _ = io.ReadAll(resp.Body)
 	resp.Body.Close()
-	if resp.StatusCode != 200 || !strings.Contains(string(page), "Go back to your terminal") {
+	if resp.StatusCode != 200 || !strings.Contains(string(page), "Connected to <strong>Rate limiter") || !strings.Contains(string(page), "Finishing in your terminal") {
 		t.Fatalf("confirm: %d %s", resp.StatusCode, page)
 	}
 	res, err := c.PollSignIn(context.Background(), da.DeviceCode)
 	if err != nil || res.SessionToken == "" || res.Session.AssessmentTitle != "Rate limiter" {
 		t.Fatalf("token: %+v %v", res, err)
+	}
+	// Once the terminal has the session, the page says so.
+	resp, err = http.Get(da.VerificationURIComplete)
+	if err != nil {
+		t.Fatal(err)
+	}
+	page, _ = io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if !strings.Contains(string(page), "Go back to your terminal") {
+		t.Fatalf("after the terminal collected it:\n%s", page)
 	}
 	c.Token = res.SessionToken
 	if _, err := c.Session(context.Background()); err != nil {

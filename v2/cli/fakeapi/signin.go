@@ -4,7 +4,6 @@ import (
 	"crypto/rand"
 	"errors"
 	"fmt"
-	"html/template"
 	"net/http"
 	"strings"
 	"time"
@@ -40,6 +39,7 @@ type signIn struct {
 	approved *invitation
 	email    string
 	denied   bool
+	session  string // the session it started, once the CLI collected it
 	used     bool
 }
 
@@ -266,6 +266,7 @@ func (s *Server) handleDeviceToken(w http.ResponseWriter, r *http.Request) {
 	}
 	si.used = true
 	sess := s.newSession(si.approved.opts)
+	si.session = sess.ID
 	writeJSON(w, http.StatusOK, api.ExchangeResponse{SessionToken: sess.token, ExpiresAt: sess.EndsAt, Session: sess.view()})
 }
 
@@ -276,151 +277,3 @@ func (s *Server) pageRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /device", s.handleDeviceForm)
 	s.distRoutes(mux)
 }
-
-type invitationView struct {
-	ID, Title, Duration, Assistant string
-	Checked                        bool
-}
-
-type devicePage struct {
-	Code        string
-	Device      string
-	Invitations []invitationView
-	Message     string
-	Error       string
-	Done        bool
-}
-
-func (s *Server) handleDevicePage(w http.ResponseWriter, r *http.Request) {
-	code := normalizeUserCode(r.URL.Query().Get("code"))
-	p := devicePage{Code: code}
-	if code != "" {
-		s.mu.Lock()
-		si, err := s.pendingLocked(code)
-		if err == nil {
-			p.Device = fmt.Sprintf("%s/%s, %s ago", si.device.OS, si.device.Arch, s.now().Sub(si.createdAt).Round(time.Second))
-			for i, inv := range s.invites {
-				p.Invitations = append(p.Invitations, invitationView{
-					ID:        inv.id,
-					Title:     inv.opts.Title,
-					Duration:  fmt.Sprintf("%d minutes", int(inv.opts.Duration/time.Minute)),
-					Assistant: strings.ReplaceAll(inv.opts.Policy.AssistantMode, "_", " "),
-					Checked:   i == 0,
-				})
-			}
-			if len(p.Invitations) == 0 {
-				p.Error = "You haven't been invited to any assessment yet."
-			}
-		} else {
-			p.Error = sentence(err)
-		}
-		s.mu.Unlock()
-	}
-	renderPage(w, http.StatusOK, p)
-}
-
-func (s *Server) handleDeviceForm(w http.ResponseWriter, r *http.Request) {
-	if err := r.ParseForm(); err != nil {
-		renderPage(w, http.StatusBadRequest, devicePage{Error: "The form couldn't be read."})
-		return
-	}
-	code := r.PostForm.Get("code")
-	s.mu.Lock()
-	var err error
-	deny := r.PostForm.Get("action") == "deny"
-	if deny {
-		var si *signIn
-		if si, err = s.pendingLocked(code); err == nil {
-			si.denied = true
-		}
-	} else {
-		err = s.approveLocked(code, r.PostForm.Get("invitation"), r.PostForm.Get("email"))
-	}
-	s.mu.Unlock()
-	switch {
-	case err != nil:
-		renderPage(w, http.StatusConflict, devicePage{Error: sentence(err)})
-	case deny:
-		renderPage(w, http.StatusOK, devicePage{Done: true, Message: "Sign-in refused. Nothing was connected. You can close this tab."})
-	default:
-		renderPage(w, http.StatusOK, devicePage{Done: true, Message: "Connected. Go back to your terminal: mindfries is setting up your workspace. You can close this tab."})
-	}
-}
-
-func sentence(err error) string {
-	m := err.Error()
-	return strings.ToUpper(m[:1]) + m[1:] + "."
-}
-
-func renderPage(w http.ResponseWriter, status int, p devicePage) {
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	w.Header().Set("Cache-Control", "no-store")
-	w.Header().Set("X-Frame-Options", "DENY")
-	w.WriteHeader(status)
-	_ = pageTmpl.Execute(w, p)
-}
-
-var pageTmpl = template.Must(template.New("device").Parse(`<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Connect your terminal · Mindfries (fake)</title>
-<style>
-  :root { color-scheme: light dark; --bg:#f6f6f4; --card:#fff; --fg:#1b1b1a; --muted:#6b6b66; --line:#deded8; --accent:#2f5bd3; --bad:#b3261e; }
-  @media (prefers-color-scheme: dark) { :root { --bg:#141413; --card:#1e1e1c; --fg:#ecece8; --muted:#a0a09a; --line:#33332f; --accent:#7f9cf0; --bad:#f2b8b5; } }
-  body { margin:0; background:var(--bg); color:var(--fg); font:16px/1.5 system-ui, sans-serif; }
-  main { max-width:30rem; margin:3rem auto; padding:0 16px; }
-  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:1.5rem; }
-  h1 { font-size:1.3rem; margin:0 0 .25rem; }
-  .muted { color:var(--muted); font-size:.9rem; }
-  .code { font:600 1.8rem/1.2 ui-monospace, monospace; letter-spacing:.12em; margin:.5rem 0 1rem; }
-  label { display:block; margin:.75rem 0 .25rem; font-weight:600; }
-  input[type=email], input[type=text] { width:100%; box-sizing:border-box; padding:.55rem .7rem; border:1px solid var(--line); border-radius:8px; background:transparent; color:inherit; font:inherit; }
-  .inv { display:flex; gap:.6rem; align-items:flex-start; border:1px solid var(--line); border-radius:8px; padding:.6rem .75rem; margin:.4rem 0; font-weight:normal; }
-  .row { display:flex; gap:.75rem; margin-top:1.25rem; flex-wrap:wrap; }
-  button { font:inherit; padding:.55rem 1rem; border-radius:8px; border:1px solid var(--line); background:transparent; color:inherit; cursor:pointer; }
-  button.primary { background:var(--accent); border-color:var(--accent); color:#fff; }
-  .error { color:var(--bad); }
-  .banner { font-size:.8rem; color:var(--muted); margin-bottom:1rem; }
-</style>
-</head>
-<body>
-<main>
-<p class="banner">Fake Mindfries, for testing the CLI. Nothing here is real and any email works.</p>
-<div class="card">
-{{if .Done}}
-  <h1>{{.Message}}</h1>
-{{else if and .Code (not .Error)}}
-  <h1>Connect your terminal</h1>
-  <p class="muted">Check this is the code your terminal shows. If it isn't, or you didn't run <code>mindfries start</code>, choose "This wasn't me".</p>
-  <div class="code">{{.Code}}</div>
-  <p class="muted">Requested from {{.Device}}</p>
-  <form method="post" action="/device">
-    <input type="hidden" name="code" value="{{.Code}}">
-    <label for="email">Sign in with your email</label>
-    <input id="email" name="email" type="email" value="candidate@example.com" autocomplete="email">
-    <label>Assessment</label>
-    {{range .Invitations}}
-    <label class="inv"><input type="radio" name="invitation" value="{{.ID}}"{{if .Checked}} checked{{end}}>
-      <span><strong>{{.Title}}</strong><br><span class="muted">{{.Duration}} · assistant: {{.Assistant}}</span></span></label>
-    {{end}}
-    <div class="row">
-      <button class="primary" type="submit" name="action" value="approve">Connect</button>
-      <button type="submit" name="action" value="deny">This wasn't me</button>
-    </div>
-  </form>
-{{else}}
-  <h1>Connect your terminal</h1>
-  {{if .Error}}<p class="error">{{.Error}}</p>{{end}}
-  <form method="get" action="/device">
-    <label for="code">Enter the code your terminal shows</label>
-    <input id="code" name="code" type="text" placeholder="BCDF-GHJK" autocomplete="off" autocapitalize="characters">
-    <div class="row"><button class="primary" type="submit">Continue</button></div>
-  </form>
-{{end}}
-</div>
-</main>
-</body>
-</html>
-`))

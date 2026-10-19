@@ -37,6 +37,10 @@ type Config struct {
 	// served at /cli/latest with a generated checksums.txt, next to the
 	// installers at /install.sh and /install.ps1.
 	DistDir string
+	// GitHub, if set (with a ClientID), makes every new session put the
+	// work in a repository in the candidate's GitHub, unless the
+	// invitation says otherwise.
+	GitHub *api.GitHub
 }
 
 // Server is the fake V2 API.
