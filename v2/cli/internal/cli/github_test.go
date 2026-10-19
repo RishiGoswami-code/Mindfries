@@ -150,8 +150,7 @@ func TestGitHubRefusedKeepsTheSession(t *testing.T) {
 	h := newHarness(t)
 	gh := withGitHub(t, h, api.GitHub{Required: true})
 	// The candidate first presses Cancel on GitHub, then thinks again.
-	gh.SetDeny(true)
-	time.AfterFunc(time.Second, func() { gh.SetDeny(false) })
+	gh.DenyFirst(1)
 	dir := filepath.Join(t.TempDir(), "ws")
 	code := h.srv.MintSetupCode(fakeapi.SessionOptions{Task: quickTask()})
 	exit, out := h.run("", "start", code, "--dir", dir, "--yes")

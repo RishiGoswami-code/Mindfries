@@ -39,8 +39,10 @@ type Server struct {
 	mu    sync.Mutex
 	codes map[string]bool // OAuth code → used
 	// Deny makes the authorize page refuse, as "Cancel" on GitHub does.
-	Deny  bool
-	repos map[string]*repo
+	Deny bool
+	// denyFirst refuses that many authorisations, then grants.
+	denyFirst int
+	repos     map[string]*repo
 }
 
 type repo struct {
@@ -83,7 +85,10 @@ func (s *Server) authorize(w http.ResponseWriter, r *http.Request) {
 	v := url.Values{"state": {q.Get("state")}}
 	s.mu.Lock()
 	s.Authorizations++
-	if s.Deny {
+	if s.Deny || s.denyFirst > 0 {
+		if s.denyFirst > 0 {
+			s.denyFirst--
+		}
 		v.Set("error", "access_denied")
 	} else {
 		code := fmt.Sprintf("code_%d", len(s.codes)+1)
@@ -112,6 +117,14 @@ func (s *Server) accessToken(w http.ResponseWriter, r *http.Request) {
 		s.codes[code] = true
 		writeJSON(w, http.StatusOK, map[string]string{"access_token": s.Token, "token_type": "bearer", "scope": "repo"})
 	}
+}
+
+// DenyFirst makes the next n authorisations refuse, as pressing Cancel
+// and then thinking again does.
+func (s *Server) DenyFirst(n int) {
+	s.mu.Lock()
+	s.denyFirst = n
+	s.mu.Unlock()
 }
 
 // SetDeny makes the authorize page refuse (true) or grant (false).
