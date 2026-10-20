@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/mindfries/v2/api/internal/activity"
 	"github.com/mindfries/v2/api/internal/bundle"
 	"github.com/mindfries/v2/api/internal/delivery"
 	"github.com/mindfries/v2/api/internal/session"
@@ -83,6 +84,13 @@ func (s *Server) cliEvents(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		problem(w, http.StatusInternalServerError, "internal", err.Error())
 		return
+	}
+	// What the events mean for the panel's tracker. An event sent twice makes
+	// one line (the item's dedupe key is the event's seq).
+	for _, e := range batch.Events {
+		for _, it := range activity.FromEvent(activity.Event{Seq: e.Seq, At: e.OccurredAt, Type: e.Type, Data: e.Data}) {
+			s.track(r.Context(), sess.ID, it)
+		}
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"acked_through_seq": acked, "stored": stored, "duplicates": dup,
