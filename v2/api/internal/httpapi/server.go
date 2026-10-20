@@ -53,6 +53,7 @@ func New(reg Registry, productsRoot string, cache taskgen.Cache, provider taskge
 	mux.HandleFunc("GET /v2/products", s.products)
 	mux.HandleFunc("POST /v2/assessments/resolve", s.resolve)
 	s.registerCLI(mux)
+	s.registerDist(mux)
 	return mux
 }
 
