@@ -24,7 +24,7 @@ func TestBuildFromRealShapedEvents(t *testing.T) {
 		ev(8, 5, "file.changed", `{"path":"console/src/sla.ts","change":"modified","lines_added":6,"lines_removed":3}`),
 		ev(9, 5, "change.attributed", `{"path":"console/src/sla.ts","lines":6,"origin":"candidate"}`),
 		ev(10, 6, "file.changed", `{"path":"console/src/components/SlaBadge.tsx","lines_added":11,"lines_removed":6}`),
-		ev(11, 6, "change.attributed", `{"path":"console/src/components/SlaBadge.tsx","lines":11,"origin":"agent"}`),
+		ev(11, 6, "change.attributed", `{"path":"console/src/components/SlaBadge.tsx","lines":11,"origin":"assistant"}`),
 		ev(12, 8, "git.commit", `{"commit":"abc","files_changed":2}`),
 	}
 	sess := session.Session{DurationMinutes: 90}
@@ -68,5 +68,23 @@ func TestUngradedOutcome(t *testing.T) {
 	r := Build(session.Session{DurationMinutes: 90}, session.Submission{TaskFilesIntact: true}, nil, manifest.RoleCoverage{}, nil)
 	if r.Outcome.Graded {
 		t.Fatal("outcome should be ungraded when grade is nil")
+	}
+}
+
+// The CLI's attribution values are assistant, candidate and unknown. An edit
+// the assistant made must not be credited to the candidate, and a change of
+// unknown origin must not be credited to anyone.
+func TestAttributionUsesTheCLIsOrigins(t *testing.T) {
+	events := []session.Event{
+		ev(1, 1, "file.changed", `{"path":"a.go","lines_added":10,"lines_removed":0}`),
+		ev(2, 1, "change.attributed", `{"path":"a.go","lines":10,"origin":"assistant","edit_id":"e1"}`),
+		ev(3, 2, "file.changed", `{"path":"b.go","lines_added":7,"lines_removed":0}`),
+		ev(4, 2, "change.attributed", `{"path":"b.go","lines":7,"origin":"candidate"}`),
+		ev(5, 3, "file.changed", `{"path":"c.go","lines_added":90,"lines_removed":0}`),
+		ev(6, 3, "change.attributed", `{"path":"c.go","lines":90,"origin":"unknown"}`),
+	}
+	r := Build(session.Session{DurationMinutes: 90}, session.Submission{ID: "sub_1", TaskFilesIntact: true}, events, manifest.RoleCoverage{}, nil)
+	if r.AI.AgentAttributedLines != 10 || r.AI.CandidateAttributedLines != 7 || r.AI.UnknownAttributedLines != 90 {
+		t.Fatalf("%+v", r.AI)
 	}
 }

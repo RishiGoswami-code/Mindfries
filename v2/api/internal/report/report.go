@@ -46,7 +46,8 @@ type AISummary struct {
 	AgentsLeftRunning        bool     `json:"agents_left_running"` // a match with closed_by_candidate=false
 	AIExtensions             []string `json:"ai_extensions"`       // e.g. ["github.copilot-chat"]
 	CandidateAttributedLines int      `json:"candidate_attributed_lines"`
-	AgentAttributedLines     int      `json:"agent_attributed_lines"`
+	AgentAttributedLines     int      `json:"agent_attributed_lines"`   // edits the candidate accepted from the coding assistant
+	UnknownAttributedLines   int      `json:"unknown_attributed_lines"` // arrived neither gradually nor through the assistant
 }
 
 type FileChange struct {
@@ -130,9 +131,13 @@ func Build(sess session.Session, sub session.Submission, events []session.Event,
 			if fc := changes[d.Path]; fc != nil {
 				fc.Origin = d.Origin
 			}
+			// The CLI says where a change came from: the assistant, the
+			// candidate, or neither (unknown). "agent" is the older spelling.
 			switch d.Origin {
-			case "agent":
+			case "assistant", "agent":
 				r.AI.AgentAttributedLines += d.Lines
+			case "unknown":
+				r.AI.UnknownAttributedLines += d.Lines
 			default:
 				r.AI.CandidateAttributedLines += d.Lines
 			}
