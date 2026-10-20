@@ -16,12 +16,13 @@ import (
 )
 
 type Report struct {
-	Outcome  Outcome      `json:"outcome"`
-	Effort   Effort       `json:"effort"`
-	AI       AISummary    `json:"ai"`
-	Changes  []FileChange `json:"changes"`
-	Coverage Coverage     `json:"coverage"`
-	Flags    []string     `json:"flags"` // things a reviewer should look at
+	Outcome   Outcome      `json:"outcome"`
+	Submitted bool         `json:"submitted"` // false: nothing handed in yet, so submission facts below are unknown
+	Effort    Effort       `json:"effort"`
+	AI        AISummary    `json:"ai"`
+	Changes   []FileChange `json:"changes"`
+	Coverage  Coverage     `json:"coverage"`
+	Flags     []string     `json:"flags"` // things a reviewer should look at
 }
 
 // Outcome is the objective result: did the submission pass the hidden tests.
@@ -65,8 +66,9 @@ type Coverage struct {
 // Build assembles the report. grade may be nil (not yet graded).
 func Build(sess session.Session, sub session.Submission, events []session.Event, cov manifest.RoleCoverage, grade *session.Grade) Report {
 	r := Report{
-		Effort:   Effort{WindowMinutes: sess.DurationMinutes, TaskFilesIntact: sub.TaskFilesIntact},
-		Coverage: Coverage{Competencies: cov.Competencies, CannotAssess: cov.CannotAssess},
+		Submitted: sub.ID != "",
+		Effort:    Effort{WindowMinutes: sess.DurationMinutes, TaskFilesIntact: sub.TaskFilesIntact},
+		Coverage:  Coverage{Competencies: cov.Competencies, CannotAssess: cov.CannotAssess},
 	}
 	if grade != nil {
 		r.Outcome = Outcome{Graded: true, Passed: grade.Passed, Check: grade.Check}
@@ -178,7 +180,9 @@ func flags(r Report) []string {
 	if len(r.AI.AIExtensions) > 0 {
 		f = append(f, fmt.Sprintf("AI editor extensions were installed: %v", r.AI.AIExtensions))
 	}
-	if !r.Effort.TaskFilesIntact {
+	// Only a submission can say whether locked files were touched; with none,
+	// there is nothing to flag.
+	if r.Submitted && !r.Effort.TaskFilesIntact {
 		f = append(f, "Locked task files were modified during the assessment.")
 	}
 	return f

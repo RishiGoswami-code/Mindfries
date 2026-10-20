@@ -2,6 +2,7 @@ package report
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 
@@ -28,7 +29,7 @@ func TestBuildFromRealShapedEvents(t *testing.T) {
 		ev(12, 8, "git.commit", `{"commit":"abc","files_changed":2}`),
 	}
 	sess := session.Session{DurationMinutes: 90}
-	sub := session.Submission{TaskFilesIntact: true}
+	sub := session.Submission{ID: "sub_1", TaskFilesIntact: true}
 	cov := manifest.RoleCoverage{Competencies: []string{"React component design"}, CannotAssess: []string{"visual polish"}}
 	grade := &session.Grade{Passed: true, Check: []string{"npm", "test"}}
 
@@ -86,5 +87,26 @@ func TestAttributionUsesTheCLIsOrigins(t *testing.T) {
 	r := Build(session.Session{DurationMinutes: 90}, session.Submission{ID: "sub_1", TaskFilesIntact: true}, events, manifest.RoleCoverage{}, nil)
 	if r.AI.AgentAttributedLines != 10 || r.AI.CandidateAttributedLines != 7 || r.AI.UnknownAttributedLines != 90 {
 		t.Fatalf("%+v", r.AI)
+	}
+}
+
+func TestNoSubmissionMeansNoTaskFilesFlag(t *testing.T) {
+	r := Build(session.Session{DurationMinutes: 90}, session.Submission{}, nil, manifest.RoleCoverage{}, nil)
+	if r.Submitted {
+		t.Fatal("nothing was submitted")
+	}
+	for _, f := range r.Flags {
+		if strings.Contains(f, "Locked task files") {
+			t.Fatalf("an unsubmitted session must not be flagged for task files: %v", r.Flags)
+		}
+	}
+	// A real submission whose locked files changed is flagged.
+	r = Build(session.Session{DurationMinutes: 90}, session.Submission{ID: "sub_1", TaskFilesIntact: false}, nil, manifest.RoleCoverage{}, nil)
+	found := false
+	for _, f := range r.Flags {
+		found = found || strings.Contains(f, "Locked task files")
+	}
+	if !r.Submitted || !found {
+		t.Fatalf("%v", r.Flags)
 	}
 }
