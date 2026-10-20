@@ -645,3 +645,36 @@ export async function addOnboarded(e: {
   const invite = await createCompanyUserInvite(company.id, e.adminEmail, nameFromEmail(e.adminEmail));
   return { inviteToken: invite?.token ?? null };
 }
+
+// createV2Assessment records a V2 assessment: an assessments row with
+// engine='v2' and the role + job description the V2 engine resolves a product
+// and task from. Needs migration 0030 (assessments.engine + jd) applied.
+export async function createV2Assessment(input: {
+  candidateEmail: string;
+  candidateName?: string;
+  companyId?: string;
+  role: string;
+  jd: string;
+  dueDate?: string;
+}): Promise<{ id: string }> {
+  const c = db();
+  if (!c) throw new Error("Supabase not configured");
+  const { data, error } = await c
+    .from("assessments")
+    .insert({
+      company_id: input.companyId || null,
+      candidate_email: input.candidateEmail,
+      candidate_name: input.candidateName || null,
+      role: input.role,
+      engine: "v2",
+      jd: input.jd,
+      status: "invited",
+      task_status: "none", // V2 resolves its task at setup, not via the V1 worker
+      invited_by: "mindfries",
+      due_date: input.dueDate || null,
+    })
+    .select("id")
+    .single();
+  if (error || !data) throw error ?? new Error("Insert returned no row");
+  return { id: data.id as string };
+}

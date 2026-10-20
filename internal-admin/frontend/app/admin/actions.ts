@@ -3,8 +3,9 @@
 import { revalidatePath } from "next/cache";
 import {
   addOnboarded, addWaitlist, waitlistActivity, createCompany, setCompanyAdminPassword, listCompanyRoles, markInvitationEmailedByToken, type CompanyRole, createInvitation, createTemplate, recordEmailEvent, setCompanyStatus,
-  setLeadStage, setTemplateStatus,
+  setLeadStage, setTemplateStatus, createV2Assessment,
 } from "@/lib/db";
+import { mintV2SetupCode } from "@/lib/v2";
 import { mailerReady, sendMail, NOTIFY_EMAIL } from "@/lib/mailer";
 import { targetsStore } from "@/lib/targets-store";
 import { requireAdminRole } from "@/lib/auth/admins";
@@ -386,6 +387,32 @@ export async function joinWaitlist(raw: {
     }
     revalidatePath("/admin/waitlist");
     return { ok: true };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+// Assign a V2 coding task to a candidate: record the V2 assessment (engine='v2'
+// + role + job description) and, when the engine is configured, mint a one-time
+// setup code to hand the candidate directly.
+export async function assignV2Task(input: {
+  candidateEmail: string;
+  candidateName?: string;
+  companyId?: string;
+  role: string;
+  jd: string;
+  title?: string;
+  dueDate?: string;
+}): Promise<{ ok: true; assessmentId: string; setupCode: string | null } | { ok: false; error: string }> {
+  try {
+    await requireAdminRole();
+    if (!input.candidateEmail.trim()) throw new Error("Candidate email is required");
+    if (!input.role.trim()) throw new Error("Role is required");
+    if (!input.jd.trim()) throw new Error("Job description is required");
+    const { id } = await createV2Assessment(input);
+    const minted = await mintV2SetupCode({ role: input.role, jd: input.jd, title: input.title });
+    revalidatePath("/admin/v2");
+    return { ok: true, assessmentId: id, setupCode: minted?.code ?? null };
   } catch (e) {
     return fail(e);
   }
