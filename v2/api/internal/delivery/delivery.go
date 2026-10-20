@@ -93,8 +93,13 @@ func (w Workspace) WriteTo(dir string) error {
 	return nil
 }
 
+// Build/VCS directories are never part of a delivered workspace, at any depth:
+// a candidate installs their own dependencies. Pruned by basename everywhere,
+// so a product with a JS console doesn't ship its node_modules.
+var prunedDirs = map[string]bool{".git": true, "node_modules": true, "dist": true}
+
 // readTree reads every regular file under root into a path->content map,
-// pruning top-level directories named in skip.
+// pruning top-level directories named in skip and build/VCS dirs at any depth.
 func readTree(root string, skip map[string]bool) (map[string]string, error) {
 	files := map[string]string{}
 	err := filepath.WalkDir(root, func(p string, d os.DirEntry, err error) error {
@@ -109,7 +114,7 @@ func readTree(root string, skip map[string]bool) (map[string]string, error) {
 			return nil
 		}
 		if d.IsDir() {
-			if skip[rel] {
+			if skip[rel] || prunedDirs[d.Name()] {
 				return filepath.SkipDir
 			}
 			return nil
