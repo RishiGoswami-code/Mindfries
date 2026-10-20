@@ -94,7 +94,7 @@ func (ss *session) bundle() (*built, error) {
 }
 
 func (s *Server) handleManifest(w http.ResponseWriter, r *http.Request, ss *session) {
-	if !requireActive(w, ss) {
+	if !requireSetUp(w, ss) {
 		return
 	}
 	b, err := ss.bundle()
@@ -111,7 +111,7 @@ func (s *Server) handleManifest(w http.ResponseWriter, r *http.Request, ss *sess
 }
 
 func (s *Server) handleArchive(w http.ResponseWriter, r *http.Request, ss *session) {
-	if !requireActive(w, ss) {
+	if !requireSetUp(w, ss) {
 		return
 	}
 	b, err := ss.bundle()

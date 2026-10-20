@@ -273,7 +273,7 @@ func (s *Server) handleDeviceToken(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	si.used = true
-	sess := s.newSession(si.approved.opts)
+	sess := s.newSession(si.approved.opts, s.publicBase(r))
 	sess.invitation = si.approved.id
 	sess.ext.ghToken, sess.ext.ghErr = si.ghToken, si.ghErr
 	si.ghToken = ""
@@ -287,5 +287,7 @@ func (s *Server) pageRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /device", s.handleDevicePage)
 	mux.HandleFunc("POST /device", s.handleDeviceForm)
 	s.githubRoutes(mux)
+	s.monitorRoutes(mux)
+	s.dashboardRoutes(mux)
 	s.distRoutes(mux)
 }

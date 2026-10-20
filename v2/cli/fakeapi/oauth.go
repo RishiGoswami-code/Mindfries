@@ -181,7 +181,7 @@ func (s *Server) exchangeGitHubCode(r *http.Request, code string) (string, error
 
 // handleGitHubToken hands the token to the CLI, once.
 func (s *Server) handleGitHubToken(w http.ResponseWriter, r *http.Request, ss *session) {
-	if !requireActive(w, ss) {
+	if !requireSetUp(w, ss) {
 		return
 	}
 	if ss.GitHub == nil {

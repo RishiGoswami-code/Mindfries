@@ -21,6 +21,12 @@ type SessionOptions struct {
 	Task      *Task // default DemoTask()
 	// GitHub overrides Config.GitHub for this assessment.
 	GitHub *api.GitHub
+	// Monitoring is what the browser panel must have on before the clock
+	// starts: camera, screen, microphone. Nil needs none.
+	Monitoring *api.Monitoring
+	// BeginWithin is how long a set-up session can wait to begin. Default
+	// 24 hours.
+	BeginWithin time.Duration
 	// Reviewers are the hiring team's GitHub usernames for this
 	// assessment, invited to the candidate's repository with read access.
 	// They belong to the assessment (the company portal sets them), never
@@ -33,6 +39,9 @@ type setupCode struct {
 	expiresAt time.Time
 	used      bool
 	opts      SessionOptions
+	// invitation it was made for, from the dashboard; session it set up.
+	invitation string
+	session    string
 }
 
 // session is the server's view of one candidate session.
@@ -43,6 +52,8 @@ type session struct {
 	task    *Task
 	// invitation is the invitation it started from, if any.
 	invitation string
+	// duration is the time the candidate gets once they begin.
+	duration time.Duration
 	// Filled by later parts of the contract.
 	ext sessionExt
 }
@@ -94,6 +105,9 @@ func (o SessionOptions) withDefaults() SessionOptions {
 	}
 	if o.Task == nil {
 		o.Task = DemoTask()
+	}
+	if o.BeginWithin == 0 {
+		o.BeginWithin = 24 * time.Hour
 	}
 	return o
 }
@@ -156,21 +170,27 @@ func (s *Server) handleExchange(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	c.used = true
-	sess := s.newSession(c.opts)
+	sess := s.newSession(c.opts, s.publicBase(r))
+	sess.invitation = c.invitation
+	c.session = sess.ID
 	writeJSON(w, http.StatusOK, api.ExchangeResponse{SessionToken: sess.token, ExpiresAt: sess.EndsAt, Session: sess.view()})
 }
 
-// newSession starts a session from o and issues its token. s.mu is held.
-func (s *Server) newSession(o SessionOptions) *session {
+// newSession sets up a session from o and issues its token. It starts
+// ready: the clock runs only from POST /session/begin; until then EndsAt
+// is the deadline to begin. base is the fake's public address, for the
+// monitoring panel's link. s.mu is held.
+func (s *Server) newSession(o SessionOptions, base string) *session {
 	now := s.now()
 	sess := &session{
 		Session: api.Session{
 			ID:              randomID("ses_", 8),
 			AssessmentID:    randomID("asm_", 6),
 			AssessmentTitle: o.Title,
-			Status:          api.StatusActive,
+			Status:          api.StatusReady,
 			StartedAt:       now,
-			EndsAt:          now.Add(o.Duration),
+			EndsAt:          now.Add(o.BeginWithin),
+			DurationMinutes: int(o.Duration / time.Minute),
 			Policy:          o.Policy,
 			Intervals:       o.Intervals,
 			Limits:          o.Limits,
@@ -182,6 +202,13 @@ func (s *Server) newSession(o SessionOptions) *session {
 	budget := *o.Policy.AssistantBudget
 	sess.Policy.AssistantBudget = &budget
 	sess.GitHub = s.githubFor(o)
+	sess.duration = o.Duration
+	if o.Monitoring.Any() {
+		sess.ext.monKey = randomID("", 16)
+		m := *o.Monitoring
+		m.PanelURL = base + "/monitor/" + sess.ext.monKey
+		sess.Monitoring = &m
+	}
 	s.sessions[sess.ID] = sess
 	return sess
 }
@@ -230,6 +257,15 @@ func (s *Server) authed(h func(w http.ResponseWriter, r *http.Request, ss *sessi
 		}
 		h(w, r, ss)
 	}
+}
+
+// requireSetUp allows a session that is ready or active: setting up
+// (the task, GitHub) happens before the clock starts.
+func requireSetUp(w http.ResponseWriter, ss *session) bool {
+	if ss.Status == api.StatusReady {
+		return true
+	}
+	return requireActive(w, ss)
 }
 
 // requireActive answers session_not_active unless the session is active.

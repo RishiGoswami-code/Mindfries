@@ -22,6 +22,10 @@ type sessionExt struct {
 	ghCollected bool
 	ghKey       string // the connect URL's key
 	ghWaiting   string // the connect URL, while the CLI waits
+	// The monitoring panel and the begin request.
+	monKey string
+	mon    monState
+	begin  *api.BeginRequest
 }
 
 func newExt() sessionExt {

@@ -57,13 +57,16 @@ func main() {
 		cfg.GitHub = &api.GitHub{Required: os.Getenv("FAKEAPI_GITHUB_OPTIONAL") != "1", Deployment: true}
 	}
 	s := fakeapi.New(cfg)
-	s.Invite(fakeapi.SessionOptions{Title: "Demo assessment: rate limiter"})
-	explain := fakeapi.SessionOptions{Title: "Demo assessment: explain-only assistant", Duration: 60 * time.Minute}
+	// The demos ask for camera, screen and microphone in the browser panel.
+	watched := &api.Monitoring{Camera: true, Screen: true, Audio: true}
+	s.Invite(fakeapi.SessionOptions{Title: "Demo assessment: rate limiter", Monitoring: watched})
+	explain := fakeapi.SessionOptions{Title: "Demo assessment: explain-only assistant", Duration: 60 * time.Minute, Monitoring: watched}
 	explain.Policy.AssistantMode = api.ModeExplainOnly
 	s.Invite(explain)
 
 	log.Printf("fake V2 API on %s%s", base, fakeapi.Prefix)
-	log.Printf("sign-in page: %s/device (a fake browser session; two demo assessments)", base)
+	log.Printf("dashboard: %s/dashboard (Start assessment gives the setup command; two demo assessments)", base)
+	log.Printf("sign-in page: %s/device (for 'mindfries setup' without a code)", base)
 	if cfg.GitHub != nil {
 		log.Printf("GitHub: the work goes to the candidate's own GitHub (OAuth app %s, callback %s/github/callback); set each assessment's reviewers with PUT /__admin/invitations/<id>/reviewers", cfg.GitHubApp.ClientID, base)
 		if cfg.GitHubApp.ClientSecret == "" {
