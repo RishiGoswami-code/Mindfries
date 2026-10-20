@@ -51,11 +51,12 @@ component lands (I'll flag it in the build).
    - `V2_SUPABASE_SERVICE_ROLE_KEY` — service role key (Settings → API) — used
      only for Storage uploads/downloads, kept on the API, never shipped.
 
-> V1 note: this is a *new* Supabase project, separate from V1's. V2 reuses V1
-> accounts later through the signed handoff, not by sharing a database now.
-> (If you'd rather put the `v2` schema inside V1's existing Supabase project —
-> the original plan — tell me and I'll adjust; it changes nothing above except
-> which project you run the migrations in.)
+> **Chosen: the `v2` schema lives inside the existing Mindfries Supabase
+> project** (migrations 0001–0004 already run there). This is the original
+> plan — V2 reuses V1's accounts and data with no copy, and the `0004` grants
+> give the `v2_api` role read-only access to the V1 tables in the same project.
+> Nothing in V1 changes; V2 only ever reads those five tables and writes only
+> the `v2` schema.
 
 ---
 
