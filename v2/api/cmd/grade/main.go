@@ -13,6 +13,7 @@
 //	V2_DATABASE_URL=postgres://... V2_PRODUCTS_ROOT=../products go run ./cmd/grade
 //	go run ./cmd/grade -submission sub_abc123   # grade just one
 //	go run ./cmd/grade -n 10                      # cap how many this run
+//	go run ./cmd/grade -watch                     # keep running, grading new submissions as they arrive
 package main
 
 import (
@@ -35,6 +36,10 @@ const maxStoredOutput = 20000 // keep the check log readable in the DB
 func main() {
 	var one string
 	var n int
+	var watch bool
+	var every time.Duration
+	flag.BoolVar(&watch, "watch", false, "keep running: look for new submissions every -every")
+	flag.DurationVar(&every, "every", time.Minute, "how often -watch looks")
 	flag.StringVar(&one, "submission", "", "grade only this submission id")
 	flag.IntVar(&n, "n", 50, "max submissions to grade this run")
 	flag.Parse()
@@ -55,14 +60,44 @@ func main() {
 	}
 	defer db.Close()
 
+	if !watch {
+		pass(ctx, db, productsRoot, one, n, false)
+		return
+	}
+	log.Printf("watching for submissions every %s", every)
+	for {
+		pass(ctx, db, productsRoot, "", n, true)
+		time.Sleep(every)
+	}
+}
+
+const maxAttempts = 3
+
+var attempts = map[string]int{}
+
+// pass grades what's waiting (or just `one`) and logs the result.
+func pass(ctx context.Context, db *store.DB, productsRoot, one string, n int, quiet bool) {
 	var ids []string
+	var err error
 	if one != "" {
 		ids = []string{one}
 	} else if ids, err = db.UngradedSubmissions(ctx, n); err != nil {
-		log.Fatalf("list ungraded: %v", err)
+		log.Printf("list ungraded: %v", err)
+		return
 	}
+	// A submission that errors (a broken bundle, say) is tried a few times, then
+	// left for a person, so a watching runner doesn't retry it every minute for ever.
+	var todo []string
+	for _, id := range ids {
+		if attempts[id] < maxAttempts {
+			todo = append(todo, id)
+		}
+	}
+	ids = todo
 	if len(ids) == 0 {
-		log.Println("nothing to grade")
+		if !quiet {
+			log.Println("nothing to grade")
+		}
 		return
 	}
 	log.Printf("grading %d submission(s)", len(ids))
@@ -73,6 +108,7 @@ func main() {
 		switch {
 		case err != nil:
 			errs++
+			attempts[id]++
 			log.Printf("  %s: ERROR %v", id, err)
 		case passed:
 			ok++
