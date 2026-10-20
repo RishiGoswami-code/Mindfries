@@ -1,0 +1,11 @@
+{
+  "id": "debug-auto-assign",
+  "kind": "debug",
+  "role": "backend",
+  "title": "Tickets pile onto one agent instead of balancing",
+  "check": ["go", "test", "./internal/support/"],
+  "layers": {
+    "overlay": "the product with the bug applied — the candidate's starting point",
+    "solution": "the reference fix, applied over the overlay to prove it greens the suite"
+  }
+}

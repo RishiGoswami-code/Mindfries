@@ -1,0 +1,12 @@
+{
+  "id": "feature-ticket-merge",
+  "kind": "feature",
+  "role": "backend",
+  "title": "Implement ticket merge (fold a duplicate into a primary)",
+  "check": ["go", "test", "./internal/support/"],
+  "layers": {
+    "overlay": "a Merge stub + TASK.md — the candidate's starting point",
+    "acceptance": "hidden acceptance tests, applied only at verification (never shipped to the candidate)",
+    "solution": "the reference implementation, applied over the overlay to prove it passes acceptance"
+  }
+}

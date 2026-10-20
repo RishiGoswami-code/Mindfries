@@ -1,0 +1,47 @@
+{
+  "tags": ["support", "helpdesk", "tickets", "ticketing", "customer", "sla", "saas", "b2b", "csat", "knowledge", "webhooks"],
+  "roles": {
+    "backend": {
+      "subsystems": [
+        "internal/support/store.go",
+        "internal/support/tickets.go",
+        "internal/support/sla.go",
+        "internal/support/routing.go",
+        "internal/support/webhooks.go",
+        "internal/httpapi/"
+      ],
+      "competencies": ["data modelling", "service design", "correctness", "reliability: retries and backoff", "HTTP API design"],
+      "modes": ["implementation", "debugging", "testing", "delivery"],
+      "cannot_assess": ["distributed systems at scale", "real database and query tuning (the store is in-memory)"]
+    },
+    "fullstack": {
+      "subsystems": ["internal/httpapi/", "internal/support/"],
+      "competencies": ["a vertical slice across API and domain", "request validation", "JSON contract design"],
+      "modes": ["implementation", "testing", "delivery"],
+      "cannot_assess": ["browser UI (no web console in this build yet)"]
+    },
+    "fde": {
+      "subsystems": [
+        "internal/support/suggest.go",
+        "internal/support/sla.go",
+        "internal/seed/",
+        "internal/httpapi/"
+      ],
+      "competencies": ["investigate an unfamiliar data model and API", "triage by SLA breach", "integrate the suggested-reply feature", "customer-facing judgement"],
+      "modes": ["implementation", "debugging", "research", "communication"],
+      "cannot_assess": ["the live simulated-customer conversation (handled by the platform panel, not this codebase)"]
+    },
+    "ai_engineer": {
+      "subsystems": ["internal/support/suggest.go"],
+      "competencies": ["retrieval and ranking", "relevance tuning", "evaluating suggestion quality"],
+      "modes": ["implementation", "testing"],
+      "cannot_assess": ["model training or serving (retrieval here is deterministic, no model call)"]
+    },
+    "data_analyst": {
+      "subsystems": ["internal/support/metrics.go"],
+      "competencies": ["metric definitions", "SLA-compliance computation", "CSAT and resolution-time analytics"],
+      "modes": ["implementation", "testing", "research"],
+      "cannot_assess": ["warehouse-scale SQL (aggregation is in-memory here)"]
+    }
+  }
+}
