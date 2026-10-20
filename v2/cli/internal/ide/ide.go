@@ -137,16 +137,38 @@ func Launch(s *sys.Sys, e Editor, dir string) error {
 // is a batch file around the editor; the editor itself (Code.exe, one
 // folder up) is started directly, which avoids cmd.exe altogether.
 func launcher(s *sys.Sys, e Editor) string {
-	if s.GOOS != "windows" || e.Family != VSCode || !strings.EqualFold(filepath.Ext(e.Path), ".cmd") {
+	if s.GOOS != "windows" || e.Family != VSCode || !strings.EqualFold(winExt(e.Path), ".cmd") {
 		return e.Path
 	}
-	root := filepath.Dir(filepath.Dir(e.Path))
+	root := winDir(winDir(e.Path))
 	for _, exe := range []string{"Code.exe", "Code - Insiders.exe"} {
-		if p := filepath.Join(root, exe); s.Exists(p) {
+		if p := root + `\` + exe; s.Exists(p) {
 			return p
 		}
 	}
 	return e.Path
+}
+
+// winExt and winDir operate on Windows paths by their backslash separator
+// regardless of the host OS. The launcher's Windows branch only runs when
+// s.GOOS is "windows" — which, on a real Windows machine, host filepath would
+// handle; using these makes it correct (and testable) on Linux/macOS CI too.
+func winExt(p string) string {
+	base := p
+	if i := strings.LastIndexByte(p, '\\'); i >= 0 {
+		base = p[i+1:]
+	}
+	if j := strings.LastIndexByte(base, '.'); j >= 0 {
+		return base[j:]
+	}
+	return ""
+}
+
+func winDir(p string) string {
+	if i := strings.LastIndexByte(p, '\\'); i >= 0 {
+		return p[:i]
+	}
+	return p
 }
 
 // ByID finds an editor by id among eds.
