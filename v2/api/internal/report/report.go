@@ -88,9 +88,15 @@ func Build(sess session.Session, sub session.Submission, events []session.Event,
 					Agent       string `json:"agent"`
 					ProcessName string `json:"process_name"`
 				} `json:"matches"`
-				ClosedByCandidate bool `json:"closed_by_candidate"`
+				Phase             string `json:"phase"`
+				ClosedByCandidate bool   `json:"closed_by_candidate"`
 			}
 			_ = json.Unmarshal(e.Data, &d)
+			// An agent found before the timer began and closed when the
+			// candidate was asked is not one running during the assessment.
+			if d.Phase == "start" && d.ClosedByCandidate {
+				break
+			}
 			for _, m := range d.Matches {
 				agents[m.Agent] = true
 			}

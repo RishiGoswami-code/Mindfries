@@ -110,3 +110,20 @@ func TestNoSubmissionMeansNoTaskFilesFlag(t *testing.T) {
 		t.Fatalf("%v", r.Flags)
 	}
 }
+
+func TestAnAgentClosedWhenAskedIsNotFlagged(t *testing.T) {
+	closed := ev(1, 0, "agent_signal.process", `{"phase":"start","matches":[{"agent":"aider","process_name":"aider"}],"closed_by_candidate":true}`)
+	r := Build(session.Session{DurationMinutes: 90}, session.Submission{ID: "s", TaskFilesIntact: true}, []session.Event{closed}, manifest.RoleCoverage{}, nil)
+	if len(r.AI.AgentsDetected) != 0 || r.AI.AgentsLeftRunning || len(r.Flags) != 0 {
+		t.Fatalf("closed at the start, so nothing to flag: %+v %v", r.AI, r.Flags)
+	}
+	// Left on at the start, or seen later, is flagged.
+	left := ev(2, 0, "agent_signal.process", `{"phase":"start","matches":[{"agent":"aider","process_name":"aider"}],"closed_by_candidate":false}`)
+	during := ev(3, 30, "agent_signal.process", `{"phase":"during","matches":[{"agent":"codex","process_name":"codex"}]}`)
+	for _, e := range []session.Event{left, during} {
+		r = Build(session.Session{DurationMinutes: 90}, session.Submission{ID: "s", TaskFilesIntact: true}, []session.Event{e}, manifest.RoleCoverage{}, nil)
+		if len(r.AI.AgentsDetected) != 1 || !r.AI.AgentsLeftRunning || len(r.Flags) < 2 {
+			t.Fatalf("%s: %+v %v", e.Data, r.AI, r.Flags)
+		}
+	}
+}
