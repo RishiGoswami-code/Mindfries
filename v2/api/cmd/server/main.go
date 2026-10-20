@@ -25,7 +25,9 @@ import (
 	"strconv"
 
 	"github.com/mindfries/v2/api/internal/httpapi"
+	"github.com/mindfries/v2/api/internal/llm"
 	"github.com/mindfries/v2/api/internal/store"
+	"github.com/mindfries/v2/api/internal/taskgen"
 )
 
 func main() {
@@ -67,8 +69,20 @@ func main() {
 		log.Printf("signing bundles with the DEV key (set V2_SIGNING_KEY_ID/V2_SIGNING_PRIVATE_KEY for production)")
 	}
 
+	// Optional BRIEF adaptation: when GEMINI_API_KEY is set, the engine rewords
+	// each authored brief to the company's JD (wording only). Unset -> nil
+	// provider -> briefs ship verbatim and the engine makes no model calls.
+	var provider taskgen.Provider
+	if key := os.Getenv("GEMINI_API_KEY"); key != "" {
+		g := llm.NewGemini(key, os.Getenv("GEMINI_MODEL"))
+		provider = g
+		log.Printf("brief adaptation ON (Gemini %s)", g.Model())
+	} else {
+		log.Printf("brief adaptation OFF (set GEMINI_API_KEY to enable)")
+	}
+
 	// db implements both the product Registry and the session Store.
-	handler := httpapi.New(db, productsRoot, store.NewTaskCache(db), nil, poolSize, db, keyID, signKey)
+	handler := httpapi.New(db, productsRoot, store.NewTaskCache(db), provider, poolSize, db, keyID, signKey)
 
 	port := os.Getenv("PORT")
 	if port == "" {
