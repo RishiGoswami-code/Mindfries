@@ -99,7 +99,7 @@ export const FLAG_INFO: Record<string, { title: string; severity: FlagSeverity }
   second_window: { title: "Session open in a second window", severity: "high" },
   multiple_faces: { title: "More than one person on camera", severity: "high" },
   phone_visible: { title: "A phone in view of the camera", severity: "medium" },
-  voices_detected: { title: "Voices picked up by the microphone", severity: "high" },
+  voices_detected: { title: "Voices picked up by the microphone", severity: "medium" },
   command_record_altered: { title: "Terminal record tampered with", severity: "high" },
   screen_share_stopped: { title: "Screen share stopped", severity: "medium" },
   extra_display: { title: "More than one display connected", severity: "medium" },
