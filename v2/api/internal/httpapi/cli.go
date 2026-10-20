@@ -351,14 +351,19 @@ func (s *Server) cliRevoke(w http.ResponseWriter, r *http.Request) {
 
 // --- helpers ---
 
-// buildBundle assembles the session's workspace and signs it (dev key for now).
+// buildBundle assembles the session's workspace and signs it. It uses the
+// configured production key when set, otherwise the dev key (dev/test).
 func (s *Server) buildBundle(sess session.Session) (bundle.Manifest, []byte, error) {
 	productDir := filepath.Join(s.productsRoot, sess.ProductSlug)
 	ws, err := delivery.Assemble(productDir, sess.BankTaskID, sess.Brief, sess.TaskVersion)
 	if err != nil {
 		return bundle.Manifest{}, nil, err
 	}
-	return bundle.Build(ws, bundle.DevKeyID, bundle.DevKey())
+	keyID, key := s.signKeyID, s.signKey
+	if key == nil {
+		keyID, key = bundle.DevKeyID, bundle.DevKey()
+	}
+	return bundle.Build(ws, keyID, key)
 }
 
 func (s *Server) authed(w http.ResponseWriter, r *http.Request) (session.Session, bool) {

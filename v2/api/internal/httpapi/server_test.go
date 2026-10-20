@@ -47,7 +47,7 @@ func loadReg(t *testing.T, root string, slugs ...string) fakeRegistry {
 func testServer(t *testing.T) *httptest.Server {
 	root := productsRoot(t)
 	reg := loadReg(t, root, "p1-support-saas", "p2-rag-platform", "p3-quant-platform")
-	return httptest.NewServer(New(reg, root, taskgen.NewMemCache(), nil, 3, nil))
+	return httptest.NewServer(New(reg, root, taskgen.NewMemCache(), nil, 3, nil, "", nil))
 }
 
 func TestHealthAndProducts(t *testing.T) {

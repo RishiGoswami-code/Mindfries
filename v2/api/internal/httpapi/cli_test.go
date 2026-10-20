@@ -24,7 +24,7 @@ func cliServer(t *testing.T) (*httptest.Server, *session.Mem) {
 	root := productsRoot(t)
 	reg := loadReg(t, root, "p1-support-saas", "p2-rag-platform", "p3-quant-platform")
 	mem := session.NewMem()
-	return httptest.NewServer(New(reg, root, taskgen.NewMemCache(), nil, 3, mem)), mem
+	return httptest.NewServer(New(reg, root, taskgen.NewMemCache(), nil, 3, mem, "", nil)), mem
 }
 
 // req makes a CLI request with the version header and optional bearer token.
@@ -289,6 +289,51 @@ func TestCLISubmission(t *testing.T) {
 		t.Fatalf("bundle after submit should be 409, got %d", res.StatusCode)
 	}
 	res.Body.Close()
+}
+
+func TestBundleSignedWithConfiguredKey(t *testing.T) {
+	root := productsRoot(t)
+	reg := loadReg(t, root, "p1-support-saas", "p2-rag-platform", "p3-quant-platform")
+	mem := session.NewMem()
+
+	seed := make([]byte, ed25519.SeedSize)
+	for i := range seed {
+		seed[i] = byte(i + 1)
+	}
+	key := ed25519.NewKeyFromSeed(seed)
+
+	srv := httptest.NewServer(New(reg, root, taskgen.NewMemCache(), nil, 3, mem, "prod-key", key))
+	defer srv.Close()
+	base := srv.URL + cliPrefix
+
+	mem.CreateSetupCode(context.Background(), session.SetupCode{
+		Code: "K", Role: "backend", JD: "support helpdesk tickets sla saas",
+		DurationMinutes: 90, ExpiresAt: time.Now().Add(time.Hour),
+	})
+	res := req(t, "POST", base+"/sessions/exchange", "", `{"setup_code":"K"}`)
+	var ex struct {
+		SessionToken string `json:"session_token"`
+	}
+	json.NewDecoder(res.Body).Decode(&ex)
+	res.Body.Close()
+
+	res = req(t, "GET", base+"/session/bundle", ex.SessionToken, "")
+	raw, _ := io.ReadAll(res.Body)
+	res.Body.Close()
+	var m bundle.Manifest
+	json.Unmarshal(raw, &m)
+	if m.Signature == nil || m.Signature.KeyID != "prod-key" {
+		t.Fatalf("expected the configured prod-key signature, got %+v", m.Signature)
+	}
+	// Verify with the configured public key (not the dev key).
+	var asMap map[string]json.RawMessage
+	json.Unmarshal(raw, &asMap)
+	delete(asMap, "signature")
+	msg, _ := canonical.Marshal(asMap)
+	sig, _ := base64.StdEncoding.DecodeString(m.Signature.Value)
+	if !ed25519.Verify(key.Public().(ed25519.PublicKey), msg, sig) {
+		t.Fatal("bundle must verify with the configured production key")
+	}
 }
 
 func TestCLIAuthAndVersionGuards(t *testing.T) {

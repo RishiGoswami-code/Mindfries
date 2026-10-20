@@ -8,6 +8,7 @@ package httpapi
 
 import (
 	"context"
+	"crypto/ed25519"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -35,14 +36,18 @@ type Server struct {
 	provider     taskgen.Provider // optional
 	poolSize     int
 	sessions     session.Store // optional; enables the /v2/cli contract
+	signKeyID    string
+	signKey      ed25519.PrivateKey // nil -> fall back to the dev key
 
 	mu    sync.Mutex
 	banks map[string][]taskgen.BankTask // slug -> bank, lazily loaded
 }
 
-// New builds the HTTP handler. sessions may be nil (engine-only, no CLI contract).
-func New(reg Registry, productsRoot string, cache taskgen.Cache, provider taskgen.Provider, poolSize int, sessions session.Store) http.Handler {
-	s := &Server{reg: reg, productsRoot: productsRoot, cache: cache, provider: provider, poolSize: poolSize, sessions: sessions, banks: map[string][]taskgen.BankTask{}}
+// New builds the HTTP handler. sessions may be nil (engine-only, no CLI
+// contract). signKey may be nil to sign bundles with the dev key (dev/test);
+// pass a production key so release CLIs trust them.
+func New(reg Registry, productsRoot string, cache taskgen.Cache, provider taskgen.Provider, poolSize int, sessions session.Store, signKeyID string, signKey ed25519.PrivateKey) http.Handler {
+	s := &Server{reg: reg, productsRoot: productsRoot, cache: cache, provider: provider, poolSize: poolSize, sessions: sessions, signKeyID: signKeyID, signKey: signKey, banks: map[string][]taskgen.BankTask{}}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", s.health)
 	mux.HandleFunc("GET /v2/products", s.products)

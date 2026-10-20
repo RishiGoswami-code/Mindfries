@@ -17,6 +17,8 @@ package main
 
 import (
 	"context"
+	"crypto/ed25519"
+	"encoding/base64"
 	"log"
 	"net/http"
 	"os"
@@ -50,8 +52,23 @@ func main() {
 		}
 	}
 
+	// Bundle signing key: a production Ed25519 key from env (release CLIs trust
+	// it via their baked-in ManifestKeys), or the dev key when unset.
+	keyID := os.Getenv("V2_SIGNING_KEY_ID")
+	var signKey ed25519.PrivateKey
+	if seedB64 := os.Getenv("V2_SIGNING_PRIVATE_KEY"); seedB64 != "" {
+		seed, err := base64.StdEncoding.DecodeString(seedB64)
+		if err != nil || len(seed) != ed25519.SeedSize {
+			log.Fatalf("V2_SIGNING_PRIVATE_KEY must be base64 of a %d-byte seed", ed25519.SeedSize)
+		}
+		signKey = ed25519.NewKeyFromSeed(seed)
+		log.Printf("signing bundles with production key %q", keyID)
+	} else {
+		log.Printf("signing bundles with the DEV key (set V2_SIGNING_KEY_ID/V2_SIGNING_PRIVATE_KEY for production)")
+	}
+
 	// db implements both the product Registry and the session Store.
-	handler := httpapi.New(db, productsRoot, store.NewTaskCache(db), nil, poolSize, db)
+	handler := httpapi.New(db, productsRoot, store.NewTaskCache(db), nil, poolSize, db, keyID, signKey)
 
 	port := os.Getenv("PORT")
 	if port == "" {
