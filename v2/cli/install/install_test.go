@@ -182,12 +182,18 @@ func TestPutsMindfriesOnPath(t *testing.T) {
 				}
 				return
 			}
-			rc, err := os.ReadFile(filepath.Join(b.home, ".bashrc"))
+			// With SHELL=/bin/bash, install.sh follows the bash convention:
+			// .bash_profile on macOS (login shells), .bashrc on Linux.
+			rcName := ".bashrc"
+			if runtime.GOOS == "darwin" {
+				rcName = ".bash_profile"
+			}
+			rc, err := os.ReadFile(filepath.Join(b.home, rcName))
 			if err != nil {
 				t.Fatal(err)
 			}
 			if strings.Count(string(rc), "export PATH=\""+dir+":$PATH\"") != 1 {
-				t.Fatalf(".bashrc:\n%s", rc)
+				t.Fatalf("%s:\n%s", rcName, rc)
 			}
 		})
 	}
