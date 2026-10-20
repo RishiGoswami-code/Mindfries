@@ -409,10 +409,14 @@ export async function assignV2Task(input: {
     if (!input.candidateEmail.trim()) throw new Error("Candidate email is required");
     if (!input.role.trim()) throw new Error("Role is required");
     if (!input.jd.trim()) throw new Error("Job description is required");
-    const { id } = await createV2Assessment(input);
+    // Resolve-at-invite: minting validates that a product covers this role+JD.
+    // Do it BEFORE recording anything, so an unserveable role/JD blocks here and
+    // no assessment (and no invitation) is created for a task that can't start.
     const minted = await mintV2SetupCode({ role: input.role, jd: input.jd, title: input.title });
+    if ("error" in minted) return { ok: false, error: minted.error };
+    const { id } = await createV2Assessment(input);
     revalidatePath("/admin/v2");
-    return { ok: true, assessmentId: id, setupCode: minted?.code ?? null };
+    return { ok: true, assessmentId: id, setupCode: minted.code };
   } catch (e) {
     return fail(e);
   }

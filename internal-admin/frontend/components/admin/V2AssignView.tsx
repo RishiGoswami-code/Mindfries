@@ -8,9 +8,16 @@ import { V2_ROLES, type V2Product } from "@/lib/v2-roles";
 
 export function V2AssignView({ products, engineReady }: { products: V2Product[]; engineReady: boolean }) {
   const [pending, start] = useTransition();
+  // Which roles the registry actually covers (union across products). When we
+  // know it, uncovered roles are disabled in the picker — the authoritative
+  // check still happens server-side at assign time.
+  const covered = new Set(products.flatMap((p) => p.Roles ?? []));
+  const knowCoverage = engineReady && covered.size > 0;
   const [email, setEmail] = useState("");
   const [name, setName] = useState("");
-  const [role, setRole] = useState(V2_ROLES[0].value);
+  const [role, setRole] = useState(
+    (knowCoverage ? V2_ROLES.find((r) => covered.has(r.value)) : undefined)?.value ?? V2_ROLES[0].value,
+  );
   const [jd, setJd] = useState("");
   const [title, setTitle] = useState("");
   const [result, setResult] = useState<{ assessmentId: string; setupCode: string | null } | null>(null);
@@ -51,9 +58,14 @@ export function V2AssignView({ products, engineReady }: { products: V2Product[];
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label="Role" hint="The engine picks a product for this role">
               <Select value={role} onChange={(e) => setRole(e.target.value)}>
-                {V2_ROLES.map((r) => (
-                  <option key={r.value} value={r.value}>{r.label}</option>
-                ))}
+                {V2_ROLES.map((r) => {
+                  const uncovered = knowCoverage && !covered.has(r.value);
+                  return (
+                    <option key={r.value} value={r.value} disabled={uncovered}>
+                      {r.label}{uncovered ? " — no product yet" : ""}
+                    </option>
+                  );
+                })}
               </Select>
             </Field>
             <Field label="Assessment title" hint="Optional; shown to the candidate">

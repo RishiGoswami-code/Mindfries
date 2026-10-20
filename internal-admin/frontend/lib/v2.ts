@@ -29,17 +29,26 @@ export async function fetchV2Products(): Promise<V2Product[]> {
   }
 }
 
-// mintV2SetupCode asks the engine for a one-time setup code for an assessment.
-// Returns null if the engine URL/token aren't configured or the call fails.
+// mintV2SetupCode asks the engine to resolve-at-invite: it validates that a
+// product covers this role+JD and, only then, mints a one-time setup code.
+// Returns the code (plus the chosen product/task) on success, or an { error }
+// the caller surfaces to the admin — so we never record an assessment the
+// candidate couldn't start.
+export type MintResult =
+  | { code: string; productSlug?: string; taskTitle?: string; taskKind?: string }
+  | { error: string };
+
 export async function mintV2SetupCode(input: {
   role: string;
   jd: string;
   title?: string;
   durationMinutes?: number;
-}): Promise<{ code: string } | null> {
+}): Promise<MintResult> {
   const base = v2EngineUrl();
   const token = process.env.V2_ADMIN_TOKEN;
-  if (!base || !token) return null;
+  if (!base || !token) {
+    return { error: "V2 engine isn't configured (set V2_ENGINE_URL and V2_ADMIN_TOKEN)." };
+  }
   try {
     const res = await fetch(`${base}/v2/admin/setup-codes`, {
       method: "POST",
@@ -52,10 +61,19 @@ export async function mintV2SetupCode(input: {
       }),
       cache: "no-store",
     });
-    if (!res.ok) return null;
-    const d = (await res.json()) as { setup_code?: string };
-    return d.setup_code ? { code: d.setup_code } : null;
+    const d = (await res.json().catch(() => ({}))) as {
+      setup_code?: string;
+      product_slug?: string;
+      task_title?: string;
+      task_kind?: string;
+      detail?: string;
+    };
+    if (!res.ok) {
+      return { error: d.detail || `Engine returned ${res.status}.` };
+    }
+    if (!d.setup_code) return { error: "Engine didn't return a setup code." };
+    return { code: d.setup_code, productSlug: d.product_slug, taskTitle: d.task_title, taskKind: d.task_kind };
   } catch {
-    return null;
+    return { error: "Couldn't reach the V2 engine." };
   }
 }
