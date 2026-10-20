@@ -54,6 +54,7 @@ func New(reg Registry, productsRoot string, cache taskgen.Cache, provider taskge
 	mux.HandleFunc("POST /v2/assessments/resolve", s.resolve)
 	s.registerCLI(mux)
 	s.registerDist(mux)
+	s.registerReview(mux)
 	return mux
 }
 

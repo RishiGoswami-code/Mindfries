@@ -11,6 +11,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"sort"
 	"sync"
 	"time"
 )
@@ -130,6 +131,15 @@ type Store interface {
 	SubmissionByID(ctx context.Context, id string) (Submission, error)
 	// CompleteSubmission attaches the uploaded bundle and sets the final status.
 	CompleteSubmission(ctx context.Context, id string, bundle []byte, status string, verifiedAt time.Time) error
+
+	// Read + grade methods for the admin review surface (GRADE step).
+	SessionByID(ctx context.Context, id string) (Session, error)
+	RecentSessions(ctx context.Context, limit int) ([]Session, error)
+	Events(ctx context.Context, sessionID string) ([]Event, error)
+	// SaveGrade upserts the grade for a submission.
+	SaveGrade(ctx context.Context, g Grade) error
+	// GradeBySubmission returns the submission's grade, or ErrNotFound.
+	GradeBySubmission(ctx context.Context, submissionID string) (Grade, error)
 }
 
 // Mem is an in-memory Store for tests.
@@ -142,6 +152,7 @@ type Mem struct {
 	snapshots map[string]map[int64]Snapshot
 	subs      map[string]Submission // id -> submission
 	subBySess map[string]string     // session id -> submission id
+	grades    map[string]Grade      // submission id -> grade
 }
 
 // NewMem returns an empty in-memory store.
@@ -149,8 +160,58 @@ func NewMem() *Mem {
 	return &Mem{
 		codes: map[string]SetupCode{}, byToken: map[string]Session{}, tokenFor: map[string]string{},
 		events: map[string]map[int64]Event{}, snapshots: map[string]map[int64]Snapshot{},
-		subs: map[string]Submission{}, subBySess: map[string]string{},
+		subs: map[string]Submission{}, subBySess: map[string]string{}, grades: map[string]Grade{},
 	}
+}
+
+func (m *Mem) SessionByID(_ context.Context, id string) (Session, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if tok, ok := m.tokenFor[id]; ok {
+		return m.byToken[tok], nil
+	}
+	return Session{}, ErrNotFound
+}
+
+func (m *Mem) RecentSessions(_ context.Context, limit int) ([]Session, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	var out []Session
+	for _, tok := range m.tokenFor {
+		out = append(out, m.byToken[tok])
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].StartedAt.After(out[j].StartedAt) })
+	if limit > 0 && len(out) > limit {
+		out = out[:limit]
+	}
+	return out, nil
+}
+
+func (m *Mem) Events(_ context.Context, sessionID string) ([]Event, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	var out []Event
+	for _, e := range m.events[sessionID] {
+		out = append(out, e)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Seq < out[j].Seq })
+	return out, nil
+}
+
+func (m *Mem) SaveGrade(_ context.Context, g Grade) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.grades[g.SubmissionID] = g
+	return nil
+}
+
+func (m *Mem) GradeBySubmission(_ context.Context, submissionID string) (Grade, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if g, ok := m.grades[submissionID]; ok {
+		return g, nil
+	}
+	return Grade{}, ErrNotFound
 }
 
 func (m *Mem) CreateSubmission(_ context.Context, sub Submission) error {
