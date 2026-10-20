@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/mindfries/v2/api/internal/bundle"
@@ -69,7 +70,9 @@ func (s *Server) adminMintCode(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if req.Code == "" {
-		req.Code = randHex(6)
+		req.Code = newSetupCode()
+	} else {
+		req.Code = normalizeSetupCode(req.Code)
 	}
 	if req.DurationMinutes == 0 {
 		req.DurationMinutes = 90
@@ -103,7 +106,7 @@ func (s *Server) cliExchange(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	now := time.Now().UTC()
-	code, err := s.sessions.TakeSetupCode(r.Context(), req.SetupCode, now)
+	code, err := s.sessions.TakeSetupCode(r.Context(), normalizeSetupCode(req.SetupCode), now)
 	if errors.Is(err, session.ErrNotFound) {
 		problem(w, http.StatusGone, "setup_code_invalid", "setup code not found")
 		return
@@ -469,6 +472,34 @@ func randHex(n int) string {
 	b := make([]byte, n)
 	_, _ = rand.Read(b)
 	return hex.EncodeToString(b)
+}
+
+// setupCodeAlphabet leaves out 0/O and 1/I. Matches the CLI (and fakeapi).
+const setupCodeAlphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+
+// newSetupCode generates a code in the CLI's expected format: three groups of
+// four, e.g. K7QM-2XRP-9WDA. The CLI validates this shape, so it must match.
+func newSetupCode() string {
+	b := make([]byte, 12)
+	_, _ = rand.Read(b)
+	var sb strings.Builder
+	for i, c := range b {
+		if i > 0 && i%4 == 0 {
+			sb.WriteByte('-')
+		}
+		sb.WriteByte(setupCodeAlphabet[int(c)%len(setupCodeAlphabet)])
+	}
+	return sb.String()
+}
+
+// normalizeSetupCode canonicalizes a code the same way the CLI does before it
+// sends it, so stored and looked-up codes match regardless of how it was typed.
+func normalizeSetupCode(c string) string {
+	c = strings.ToUpper(strings.Join(strings.Fields(c), ""))
+	if len(c) == 12 && !strings.Contains(c, "-") {
+		c = c[0:4] + "-" + c[4:8] + "-" + c[8:12]
+	}
+	return c
 }
 
 // --- wire session (matches the CLI's api.Session json) ---
