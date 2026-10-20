@@ -8,6 +8,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/mindfries/v2/api/internal/engine"
@@ -22,7 +23,17 @@ type DB struct {
 // Open connects using a Postgres URL (V2_DATABASE_URL) and verifies the
 // connection.
 func Open(ctx context.Context, url string) (*DB, error) {
-	pool, err := pgxpool.New(ctx, url)
+	cfg, err := pgxpool.ParseConfig(url)
+	if err != nil {
+		return nil, fmt.Errorf("store: parse url: %w", err)
+	}
+	// Use the simple protocol (no server-side prepared statements) so the pool
+	// works behind Supabase's transaction pooler (port 6543) as well as a
+	// direct/session connection. ponytail: drop this if you always connect
+	// directly and want prepared-statement caching.
+	cfg.ConnConfig.DefaultQueryExecMode = pgx.QueryExecModeSimpleProtocol
+
+	pool, err := pgxpool.NewWithConfig(ctx, cfg)
 	if err != nil {
 		return nil, fmt.Errorf("store: connect: %w", err)
 	}
