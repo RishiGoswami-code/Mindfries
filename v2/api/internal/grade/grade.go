@@ -43,7 +43,10 @@ func Run(candidateDir, productDir, bankTaskID string) (Result, error) {
 		overlays = append(overlays, acc)
 	}
 
-	res, err := verify.Run(verify.Spec{ProductDir: candidateDir, Overlays: overlays, Check: check})
+	// The candidate's code is untrusted: it gets a stripped environment, none of
+	// this process's secrets. (No time limit: a check that never ends is for the
+	// operator to see and stop.)
+	res, err := verify.Run(verify.Spec{ProductDir: candidateDir, Overlays: overlays, Check: check, Isolate: true})
 	if err != nil {
 		return Result{}, err
 	}

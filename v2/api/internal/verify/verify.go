@@ -21,6 +21,13 @@ type Spec struct {
 	ProductDir string   // the product repo root (the golden commit, checked out)
 	Overlays   []string // directories copied over the product in order (task overlay, solution, acceptance)
 	Check      []string // the command to run in the assembled workspace, e.g. ["go","test","./..."]
+
+	// Isolate runs the check with a stripped environment (see isolatedEnv)
+	// instead of this process's own: for code we don't trust, such as a
+	// candidate's submission, which must never see the grader's secrets.
+	Isolate bool
+	// ExtraEnv is added to the isolated environment (KEY=value).
+	ExtraEnv []string
 }
 
 // Result is the outcome. A failing check is a Result (Passed=false), not an
@@ -55,8 +62,50 @@ func Run(spec Spec) (Result, error) {
 
 	cmd := exec.Command(spec.Check[0], spec.Check[1:]...)
 	cmd.Dir = work
+	if spec.Isolate {
+		cmd.Env = isolatedEnv(work, spec.ExtraEnv)
+	}
 	out, err := cmd.CombinedOutput()
 	return Result{Passed: err == nil, Output: string(out)}, nil
+}
+
+// passEnv are the variables an isolated check may inherit: where to find the
+// toolchain and the bare minimum a process needs to start. Nothing else comes
+// through, so credentials in the grader's environment never reach the
+// candidate's code.
+var passEnv = []string{
+	"PATH", "SystemRoot", "SYSTEMROOT", "SystemDrive", "ComSpec", "PATHEXT", "WINDIR",
+	"GOROOT", "GOPATH", "GOMODCACHE", "GOFLAGS", "GOPROXY", "GOCACHE",
+	"JAVA_HOME", "NVM_DIR", "PYTHONHOME", "LANG", "LC_ALL", "TZ",
+}
+
+// isolatedEnv is the stripped environment: the allow-listed variables, a HOME
+// and temp folder inside the throwaway workspace, and any extras.
+func isolatedEnv(work string, extra []string) []string {
+	env := []string{}
+	for _, k := range passEnv {
+		if v, ok := os.LookupEnv(k); ok {
+			env = append(env, k+"="+v)
+		}
+	}
+	// Go finds its caches relative to HOME, which is about to change: pin them to
+	// the grader's own (read-only use of already-downloaded modules, and a warm
+	// build cache), so a check doesn't need the network or a cold build.
+	has := func(k string) bool { _, ok := os.LookupEnv(k); return ok }
+	if realHome, err := os.UserHomeDir(); err == nil {
+		if !has("GOPATH") {
+			env = append(env, "GOPATH="+filepath.Join(realHome, "go"))
+		}
+	}
+	if !has("GOCACHE") {
+		if c, err := os.UserCacheDir(); err == nil {
+			env = append(env, "GOCACHE="+filepath.Join(c, "go-build"))
+		}
+	}
+	home := filepath.Join(work, ".home")
+	_ = os.MkdirAll(home, 0o755)
+	env = append(env, "HOME="+home, "USERPROFILE="+home, "TMPDIR="+home, "TEMP="+home, "TMP="+home, "CI=1")
+	return append(env, extra...)
 }
 
 // copyTree copies src into dst. Top-level directory names in skip are pruned.
