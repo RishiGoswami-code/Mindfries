@@ -113,6 +113,8 @@ export interface AssessmentView {
   invitation?: { accepted: boolean; declined: boolean };
   /** True when the company has released the report to the candidate. */
   reportShared?: boolean;
+  /** Which engine runs this assessment. 'v2' routes Start to the local CLI setup instead of the browser IDE. */
+  engine?: "v1" | "v2";
 }
 
 export interface SessionView {
@@ -225,13 +227,32 @@ async function withInvitationAnswers(rows: AssessmentView[], email: string | und
     }
   }
 
+  // Engine (V2 opt-in) — a separate, resilient query so a missing `engine`
+  // column (migration 0030 not yet applied) can't break invitation answers.
+  const engineMap = new Map<string, string>();
+  try {
+    const { data: engRows } = await c
+      .from("assessments")
+      .select("id, engine")
+      .eq("candidate_email", email.trim().toLowerCase());
+    if (engRows) {
+      for (const r of engRows) {
+        if (r.engine) engineMap.set(r.id as string, r.engine as string);
+      }
+    }
+  } catch {
+    // The column may not exist yet; leave engine unset (treated as v1).
+  }
+
   return rows.map((row) => {
     const invitation = answers.get(row.id);
     const reportShared = row.sessionId ? sharedMap.get(row.sessionId) : undefined;
+    const engine = engineMap.get(row.id);
     return {
       ...row,
       ...(invitation ? { invitation } : {}),
       ...(reportShared !== undefined ? { reportShared } : {}),
+      ...(engine === "v2" ? { engine } : {}),
     };
   });
 }

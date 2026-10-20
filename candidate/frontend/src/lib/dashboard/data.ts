@@ -37,6 +37,8 @@ export interface Assessment {
   taskStatus?: "pending" | "generating" | "ready" | "failed";
   /** True when the company has shared the report with the candidate. */
   reportShared?: boolean;
+  /** Which engine runs this assessment. 'v2' routes Start to the local CLI setup instead of the browser IDE. */
+  engine?: "v1" | "v2";
 }
 
 /** Shown when the list couldn't be read â€” distinct from a real, empty list. */

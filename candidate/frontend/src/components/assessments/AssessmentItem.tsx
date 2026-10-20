@@ -114,6 +114,10 @@ function AssessmentAction({ assessment }: { assessment: Assessment }) {
   const unanswered = status === "invited" && !!invitation && !invitation.accepted;
 
   if (unanswered) return <InvitationAnswer assessmentId={assessment.id} />;
+  // V2 assessments run in the candidate's own IDE via the CLI, not the browser
+  // workspace — so Start routes to the local setup page, not onboarding.
+  if (status === "invited" && assessment.engine === "v2")
+    return <ActionLink href={`/v2-setup?assessment=${encodeURIComponent(assessment.id)}`}>Set up workspace</ActionLink>;
   if (status === "invited" && !taskReady(assessment)) return null; // TaskNote says why there's no Start yet
   if (status === "invited") return <ActionLink href={`/onboarding?template=${encodeURIComponent(assessment.id)}`}>Start</ActionLink>;
   if (status === "in-progress" && sessionId) return <ActionLink href={`/ide?session=${encodeURIComponent(sessionId)}`}>Resume</ActionLink>;
