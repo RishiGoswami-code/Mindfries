@@ -23,10 +23,13 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/mindfries/v2/api/internal/activity"
 	"github.com/mindfries/v2/api/internal/blob"
 	"github.com/mindfries/v2/api/internal/config"
 	"github.com/mindfries/v2/api/internal/httpapi"
+	"github.com/mindfries/v2/api/internal/jobs"
 	"github.com/mindfries/v2/api/internal/llm"
+	"github.com/mindfries/v2/api/internal/session"
 	"github.com/mindfries/v2/api/internal/store"
 	"github.com/mindfries/v2/api/internal/taskgen"
 )
@@ -84,9 +87,19 @@ func main() {
 
 	handler := httpapi.NewServer(httpapi.Options{
 		Config: cfg, Registry: db, Cache: store.NewTaskCache(db), Provider: provider,
-		Sessions: db, Devices: db, Configs: db, GitHub: db, Monitor: db, Activity: db, Panel: db, Assistant: db, Avatar: db, Staff: db, Blobs: blobs,
+		Sessions: db, Devices: db, Configs: db, GitHub: db, Monitor: db, Activity: db, Panel: db, Assistant: db, Avatar: db, Staff: db, Privacy: db, Blobs: blobs,
 		Log: logger,
 	})
+
+	// Housekeeping: end sessions whose time ran out, delete evidence past its
+	// retention, clear spent codes.
+	go jobs.Runner{
+		Store: db, Blobs: blobs, Log: logger, RetentionDays: cfg.RetentionDays,
+		OnExpire: func(ctx context.Context, s session.Session) {
+			_, _, _ = db.AddActivity(ctx, s.ID, activity.Item{At: time.Now().UTC(), Severity: activity.Info, Source: activity.Server,
+				Category: activity.Verified, Kind: "session.expired", Text: "Time ran out. The assessment ended.", DedupeKey: "expired"})
+		},
+	}.Loop(ctx, 5*time.Minute)
 
 	srv := &http.Server{Addr: ":" + cfg.Port, Handler: handler, ReadHeaderTimeout: 10 * time.Second}
 	go func() {
