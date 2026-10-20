@@ -11,7 +11,8 @@
 # (no admin rights needed). A binary that already matches the release isn't
 # downloaded again. Given a setup code, as a dashboard command can do:
 #   powershell -ExecutionPolicy Bypass -c "& ([scriptblock]::Create((irm https://<v2-domain>/install.ps1))) <SETUP-CODE>"
-# it then runs `mindfries start <SETUP-CODE>`.
+# it then runs `mindfries setup <SETUP-CODE>` (the dashboard serves this
+# script with the code already in it), and you run `mindfries start` next.
 #
 # Environment (for testing and mirrors):
 #   MINDFRIES_DOWNLOAD        release base URL, or a local folder (default below)
@@ -132,7 +133,7 @@ if ($found -and ($found.Source -ine $bin)) {
 }
 
 if ($Code) {
-    & $bin start $Code
+    & $bin setup $Code
     if ($asFile) { exit $LASTEXITCODE }
     return
 }

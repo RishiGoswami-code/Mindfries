@@ -19,7 +19,7 @@ func (a *App) status(args []string) error {
 	}
 	local, client, err := a.active()
 	if errors.Is(err, errNoSession) {
-		fmt.Fprintln(a.Stdout, "No active assessment on this computer. Run 'mindfries start' to sign in and begin.")
+		fmt.Fprintln(a.Stdout, "No active assessment on this computer. Press Start assessment on your Mindfries dashboard and run the command it shows.")
 		if home, err := a.home(); err == nil {
 			if last, err := state.LoadLast(home); err == nil {
 				fmt.Fprintf(a.Stdout, "Last submitted: %s at %s (commit %s, submission %s), verified by Mindfries.\n",
@@ -40,6 +40,9 @@ func (a *App) status(args []string) error {
 		return nil
 	case err != nil:
 		fmt.Fprintf(a.Stdout, "Session      can't reach Mindfries right now (%v)\n", err)
+	case sess.Status == api.StatusReady:
+		fmt.Fprintf(a.Stdout, "Session      set up, not started: your %d minutes start at 'mindfries start' (begin by %s)\n", sess.DurationMinutes, sess.EndsAt.Local().Format("15:04 on Mon 2 Jan"))
+		fmt.Fprintf(a.Stdout, "Assistant    %s\n", describeMode(sess.Policy))
 	default:
 		left := time.Until(sess.EndsAt).Round(time.Minute)
 		if left < 0 {
@@ -47,9 +50,18 @@ func (a *App) status(args []string) error {
 		}
 		fmt.Fprintf(a.Stdout, "Session      %s, %s left (ends %s)\n", sess.Status, left, sess.EndsAt.Local().Format("15:04"))
 		fmt.Fprintf(a.Stdout, "Assistant    %s\n", describeMode(sess.Policy))
+		if sess.Monitoring.Any() {
+			if st, err := client.MonitoringStatus(ctx); err == nil {
+				if missing := st.Missing(sess.Monitoring); len(missing) > 0 {
+					fmt.Fprintf(a.Stdout, "Monitoring   off for: %s (%s)\n", joinAnd(missing), sess.Monitoring.PanelURL)
+				} else {
+					fmt.Fprintln(a.Stdout, "Monitoring   on")
+				}
+			}
+		}
 	}
 	if local.Workspace == "" {
-		fmt.Fprintln(a.Stdout, "Workspace    not set up yet: run 'mindfries start'")
+		fmt.Fprintln(a.Stdout, "Workspace    not set up yet: run 'mindfries setup'")
 		return nil
 	}
 	fmt.Fprintf(a.Stdout, "Workspace    %s\n", local.Workspace)
@@ -57,7 +69,7 @@ func (a *App) status(args []string) error {
 	case local.Repo != nil:
 		fmt.Fprintf(a.Stdout, "GitHub       %s (private), pushes to %s\n", local.Repo.HTMLURL, local.Repo.Branch)
 	case local.GitHub != nil:
-		fmt.Fprintln(a.Stdout, "GitHub       not connected yet: run 'mindfries start'")
+		fmt.Fprintln(a.Stdout, "GitHub       not connected yet: run 'mindfries setup'")
 	}
 	a.printWatcher(local)
 	r := &gitx.Repo{Dir: local.Workspace}

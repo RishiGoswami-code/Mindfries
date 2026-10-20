@@ -12,7 +12,8 @@
 # shell's startup file. A binary that already matches the release isn't
 # downloaded again. Given a setup code, as a dashboard command can do:
 #   curl -fsSL https://<v2-domain>/install.sh | sh -s -- <SETUP-CODE>
-# it then runs `mindfries start <SETUP-CODE>`.
+# it then runs `mindfries setup <SETUP-CODE>` (the dashboard serves this
+# script with the code already in it), and you run `mindfries start` next.
 #
 # Environment (for testing and mirrors):
 #   MINDFRIES_DOWNLOAD        release base URL, or a local folder (default below)
@@ -124,6 +125,6 @@ if [ -z "$CODE" ]; then
 fi
 # The script itself arrives on stdin, so give mindfries the terminal.
 if [ -r /dev/tty ] && (: </dev/tty) 2>/dev/null; then
-  exec "$bin" start "$CODE" </dev/tty
+  exec "$bin" setup "$CODE" </dev/tty
 fi
-exec "$bin" start "$CODE"
+exec "$bin" setup "$CODE"

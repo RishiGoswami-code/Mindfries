@@ -44,7 +44,7 @@ func (a *App) watch(ctx context.Context, l *state.Local, c *api.Client, editor s
 		fmt.Fprintln(a.Stdout, "The time it wasn't running is recorded as a gap in the record; it isn't treated as anything you did.")
 	}
 
-	cfg := watcher.Config{Client: c, StateDir: dir, Local: l, Queue: q, Out: a.Stdout, Live: isTerminal(a.Stdout), Sys: a.sys(), VSCode: a.vscodePath()}
+	cfg := watcher.Config{Client: c, StateDir: dir, Local: l, Queue: q, Out: a.Stdout, Live: isTerminal(a.Stdout), Sys: a.sys(), VSCode: a.vscodePath(), Monitoring: a.monitoring}
 	if a.tuneWatcher != nil {
 		a.tuneWatcher(&cfg)
 	}

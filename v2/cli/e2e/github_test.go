@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/mindfries/v2/cli/fakeapi"
 	"github.com/mindfries/v2/cli/fakeapi/fakegithub"
@@ -18,17 +19,33 @@ import (
 // deployment URL.
 func TestStartPushSubmitWithGitHub(t *testing.T) {
 	gh := fakegithub.Start(t)
-	// The sign-in page's Connect goes on to GitHub and back, as a browser
-	// does, so the token is waiting when start asks for it.
 	s := newSessionWith(t, fakeapi.Config{
 		GitHub:    &api.GitHub{Reviewers: []string{"hiring-team"}, Deployment: true},
 		GitHubApp: fakeapi.GitHubApp{ClientID: "Iv1.e2e", ClientSecret: gh.ClientSecret, Web: gh.URL},
 	})
 	s.env = append(s.env, "MINDFRIES_GITHUB_URL="+gh.URL, "MINDFRIES_GITHUB_API="+gh.API)
+	// The browser: setup prints GitHub's connect link; follow it to GitHub
+	// and back, as a click would.
+	stop := make(chan struct{})
+	defer close(stop)
+	go func() {
+		for {
+			select {
+			case <-stop:
+				return
+			case <-time.After(50 * time.Millisecond):
+			}
+			for _, u := range s.srv.WaitingForGitHub() {
+				if resp, err := http.Get(u); err == nil {
+					resp.Body.Close()
+				}
+			}
+		}
+	}()
 	wait := s.start()
 	full := "octocandidate/mindfries-e2e-task"
 	if gh.Head(full, "main") == "" {
-		t.Fatalf("nothing pushed at start; repos %v", gh.Repos())
+		t.Fatalf("nothing pushed at setup; repos %v", gh.Repos())
 	}
 
 	// The candidate commits and pushes with plain git, as in VS Code.

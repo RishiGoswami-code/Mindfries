@@ -179,7 +179,7 @@ func TestGitHubConnectedOnTheSignInPageNeedsNoWaiting(t *testing.T) {
 			time.Sleep(10 * time.Millisecond)
 		}
 	}()
-	exit, out := h.run("", "start", "--dir", filepath.Join(t.TempDir(), "ws"), "--yes", "--no-browser")
+	exit, out := h.run("", "setup", "--dir", filepath.Join(t.TempDir(), "ws"), "--yes", "--no-browser")
 	if exit != 0 || !strings.Contains(out, "Signed in to GitHub as @octocandidate") {
 		t.Fatalf("start: %d\n%s", exit, out)
 	}
@@ -196,7 +196,7 @@ func TestReviewersAddedLaterAreInvited(t *testing.T) {
 	inv := h.srv.Invite(fakeapi.SessionOptions{Title: "Backend", Task: quickTask(), Reviewers: []string{"alice"}})
 	confirmed := h.confirmInBrowser(inv, true)
 	dir := filepath.Join(t.TempDir(), "ws")
-	if exit, out := h.run("", "start", "--dir", dir, "--yes", "--no-browser"); exit != 0 {
+	if exit, out := h.run("", "setup", "--dir", dir, "--yes", "--no-browser"); exit != 0 {
 		t.Fatalf("start: %d\n%s", exit, out)
 	}
 	<-confirmed

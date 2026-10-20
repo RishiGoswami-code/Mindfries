@@ -42,7 +42,7 @@ func TestStartSignsInThroughTheBrowser(t *testing.T) {
 	confirmed := h.confirmInBrowser(want, true)
 
 	dir := filepath.Join(t.TempDir(), "ws")
-	exit, out := h.run("", "start", "--dir", dir, "--yes")
+	exit, out := h.run("", "setup", "--dir", dir, "--yes")
 	if err := <-confirmed; err != nil {
 		t.Fatal(err)
 	}
@@ -73,7 +73,7 @@ func TestStartSignInWithoutABrowser(t *testing.T) {
 	h.srv.Invite(fakeapi.SessionOptions{Task: quickTask()})
 	confirmed := h.confirmInBrowser("", true)
 	// No DISPLAY: nothing to open, so the address is printed instead.
-	exit, out := h.run("", "start", "--dir", filepath.Join(t.TempDir(), "ws"), "--yes")
+	exit, out := h.run("", "setup", "--dir", filepath.Join(t.TempDir(), "ws"), "--yes")
 	<-confirmed
 	if exit != 0 || !strings.Contains(out, "Open this address in your browser:") {
 		t.Fatalf("start: %d\n%s", exit, out)
@@ -87,7 +87,7 @@ func TestStartSignInRefused(t *testing.T) {
 	h := newHarness(t)
 	h.srv.Invite(fakeapi.SessionOptions{})
 	refused := h.confirmInBrowser("", false)
-	exit, out := h.run("", "start", "--yes", "--no-browser")
+	exit, out := h.run("", "setup", "--yes", "--no-browser")
 	<-refused
 	if exit == 0 || !strings.Contains(out, "refused in the browser") {
 		t.Fatalf("start: %d\n%s", exit, out)
@@ -118,7 +118,7 @@ func TestStartWaitsForASleepingServer(t *testing.T) {
 	defer ts.Close()
 	h.env["MINDFRIES_API"] = ts.URL + fakeapi.Prefix
 	confirmed := h.confirmInBrowser("", true)
-	exit, out := h.run("", "start", "--dir", filepath.Join(t.TempDir(), "ws"), "--yes", "--no-browser")
+	exit, out := h.run("", "setup", "--dir", filepath.Join(t.TempDir(), "ws"), "--yes", "--no-browser")
 	<-confirmed
 	if exit != 0 || !strings.Contains(out, "Still trying") || !strings.Contains(out, "Signed in.") {
 		t.Fatalf("start: %d\n%s", exit, out)

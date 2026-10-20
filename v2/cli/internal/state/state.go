@@ -54,6 +54,8 @@ type Local struct {
 	Intervals    api.Intervals `json:"intervals"`
 	Limits       api.Limits    `json:"limits"`
 	ConnectedAt  time.Time     `json:"connected_at"`
+	// DurationMinutes is the time the candidate gets once they begin.
+	DurationMinutes int `json:"duration_minutes,omitempty"`
 
 	// Set once the workspace exists.
 	Workspace     string        `json:"workspace,omitempty"`

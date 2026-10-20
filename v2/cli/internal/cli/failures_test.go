@@ -40,9 +40,15 @@ func TestFailureGitMissing(t *testing.T) {
 
 func TestFailureIDEMissing(t *testing.T) {
 	h := newHarness(t)
-	exit, out := h.run("", "start", h.srv.MintSetupCode(fakeapi.SessionOptions{Task: quickTask()}), "--dir", wsDir(t), "--yes")
-	if exit != 0 || !strings.Contains(out, "No supported editor") || !strings.Contains(out, "Open this folder in your editor") {
+	delete(h.machine.Programs, "zed")
+	code := h.srv.MintSetupCode(fakeapi.SessionOptions{Task: quickTask()})
+	exit, out := h.run("", "start", code, "--dir", wsDir(t), "--yes")
+	if exit == 0 || !strings.Contains(out, "no supported editor is installed") || !strings.Contains(out, "Your time hasn't started") {
 		t.Fatalf("%d\n%s", exit, out)
+	}
+	// Nothing started: the session is still waiting to begin.
+	if s, _ := h.srv.SessionInfo(h.srv.OnlySessionID()); s.Status != "ready" {
+		t.Fatalf("session %s", s.Status)
 	}
 }
 
