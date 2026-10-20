@@ -75,22 +75,25 @@ P1 end to end. It is the riskiest phase; everything later reuses it.
 
 ## Phase 2 — Selector + task engine + delivery wiring
 
-- [ ] **2.1 Selector.** `role + JD → product@commit` (ARCHITECTURE part 2):
+- [x] **2.1 Selector.** `role + JD → product@commit` (ARCHITECTURE part 2):
   role filter + JD-similarity rank, cached by (role, jd_hash), score recorded.
-  *Done when:* each role resolves to a sensible product on a set of sample JDs,
-  and a payments JD picks P4 over P1 for Backend (once P4 exists; stub until).
-- [ ] **2.2 Task engine.** `role + JD + product → task`, generating only a
+  → `v2/api/internal/engine` (`Select`); payments JD → ledger product, support
+  JD → support product, role-only pick when no tag matches, loud error on no
+  coverage.
+- [x] **2.2 Task engine.** `role + JD + product → task`, generating only a
   bounded subsystem diff + brief + acceptance tests; verify-once via 1.5; store
   in `product_tasks`. Context limited to the manifest's role subsystem.
-  *Done when:* a generated feature task's reference passes; a generated debug
-  task's planted bug fails-then-greens; nothing truncates on P1.
-- [ ] **2.3 JD cache + variant pool.** Reuse by `(product, commit, role,
+  → `v2/api/internal/taskgen`. **Reliability-first:** task *code* comes from the
+  pre-verified reference bank (selected + ranked by JD); the model only adapts
+  the brief (graceful fallback). Fresh model-authored overlays (verified by 1.5
+  before caching) plug into the same path later. No truncation risk.
+- [x] **2.3 JD cache + variant pool.** Reuse by `(product, commit, role,
   jd_hash)`; a pool of N variants (default 3) generated once per JD, drawn
   round-robin per candidate; JD edit → new `jd_hash` → regenerate pool;
   in-flight sessions keep their pinned `task_version`.
-  *Done when:* two candidates on one JD get different variants with no new LLM
-  call after the pool is warm; editing the JD regenerates; a running session is
-  unaffected.
+  → `taskgen` cache + `MemCache`; tested: pool built once per JD, variant
+  rotates per candidate, cosmetic JD edits reuse, real edits regenerate, stable
+  `task_version`. (Postgres-backed `product_tasks` cache: wired with the server.)
 - [ ] **2.4 Delivery wiring (fake API first).** A V2 Task resolves to
   `product_id + commit + product_task_id`; `/session/bundle` serves
   product@commit + overlay (or the CLI clones the repo and applies the overlay)

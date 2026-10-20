@@ -111,6 +111,18 @@ with a deterministic check because we own the product:
 - **Comprehension / review / design** — a prompt grounded in real subsystem
   code; evidence is review notes / a design artifact, scored by rubric.
 
+> **Implemented approach (reliability-first).** The task's *code* (overlay,
+> acceptance tests, reference solution) always comes from the product's
+> pre-verified **reference bank** — the engine never ships unverified
+> model-generated code. Given role + JD it *selects and ranks* the bank tasks
+> for that role (JD-keyword match against each task's tags) and, when a model
+> is configured, uses it only to *adapt the brief wording* to the JD, degrading
+> gracefully to the authored brief if the model is absent or errors. This is
+> `v2/api/internal/taskgen`. Fresh model-authored task code (new overlays
+> verified by the harness before caching) is a later enhancement that plugs
+> into the same cache + verify path; the bank-selection core is what makes a
+> launch dependable.
+
 ### Cache key and regeneration (the Q4 decision)
 
 ```

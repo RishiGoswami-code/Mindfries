@@ -3,6 +3,7 @@
   "kind": "debug",
   "role": "backend",
   "title": "Tickets pile onto one agent instead of balancing",
+  "tags": ["assignment", "routing", "load", "balancing", "queue", "distribution", "agents", "backend", "reliability"],
   "check": ["go", "test", "./internal/support/"],
   "layers": {
     "overlay": "the product with the bug applied — the candidate's starting point",

@@ -3,6 +3,7 @@
   "kind": "feature",
   "role": "backend",
   "title": "Implement ticket merge (fold a duplicate into a primary)",
+  "tags": ["merge", "duplicate", "deduplicate", "tickets", "conversation", "feature", "backend", "api"],
   "check": ["go", "test", "./internal/support/"],
   "layers": {
     "overlay": "a Merge stub + TASK.md — the candidate's starting point",

@@ -48,3 +48,18 @@ func jdTokens(jd string) map[string]bool {
 	}
 	return toks
 }
+
+// TagScore counts how many of tags the JD mentions, returning the score and the
+// tags that hit. Shared by product selection and task-bank ranking.
+func TagScore(jd string, tags []string) (int, []string) {
+	toks := jdTokens(jd)
+	score := 0
+	var hits []string
+	for _, tag := range tags {
+		if toks[strings.ToLower(tag)] {
+			score++
+			hits = append(hits, tag)
+		}
+	}
+	return score, hits
+}
