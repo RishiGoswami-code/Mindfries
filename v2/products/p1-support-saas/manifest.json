@@ -1,6 +1,18 @@
 {
-  "tags": ["support", "helpdesk", "tickets", "ticketing", "customer", "sla", "saas", "b2b", "csat", "knowledge", "webhooks"],
+  "tags": ["support", "helpdesk", "tickets", "ticketing", "customer", "sla", "saas", "b2b", "csat", "knowledge", "webhooks", "react", "typescript", "javascript", "html", "css", "frontend", "ui", "components", "console", "vite"],
   "roles": {
+    "frontend": {
+      "subsystems": [
+        "console/src/priority.ts",
+        "console/src/sla.ts",
+        "console/src/components/SlaBadge.tsx",
+        "console/src/components/TicketList.tsx",
+        "console/src/App.tsx"
+      ],
+      "competencies": ["React component design", "typed state and props", "pure rendering logic", "API integration", "accessible markup", "front-end testing with Vitest"],
+      "modes": ["implementation", "debugging", "testing"],
+      "cannot_assess": ["design systems and visual polish (the console is intentionally unstyled)", "complex client-side routing or global state (the app is a single queue view)"]
+    },
     "backend": {
       "subsystems": [
         "internal/support/store.go",
@@ -15,10 +27,10 @@
       "cannot_assess": ["distributed systems at scale", "real database and query tuning (the store is in-memory)"]
     },
     "fullstack": {
-      "subsystems": ["internal/httpapi/", "internal/support/"],
-      "competencies": ["a vertical slice across API and domain", "request validation", "JSON contract design"],
+      "subsystems": ["internal/httpapi/", "internal/support/", "console/src/"],
+      "competencies": ["a vertical slice from the Go API through to the React console", "request validation", "JSON contract design", "wiring a UI to an API"],
       "modes": ["implementation", "testing", "delivery"],
-      "cannot_assess": ["browser UI (no web console in this build yet)"]
+      "cannot_assess": ["database and query tuning (the store is in-memory)"]
     },
     "fde": {
       "subsystems": [

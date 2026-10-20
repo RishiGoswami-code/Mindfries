@@ -1,0 +1,12 @@
+{
+  "id": "debug-priority-order",
+  "kind": "debug",
+  "role": "frontend",
+  "title": "The triage queue shows low-priority tickets at the top",
+  "tags": ["frontend", "react", "typescript", "bug", "sort", "comparator", "priority", "queue", "console"],
+  "check": ["bash", "-lc", "cd console && npm ci --no-audit --no-fund --silent && npm run test:task"],
+  "layers": {
+    "overlay": "the console with the ordering bug applied — the queue sorts the wrong way",
+    "solution": "the reference fix"
+  }
+}

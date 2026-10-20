@@ -1,0 +1,13 @@
+{
+  "id": "feature-sla-countdown",
+  "kind": "feature",
+  "role": "frontend",
+  "title": "Build the SLA badge (state + countdown) in the console",
+  "tags": ["frontend", "react", "typescript", "ui", "component", "sla", "console", "state", "rendering", "a11y"],
+  "check": ["bash", "-lc", "cd console && npm ci --no-audit --no-fund --silent && npm run test:task"],
+  "layers": {
+    "overlay": "sla.ts + SlaBadge.tsx stubbed to their signatures, plus TASK.md — the candidate's starting point",
+    "acceptance": "hidden tests for the SLA states and the badge rendering (never shipped to the candidate)",
+    "solution": "the reference implementation, applied over the overlay to prove it passes acceptance"
+  }
+}
