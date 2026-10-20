@@ -13,6 +13,7 @@ export async function mintV2SetupCode(input: {
   jd: string;
   title?: string;
   durationMinutes?: number;
+  assessmentId?: string;
 }): Promise<{ code: string } | null> {
   const base = v2EngineUrl();
   const token = process.env.V2_ADMIN_TOKEN;
@@ -24,6 +25,7 @@ export async function mintV2SetupCode(input: {
       body: JSON.stringify({
         role: input.role,
         jd: input.jd,
+        assessment_id: input.assessmentId ?? "",
         assessment_title: input.title ?? "",
         duration_minutes: input.durationMinutes ?? 90,
       }),

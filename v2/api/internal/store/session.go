@@ -14,10 +14,19 @@ import (
 
 func (d *DB) CreateSetupCode(ctx context.Context, c session.SetupCode) error {
 	_, err := d.pool.Exec(ctx,
-		`insert into v2.setup_codes (code, assessment_title, role, jd, duration_minutes, expires_at, used)
-		 values ($1, $2, $3, $4, $5, $6, false)`,
-		c.Code, c.AssessmentTitle, c.Role, c.JD, c.DurationMinutes, c.ExpiresAt)
+		`insert into v2.setup_codes (code, assessment_id, assessment_title, role, jd, duration_minutes, expires_at, used)
+		 values ($1, $2, $3, $4, $5, $6, $7, false)`,
+		c.Code, nullIfEmpty(c.AssessmentID), c.AssessmentTitle, c.Role, c.JD, c.DurationMinutes, c.ExpiresAt)
 	return err
+}
+
+// nullIfEmpty stores "" as SQL NULL (assessment_id is nullable — not every code
+// is linked to a V1 assessments row).
+func nullIfEmpty(s string) any {
+	if s == "" {
+		return nil
+	}
+	return s
 }
 
 func (d *DB) TakeSetupCode(ctx context.Context, code string, now time.Time) (session.SetupCode, error) {
@@ -26,9 +35,9 @@ func (d *DB) TakeSetupCode(ctx context.Context, code string, now time.Time) (ses
 	err := d.pool.QueryRow(ctx,
 		`update v2.setup_codes set used = true
 		   where code = $1 and used = false and expires_at > $2
-		 returning code, assessment_title, role, jd, duration_minutes, expires_at`,
+		 returning code, coalesce(assessment_id, ''), assessment_title, role, jd, duration_minutes, expires_at`,
 		code, now,
-	).Scan(&c.Code, &c.AssessmentTitle, &c.Role, &c.JD, &c.DurationMinutes, &c.ExpiresAt)
+	).Scan(&c.Code, &c.AssessmentID, &c.AssessmentTitle, &c.Role, &c.JD, &c.DurationMinutes, &c.ExpiresAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		var exists bool
 		_ = d.pool.QueryRow(ctx, `select exists(select 1 from v2.setup_codes where code = $1)`, code).Scan(&exists)
@@ -47,20 +56,30 @@ func (d *DB) TakeSetupCode(ctx context.Context, code string, now time.Time) (ses
 func (d *DB) CreateSession(ctx context.Context, s session.Session) error {
 	_, err := d.pool.Exec(ctx,
 		`insert into v2.sessions
-		   (id, token, assessment_title, role, jd_hash, product_slug, bank_task_id, task_version, brief, duration_minutes, status, started_at, ends_at)
-		 values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
-		s.ID, s.Token, s.AssessmentTitle, s.Role, s.JDHash, s.ProductSlug, s.BankTaskID,
+		   (id, token, assessment_id, assessment_title, role, jd_hash, product_slug, bank_task_id, task_version, brief, duration_minutes, status, started_at, ends_at)
+		 values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
+		s.ID, s.Token, nullIfEmpty(s.AssessmentID), s.AssessmentTitle, s.Role, s.JDHash, s.ProductSlug, s.BankTaskID,
 		s.TaskVersion, s.Brief, s.DurationMinutes, s.Status, s.StartedAt, s.EndsAt)
+	return err
+}
+
+// MarkAssessmentSubmitted flips the linked V1 assessments row to 'submitted'.
+// Requires the v2_api role to hold UPDATE on public.assessments (see migration).
+func (d *DB) MarkAssessmentSubmitted(ctx context.Context, assessmentID string) error {
+	if assessmentID == "" {
+		return nil
+	}
+	_, err := d.pool.Exec(ctx, `update public.assessments set status = 'submitted' where id = $1`, assessmentID)
 	return err
 }
 
 func (d *DB) SessionByToken(ctx context.Context, token string) (session.Session, error) {
 	var s session.Session
 	err := d.pool.QueryRow(ctx,
-		`select id, token, assessment_title, role, jd_hash, product_slug, bank_task_id,
+		`select id, token, coalesce(assessment_id, ''), assessment_title, role, jd_hash, product_slug, bank_task_id,
 		        task_version, brief, duration_minutes, status, started_at, ends_at
 		   from v2.sessions where token = $1`, token,
-	).Scan(&s.ID, &s.Token, &s.AssessmentTitle, &s.Role, &s.JDHash, &s.ProductSlug, &s.BankTaskID,
+	).Scan(&s.ID, &s.Token, &s.AssessmentID, &s.AssessmentTitle, &s.Role, &s.JDHash, &s.ProductSlug, &s.BankTaskID,
 		&s.TaskVersion, &s.Brief, &s.DurationMinutes, &s.Status, &s.StartedAt, &s.EndsAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return session.Session{}, session.ErrNotFound

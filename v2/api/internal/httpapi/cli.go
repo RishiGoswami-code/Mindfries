@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -60,6 +61,7 @@ func (s *Server) adminMintCode(w http.ResponseWriter, r *http.Request) {
 	}
 	var req struct {
 		Code            string `json:"code"`
+		AssessmentID    string `json:"assessment_id"`
 		AssessmentTitle string `json:"assessment_title"`
 		Role            string `json:"role"`
 		JD              string `json:"jd"`
@@ -89,7 +91,8 @@ func (s *Server) adminMintCode(w http.ResponseWriter, r *http.Request) {
 	}
 
 	c := session.SetupCode{
-		Code: req.Code, AssessmentTitle: req.AssessmentTitle, Role: req.Role, JD: req.JD,
+		Code: req.Code, AssessmentID: req.AssessmentID, AssessmentTitle: req.AssessmentTitle,
+		Role: req.Role, JD: req.JD,
 		DurationMinutes: req.DurationMinutes, ExpiresAt: time.Now().Add(time.Hour).UTC(),
 	}
 	if err := s.sessions.CreateSetupCode(r.Context(), c); err != nil {
@@ -143,6 +146,7 @@ func (s *Server) cliExchange(w http.ResponseWriter, r *http.Request) {
 	sess := session.Session{
 		ID:              "ses_" + randHex(12),
 		Token:           randHex(32),
+		AssessmentID:    code.AssessmentID,
 		AssessmentTitle: code.AssessmentTitle,
 		Role:            code.Role,
 		JDHash:          engine.HashJD(code.JD),
@@ -385,6 +389,11 @@ func (s *Server) cliSubmitBundle(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	_ = s.sessions.SetStatus(r.Context(), sess.ID, "submitted")
+	// Reflect the hand-in on the V1 assessment so the candidate dashboard and
+	// admin stop offering another setup (one submission). Best-effort.
+	if err := s.sessions.MarkAssessmentSubmitted(r.Context(), sess.AssessmentID); err != nil {
+		log.Printf("submit: couldn't mark assessment %s submitted: %v", sess.AssessmentID, err)
+	}
 	sub.Status, sub.VerifiedAt = "verified", &now
 	writeJSON(w, http.StatusOK, toWireSubmission(sub))
 }

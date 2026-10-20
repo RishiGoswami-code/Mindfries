@@ -36,7 +36,7 @@ export async function startV2Session(
     }
     if (data.engine !== "v2") return { ok: false, error: "This assessment doesn't use the local workspace." };
 
-    const minted = await mintV2SetupCode({ role: data.role as string, jd: (data.jd as string) || "" });
+    const minted = await mintV2SetupCode({ role: data.role as string, jd: (data.jd as string) || "", assessmentId });
     if (!minted) return { ok: false, error: "Couldn't create a setup code. Please try again." };
 
     return { ok: true, setupCode: minted.code, engineUrl };

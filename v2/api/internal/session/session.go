@@ -25,6 +25,7 @@ var ErrCodeUnusable = errors.New("setup code is used or expired")
 // SetupCode is a one-time dashboard code that carries an assessment's role + JD.
 type SetupCode struct {
 	Code            string
+	AssessmentID    string // the V1 assessments.id this invite is for ("" if unlinked)
 	AssessmentTitle string
 	Role            string
 	JD              string
@@ -38,6 +39,7 @@ type SetupCode struct {
 type Session struct {
 	ID              string
 	Token           string
+	AssessmentID    string // the V1 assessments.id, for status write-back ("" if unlinked)
 	AssessmentTitle string
 	Role            string
 	JDHash          string
@@ -140,6 +142,11 @@ type Store interface {
 	SaveGrade(ctx context.Context, g Grade) error
 	// GradeBySubmission returns the submission's grade, or ErrNotFound.
 	GradeBySubmission(ctx context.Context, submissionID string) (Grade, error)
+
+	// MarkAssessmentSubmitted flips the linked V1 assessments row to 'submitted'
+	// so the candidate dashboard and admin reflect that the work is handed in and
+	// stop offering another setup. No-op when assessmentID is "".
+	MarkAssessmentSubmitted(ctx context.Context, assessmentID string) error
 }
 
 // Mem is an in-memory Store for tests.
@@ -213,6 +220,9 @@ func (m *Mem) GradeBySubmission(_ context.Context, submissionID string) (Grade, 
 	}
 	return Grade{}, ErrNotFound
 }
+
+// MarkAssessmentSubmitted is a no-op in memory — there is no V1 assessments table.
+func (m *Mem) MarkAssessmentSubmitted(_ context.Context, _ string) error { return nil }
 
 func (m *Mem) CreateSubmission(_ context.Context, sub Submission) error {
 	m.mu.Lock()
