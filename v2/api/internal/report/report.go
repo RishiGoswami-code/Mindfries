@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/mindfries/v2/api/internal/manifest"
@@ -172,24 +173,27 @@ func Build(sess session.Session, sub session.Submission, events []session.Event,
 	return r
 }
 
+// flags are prompts for a reviewer to look, worded as what was recorded and
+// never as what it means (SPEC section 16). Using the coding assistant the
+// assessment provides is not a flag; it is how the candidate worked.
 func flags(r Report) []string {
 	var f []string
 	if len(r.AI.AgentsDetected) > 0 {
-		f = append(f, fmt.Sprintf("A coding agent was detected running during the assessment: %v", r.AI.AgentsDetected))
+		f = append(f, fmt.Sprintf("Coding-agent processes were seen while the assessment ran: %s. Recorded for a reviewer to look at.", strings.Join(r.AI.AgentsDetected, ", ")))
 	}
 	if r.AI.AgentsLeftRunning {
-		f = append(f, "A coding agent was still running (not closed when asked).")
+		f = append(f, "A coding-agent process was running during the assessment and wasn't closed.")
 	}
-	if r.AI.AgentAttributedLines > 0 {
-		f = append(f, fmt.Sprintf("%d changed line(s) were attributed to an AI agent, not the candidate.", r.AI.AgentAttributedLines))
+	if r.AI.UnknownAttributedLines > 0 {
+		f = append(f, fmt.Sprintf("%d changed line(s) arrived that weren't built up gradually or made through the assistant.", r.AI.UnknownAttributedLines))
 	}
 	if len(r.AI.AIExtensions) > 0 {
-		f = append(f, fmt.Sprintf("AI editor extensions were installed: %v", r.AI.AIExtensions))
+		f = append(f, fmt.Sprintf("AI editor extensions are installed: %s.", strings.Join(r.AI.AIExtensions, ", ")))
 	}
 	// Only a submission can say whether locked files were touched; with none,
 	// there is nothing to flag.
 	if r.Submitted && !r.Effort.TaskFilesIntact {
-		f = append(f, "Locked task files were modified during the assessment.")
+		f = append(f, "Locked task files were changed during the assessment.")
 	}
 	return f
 }
