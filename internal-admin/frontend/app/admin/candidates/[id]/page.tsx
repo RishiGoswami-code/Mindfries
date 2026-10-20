@@ -43,18 +43,15 @@ export default async function CandidatePage({ params }: { params: Promise<{ id: 
           ) : (
             <ul className="mt-3 space-y-3">
               {c.assessments.map((a) => {
-                const rec = a.recommendation ? RECOMMENDATION[a.recommendation] : null;
+                const rec = a.decision ? RECOMMENDATION[a.decision] : null;
+                const ai = a.aiSuggestion ? RECOMMENDATION[a.aiSuggestion] : null;
                 return (
                   <li key={a.id} className="flex flex-wrap items-center gap-3 text-sm">
                     <span className="font-semibold">{[a.company, a.role].filter(Boolean).join(" — ") || "Assessment"}</span>
                     <span className="text-xs text-faint">invited {fmtDate(a.invitedAt)}</span>
                     <Pill tone={a.sessionStatus === "live" ? "violet" : a.sessionStatus ? "gray" : "amber"}>{a.sessionStatus ?? "not started"}</Pill>
-                    {rec && (
-                      <Pill tone={rec.tone}>
-                        {rec.label}
-                        {a.recommendationBy === "reviewer" ? " · reviewer" : " · AI"}
-                      </Pill>
-                    )}
+                    {rec ? <Pill tone={rec.tone}>{rec.label} · decided by the company</Pill> : a.aiSuggestion && <Pill tone="gray">Not decided</Pill>}
+                    {ai && <span className="text-xs text-dim">AI suggests: {ai.label}</span>}
                     {a.score != null && <span className="mono text-dim">{a.score}%</span>}
                     {Object.entries(a.sectionScores).map(([k, v]) => (
                       <span key={k} className="text-xs text-dim">

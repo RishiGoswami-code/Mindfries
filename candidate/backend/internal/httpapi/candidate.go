@@ -449,8 +449,11 @@ func (s *Server) handleSubmit(w http.ResponseWriter, r *http.Request) {
 }
 
 type reportResponse struct {
-	Status              string             `json:"status"`
-	Recommendation      *string            `json:"recommendation,omitempty"`
+	Status string `json:"status"`
+	// Decision is the hiring team's own decision, when they have made one.
+	// The AI's recommendation is never sent to the candidate: a hiring
+	// decision is a person's, not the model's.
+	Decision            *string            `json:"decision,omitempty"`
 	Summary             *string            `json:"summary,omitempty"`
 	Error               *string            `json:"error,omitempty"`
 	Evidence            []evidenceItemView `json:"evidence,omitempty"`
@@ -490,10 +493,10 @@ func (s *Server) handleGetReport(w http.ResponseWriter, r *http.Request) {
 		resp.SharedAt = &formatted
 	}
 
-	// Confidentiality boundary: Only return recommendation, summary, and evidence observations
+	// Confidentiality boundary: Only return the decision, summary, and evidence observations
 	// if the hiring company has explicitly released the report to the candidate.
 	if report.SharedWithCandidate {
-		resp.Recommendation = report.Recommendation
+		resp.Decision = report.ReviewerRecommendation
 		resp.Summary = report.Summary
 		resp.Error = report.Error
 		if report.Status == "ready" {

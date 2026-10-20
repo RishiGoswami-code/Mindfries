@@ -89,13 +89,8 @@ export default async function CandidateDetailPage({ params }: { params: Promise<
         profile={profile}
         score={application.score}
         sectionScores={application.sectionScores}
-        recommendation={
-          report?.review?.recommendation
-            ? { value: report.review.recommendation, by: "reviewer" }
-            : report?.status === "ready" && report.recommendation
-              ? { value: report.recommendation, by: "ai" }
-              : null
-        }
+        decision={report?.review?.recommendation ?? null}
+        aiSuggestion={report?.status === "ready" ? (report.recommendation ?? null) : null}
         sessionStatus={session?.status ?? null}
       />
 

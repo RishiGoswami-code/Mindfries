@@ -513,7 +513,8 @@ function RecommendationCard({ report }: { report: ReportView }) {
       </div>
     );
   }
-  const rec = report.recommendation ? RECOMMENDATION[report.recommendation] : undefined;
+  // Only a person's decision is shown here, never the AI's suggestion.
+  const rec = report.decision ? RECOMMENDATION[report.decision] : undefined;
   const tone = rec?.tone ?? "none";
   return (
     <div
@@ -535,19 +536,21 @@ function RecommendationCard({ report }: { report: ReportView }) {
           <UserRound size={24} />
         </span>
         <div className="min-w-0">
-          <p className="text-[14.5px] font-semibold text-[#100E2E]">Recommendation</p>
+          <p className="text-[14.5px] font-semibold text-[#100E2E]">Hiring team&apos;s decision</p>
           <p className={clsx("text-[28px] leading-tight font-bold", tone === "bad" ? "text-[#DC2643]" : tone === "warn" ? "text-[#B45309]" : tone === "good" ? "text-[#15803D]" : "text-[#4C4874]")}>
-            {rec?.label ?? "Not given"}
+            {rec?.label ?? "Not decided yet"}
           </p>
         </div>
       </div>
       {report.summary && (
         <div className="mt-4 rounded-2xl bg-white/80 px-4 py-3">
-          <p className="text-[14px] font-semibold text-[#100E2E]">Key reason</p>
+          <p className="text-[14px] font-semibold text-[#100E2E]">Evaluation summary</p>
           <p className={clsx("mt-1 line-clamp-5 text-[14px] leading-relaxed", tone === "bad" ? "text-[#8F1D33]" : "text-[#4C4874]")}>{report.summary.replace(/ ?\[E\d+\]/g, "")}</p>
         </div>
       )}
-      <p className="mt-3 text-[12px] text-[#8A86A8]">Evaluation summary shared by the hiring team.</p>
+      <p className="mt-3 text-[12px] text-[#8A86A8]">
+        The decision is made by the hiring team, not by the AI. The summary is the evaluation they shared with you.
+      </p>
     </div>
   );
 }

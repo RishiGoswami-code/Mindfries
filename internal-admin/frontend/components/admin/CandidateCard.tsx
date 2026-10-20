@@ -9,7 +9,7 @@ const n = (count: number, one: string, many = `${one}s`) => `${count} ${count ==
 
 export const RECOMMENDATION: Record<string, { label: string; tone: Tone }> = {
   strong_hire: { label: "Strong hire", tone: "violet" },
-  hire: { label: "Recommended", tone: "green" },
+  hire: { label: "Hire", tone: "green" },
   lean_no: { label: "Lean no", tone: "amber" },
   no_hire: { label: "No hire", tone: "coral" },
 };
@@ -21,8 +21,9 @@ export const RECOMMENDATION: Record<string, { label: string; tone: Tone }> = {
  * theirs; without one, it is a username they typed.
  */
 export function CandidateCard({ c }: { c: Card }) {
-  const latest = c.assessments.find((a) => a.score != null || a.recommendation) ?? c.assessments[0] ?? null;
-  const rec = latest?.recommendation ? RECOMMENDATION[latest.recommendation] : null;
+  const latest = c.assessments.find((a) => a.score != null || a.decision || a.aiSuggestion) ?? c.assessments[0] ?? null;
+  // Only a person's decision is shown as the hiring status, never the AI's.
+  const rec = latest?.decision ? RECOMMENDATION[latest.decision] : null;
   const scores = latest ? Object.entries(latest.sectionScores).slice(0, 3) : [];
   const live = c.assessments.some((a) => a.sessionStatus === "live");
   const finished = c.assessments.filter((a) => a.sessionStatus && a.sessionStatus !== "live").length;

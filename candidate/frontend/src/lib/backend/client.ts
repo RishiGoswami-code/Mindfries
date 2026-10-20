@@ -136,7 +136,12 @@ export interface EvidenceItemView {
 
 export interface ReportView {
   status: "pending" | "generating" | "ready" | "failed";
-  recommendation?: string;
+  /**
+   * The hiring team's decision (strong_hire|hire|lean_no|no_hire), once a
+   * person has made one. The AI's recommendation is never shown to a
+   * candidate: the decision is the company's, or Mindfries', not the model's.
+   */
+  decision?: string;
   summary?: string;
   error?: string;
   evidence?: EvidenceItemView[];
@@ -463,7 +468,7 @@ export async function getSessionReport(sessionId: string): Promise<ReportView> {
   let dbReport: {
     id: string;
     status: string;
-    recommendation: string | null;
+    reviewer_recommendation: string | null;
     summary: string | null;
     error: string | null;
     shared_with_candidate: boolean | null;
@@ -474,7 +479,7 @@ export async function getSessionReport(sessionId: string): Promise<ReportView> {
   if (c && /^[0-9a-f-]{36}$/i.test(sessionId)) {
     const { data } = await c
       .from("assessment_reports")
-      .select("id, status, recommendation, summary, error, shared_with_candidate, shared_at")
+      .select("id, status, reviewer_recommendation, summary, error, shared_with_candidate, shared_at")
       .eq("session_id", sessionId)
       .maybeSingle();
     if (data) {
@@ -507,7 +512,7 @@ export async function getSessionReport(sessionId: string): Promise<ReportView> {
   // The database `shared_with_candidate` column is the authoritative flag set by company portal.
   const isShared = dbReport ? !!dbReport.shared_with_candidate : !!backendReport?.sharedWithCandidate;
   const status = (backendReport?.status ?? dbReport?.status ?? "pending") as ReportView["status"];
-  const recommendation = isShared ? (backendReport?.recommendation ?? dbReport?.recommendation ?? undefined) : undefined;
+  const decision = isShared ? (dbReport?.reviewer_recommendation ?? backendReport?.decision ?? undefined) : undefined;
   const summary = isShared ? (backendReport?.summary ?? dbReport?.summary ?? undefined) : undefined;
   const error = isShared ? (backendReport?.error ?? dbReport?.error ?? undefined) : undefined;
   const sharedAt = dbReport?.shared_at ?? backendReport?.sharedAt ?? undefined;
@@ -515,7 +520,7 @@ export async function getSessionReport(sessionId: string): Promise<ReportView> {
 
   return {
     status,
-    recommendation,
+    decision,
     summary,
     error,
     evidence,
