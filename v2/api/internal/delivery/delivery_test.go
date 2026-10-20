@@ -137,3 +137,16 @@ func contains(s, sub string) bool {
 	}
 	return false
 }
+
+// A frontend task on P1 must require node, not go — even though P1 ships a
+// go.mod for its backend. (Regression: the preflight demanded Go for a React
+// task and blocked the candidate.)
+func TestFrontendTaskRequiresNodeNotGo(t *testing.T) {
+	ws, err := Assemble(p1Dir(t), "debug-priority-order", "# Fix the sort", "task_fe")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(ws.Runtimes) != 1 || ws.Runtimes[0] != "node" {
+		t.Fatalf("frontend task runtimes = %v, want [node]", ws.Runtimes)
+	}
+}

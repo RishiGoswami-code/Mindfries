@@ -15,6 +15,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	"github.com/mindfries/v2/api/internal/taskgen"
@@ -66,7 +67,7 @@ func Assemble(productDir, taskID, brief, taskVersion string) (Workspace, error) 
 		Files:       files,
 		Locked:      []string{"TASK.md"},
 		Check:       check,
-		Runtimes:    detectRuntimes(files),
+		Runtimes:    detectRuntimes(check, files),
 		Branch:      assessmentBranch,
 		TaskVersion: taskVersion,
 	}
@@ -144,7 +145,22 @@ func readCheck(taskJSON string) ([]string, error) {
 	return tf.Check, nil
 }
 
-func detectRuntimes(files map[string]string) []string {
+// detectRuntimes returns the runtimes the candidate must have installed to run
+// the task. It keys off the task's check command — what actually runs — not the
+// delivered files: a product can ship several languages as context (P1 ships
+// its Go API next to the React console) while a given task's check uses only
+// one, so a frontend task must not demand Go just because a go.mod is present.
+func detectRuntimes(check []string, files map[string]string) []string {
+	cmd := strings.ToLower(strings.Join(check, " "))
+	switch {
+	case containsAny(cmd, "npm", "pnpm", "yarn", "vitest", "jest", "node"):
+		return []string{"node"}
+	case containsAny(cmd, "python", "pytest", "unittest"):
+		return []string{"python"}
+	case goWord.MatchString(cmd):
+		return []string{"go"}
+	}
+	// Fallback when the check doesn't name a known runtime: infer from files.
 	if _, ok := files["go.mod"]; ok {
 		return []string{"go"}
 	}
@@ -154,4 +170,15 @@ func detectRuntimes(files map[string]string) []string {
 		}
 	}
 	return nil
+}
+
+var goWord = regexp.MustCompile(`\bgo\b`)
+
+func containsAny(s string, subs ...string) bool {
+	for _, sub := range subs {
+		if strings.Contains(s, sub) {
+			return true
+		}
+	}
+	return false
 }
