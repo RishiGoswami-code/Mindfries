@@ -40,14 +40,14 @@ func TestTheAvatarGetsALockedLiveToken(t *testing.T) {
 	e.sendEvents(cli, event(2, "agent_signal.process", map[string]any{"phase": "during", "matches": []map[string]any{{"agent": "x", "process_name": "claude.exe"}}}))
 
 	cfg := e.panel("GET", "/v2/panel/config", panel, nil).JSON()
-	if av := cfg["avatar"].(map[string]any); av["enabled"] != true || av["name"] != "Aria" {
+	if av := cfg["avatar"].(map[string]any); av["enabled"] != true || av["name"] != "Tanu" {
 		t.Fatalf("%v", av)
 	}
 	r := e.panel("POST", "/v2/panel/avatar/token", panel, map[string]any{})
 	if r.Status != 200 {
 		t.Fatalf("%d %s", r.Status, r.Raw)
 	}
-	if r.str("token") != "auth_tokens/abc123" || r.str("name") != "Aria" || r.str("model") != "gemini-live-test" ||
+	if r.str("token") != "auth_tokens/abc123" || r.str("name") != "Tanu" || r.str("model") != "gemini-live-test" ||
 		!strings.Contains(r.str("ws_url"), "BidiGenerateContentConstrained") || r.str("expires_at") == "" {
 		t.Fatalf("%s", r.Raw)
 	}
@@ -59,7 +59,7 @@ func TestTheAvatarGetsALockedLiveToken(t *testing.T) {
 		t.Fatalf("%v", *asked)
 	}
 	sys := c["config"].(map[string]any)["systemInstruction"].(map[string]any)["parts"].([]any)[0].(map[string]any)["text"].(string)
-	for _, want := range []string{"Aria", "backend", "Tickets pile onto", "never", "score, grade, rank", "Commit 3f2a91c"} {
+	for _, want := range []string{"Tanu", "backend", "Tickets pile onto", "never", "score, grade, rank", "Commit 3f2a91c"} {
 		if !strings.Contains(sys, want) {
 			// the brief text depends on the task; check the structural pieces strictly
 			if want == "Tickets pile onto" {

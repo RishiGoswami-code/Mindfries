@@ -23,7 +23,7 @@ import (
 // score, accuse or help solve the task.
 
 // AvatarName is what the avatar calls itself.
-const AvatarName = "Aria"
+const AvatarName = "Tanu"
 
 // AvatarContext is what the avatar knows when the conversation starts.
 type AvatarContext struct {

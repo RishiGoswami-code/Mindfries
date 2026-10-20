@@ -44,7 +44,7 @@ func (s *Server) liveTokens() assistant.LiveTokens {
 	return assistant.LiveTokens{APIKey: s.cfg.GeminiKey, Model: s.cfg.GeminiLiveModel, BaseURL: s.cfg.GeminiBaseURL}
 }
 
-// avatarToken hands the browser what it needs to talk to Aria.
+// avatarToken hands the browser what it needs to talk to Tanu.
 func (s *Server) avatarToken(w http.ResponseWriter, r *http.Request, sess session.Session) {
 	ctx, now := r.Context(), s.now()
 	cfg := s.configFor(ctx, sess)
