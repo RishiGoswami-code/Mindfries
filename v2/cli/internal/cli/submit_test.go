@@ -128,6 +128,9 @@ func TestSubmitWhileWatching(t *testing.T) {
 	if !sawChange {
 		t.Fatal("the last change before submitting wasn't recorded")
 	}
+	if n := len(checkEvents(h)); n != 1 {
+		t.Fatalf("%d check.run events from submit while watching, want 1", n)
+	}
 }
 
 func TestSubmitWithNoChanges(t *testing.T) {

@@ -1,11 +1,9 @@
 package cli
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -13,7 +11,6 @@ import (
 
 	"github.com/mindfries/v2/cli/internal/api"
 	"github.com/mindfries/v2/cli/internal/gitx"
-	"github.com/mindfries/v2/cli/internal/shell"
 	"github.com/mindfries/v2/cli/internal/state"
 	"github.com/mindfries/v2/cli/internal/watcher"
 	"github.com/mindfries/v2/cli/internal/workspace"
@@ -69,7 +66,7 @@ func (a *App) submit(args []string) error {
 	}
 
 	// Checks run before staging, so their caches aren't committed.
-	checks := a.runChecks(ctx, l)
+	checks := a.runChecks(ctx, l, stateDir)
 
 	if _, err := r.Run(ctx, "add", "-A"); err != nil {
 		return err
@@ -180,26 +177,22 @@ func short(sha string) string {
 	return sha
 }
 
-// runChecks runs the task's tests and builds and reports each result.
-func (a *App) runChecks(ctx context.Context, l *state.Local) []api.CheckResult {
+// runChecks runs the task's tests and builds, reports each result and puts
+// it in the session record.
+func (a *App) runChecks(ctx context.Context, l *state.Local, stateDir string) []api.CheckResult {
 	var out []api.CheckResult
 	for _, cmd := range l.CheckCommands {
-		fmt.Fprintf(a.Stdout, "\nRunning the task's check: %s\n", cmd)
-		var buf bytes.Buffer
-		res, err := shell.Run(ctx, l.Workspace, cmd, io.MultiWriter(a.Stdout, &buf), checkTimeout)
-		cr := api.CheckResult{Command: cmd, ExitCode: res.ExitCode, DurationMS: res.Duration.Milliseconds(), Summary: tail(buf.String(), 20, 2000)}
+		run := a.runCheck(ctx, l, cmd)
 		switch {
-		case err != nil:
-			cr.ExitCode = -1
-			cr.Summary = "couldn't run: " + err.Error()
-			fmt.Fprintf(a.Stdout, "Couldn't run it (%v). That's recorded; it doesn't stop you handing in.\n", err)
-		case res.TimedOut:
-			cr.Summary = "timed out\n" + cr.Summary
+		case run.Err != nil:
+			fmt.Fprintf(a.Stdout, "Couldn't run it (%v). That's recorded; it doesn't stop you handing in.\n", run.Err)
+		case run.TimedOut:
 			fmt.Fprintln(a.Stdout, "It timed out. That's recorded; it doesn't stop you handing in.")
-		case res.ExitCode != 0:
-			fmt.Fprintf(a.Stdout, "It failed (exit code %d). That's recorded; it doesn't stop you handing in.\n", res.ExitCode)
+		case run.Result.ExitCode != 0:
+			fmt.Fprintf(a.Stdout, "It failed (exit code %d). That's recorded; it doesn't stop you handing in.\n", run.Result.ExitCode)
 		}
-		out = append(out, cr)
+		a.recordCheck(stateDir, run, true)
+		out = append(out, run.Result)
 	}
 	return out
 }

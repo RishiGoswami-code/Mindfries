@@ -78,6 +78,7 @@ var commands = map[string]command{
 	"start":  {"Begin: pick your editor, check this computer, turn on monitoring, start the clock", (*App).start},
 	"agent":  {"Open mindfries agent, the coding and research assistant", (*App).agent},
 	"status": {"Show the session, sync and Git state", (*App).status},
+	"check":  {"Run the task's checks and record the result", (*App).check},
 	"submit": {"Review the diff and hand in", (*App).submit},
 	"stop":   {"End the session and clean up (your code stays)", (*App).stop},
 	"doctor": {"Run the preflight checks only", (*App).doctor},
@@ -86,7 +87,7 @@ var commands = map[string]command{
 }
 
 // order is how help lists the commands.
-var order = []string{"setup", "start", "agent", "status", "submit", "stop", "doctor"}
+var order = []string{"setup", "start", "agent", "status", "check", "submit", "stop", "doctor"}
 
 // ExitError carries a specific exit code.
 type ExitError struct {
