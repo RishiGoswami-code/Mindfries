@@ -23,8 +23,8 @@ create table if not exists v2.sessions (
   bank_task_id     text not null,                    -- which _tasks/<id> the overlay comes from
   task_version     text not null,
   brief            text not null default '',         -- the resolved TASK.md
-  status           text not null default 'active'
-                   check (status in ('active', 'submitted', 'expired', 'revoked')),
+  status           text not null default 'ready'
+                   check (status in ('ready', 'active', 'submitted', 'expired', 'revoked')),
   started_at       timestamptz not null default now(),
   ends_at          timestamptz not null,
   created_at       timestamptz not null default now()
