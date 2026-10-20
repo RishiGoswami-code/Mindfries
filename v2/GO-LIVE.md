@@ -5,7 +5,17 @@ What's left to turn the redesigned engine (products + selection + task delivery
 something a real company can use to evaluate real candidates, on top of the
 already-deployed V1. Ordered, with the decisions called out.
 
-## 0. The gating decision — where candidates run the product
+## Decisions (locked)
+
+- **Candidate execution: the V2 CLI** — candidates work on their own machine via
+  the `mindfries` CLI (already built). So go-live = deploy `v2/api` (Railway),
+  distribute the signed CLI, and wire the company seam. Tracks C below is the
+  CLI path; the Daytona/browser rows are kept only for context.
+- **Deploy state: all of V1 is live** — candidate + internal-admin frontends and
+  the candidate/company backends are deployed and serving. So V2 only *adds* a
+  service and touches V1 at the one switch-guarded seam (Track D).
+
+## 0. Why execution environment mattered
 
 The products are real codebases: **Go** (P1 Support SaaS, P2 RAG, P4 Fintech)
 and **Python** (P3 Quant). That determines the execution environment:

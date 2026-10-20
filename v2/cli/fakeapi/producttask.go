@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/mindfries/v2/cli/internal/api"
 )
@@ -45,6 +46,13 @@ func ProductTask(productDir, taskID, version, brief string) (*Task, error) {
 	var runtimes []api.Runtime
 	if _, ok := files["go.mod"]; ok {
 		runtimes = []api.Runtime{{Name: "go", Version: ">=1.22", InstallURL: "https://go.dev/dl/"}}
+	} else {
+		for p := range files {
+			if strings.HasSuffix(p, ".py") {
+				runtimes = []api.Runtime{{Name: "python", Version: ">=3.10", InstallURL: "https://www.python.org/downloads/"}}
+				break
+			}
+		}
 	}
 
 	return &Task{

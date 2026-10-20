@@ -144,3 +144,62 @@ func TestFeatureTaskStubFailsAndSolutionPasses(t *testing.T) {
 		t.Fatalf("feature solution should pass acceptance:\n%s", sol.Output)
 	}
 }
+
+// p3 returns the P3 (Python) product path and a task-dir resolver.
+func p3(t *testing.T) (product string, taskDir func(id string) string) {
+	t.Helper()
+	wd, _ := os.Getwd()
+	product = filepath.Clean(filepath.Join(wd, "../../../products/p3-quant-platform"))
+	if _, err := os.Stat(filepath.Join(product, "quant", "__init__.py")); err != nil {
+		t.Fatalf("P3 product not found at %s", product)
+	}
+	return product, func(id string) string { return filepath.Join(product, "_tasks", id) }
+}
+
+var pyCheck = []string{"python3", "-m", "unittest", "discover", "-s", "tests", "-t", "."}
+
+func TestP3DebugTaskBugFailsAndFixPasses(t *testing.T) {
+	product, task := p3(t)
+	d := task("debug-drawdown")
+
+	bug, err := Run(Spec{ProductDir: product, Overlays: []string{filepath.Join(d, "overlay")}, Check: pyCheck})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bug.Passed {
+		t.Fatal("P3 drawdown bug should fail the suite")
+	}
+	fix, err := Run(Spec{ProductDir: product, Overlays: []string{
+		filepath.Join(d, "overlay"), filepath.Join(d, "solution"),
+	}, Check: pyCheck})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !fix.Passed {
+		t.Fatalf("P3 drawdown fix should green the suite:\n%s", fix.Output)
+	}
+}
+
+func TestP3FeatureTaskStubFailsAndSolutionPasses(t *testing.T) {
+	product, task := p3(t)
+	f := task("feature-sortino")
+
+	stub, err := Run(Spec{ProductDir: product, Overlays: []string{
+		filepath.Join(f, "overlay"), filepath.Join(f, "acceptance"),
+	}, Check: pyCheck})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stub.Passed {
+		t.Fatal("P3 sortino stub should fail the acceptance tests")
+	}
+	sol, err := Run(Spec{ProductDir: product, Overlays: []string{
+		filepath.Join(f, "overlay"), filepath.Join(f, "solution"), filepath.Join(f, "acceptance"),
+	}, Check: pyCheck})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !sol.Passed {
+		t.Fatalf("P3 sortino solution should pass acceptance:\n%s", sol.Output)
+	}
+}

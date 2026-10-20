@@ -1,0 +1,13 @@
+{
+  "id": "feature-sortino",
+  "kind": "feature",
+  "role": "quant",
+  "title": "Implement the Sortino ratio",
+  "tags": ["sortino", "risk", "metrics", "downside", "deviation", "sharpe", "ratio"],
+  "check": ["python3", "-m", "unittest", "discover", "-s", "tests", "-t", "."],
+  "layers": {
+    "overlay": "a sortino_ratio stub + TASK.md",
+    "acceptance": "hidden acceptance tests (never shipped to the candidate)",
+    "solution": "the reference implementation"
+  }
+}

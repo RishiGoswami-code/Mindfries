@@ -1,0 +1,12 @@
+{
+  "id": "debug-drawdown",
+  "kind": "debug",
+  "role": "quant",
+  "title": "Max drawdown is wrong when the trough precedes the peak",
+  "tags": ["drawdown", "risk", "metrics", "equity", "sharpe", "backtest"],
+  "check": ["python3", "-m", "unittest", "discover", "-s", "tests", "-t", "."],
+  "layers": {
+    "overlay": "the product with the drawdown bug applied",
+    "solution": "the reference fix"
+  }
+}

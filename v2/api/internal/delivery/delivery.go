@@ -15,6 +15,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/mindfries/v2/api/internal/taskgen"
 )
@@ -141,6 +142,11 @@ func readCheck(taskJSON string) ([]string, error) {
 func detectRuntimes(files map[string]string) []string {
 	if _, ok := files["go.mod"]; ok {
 		return []string{"go"}
+	}
+	for p := range files {
+		if strings.HasSuffix(p, ".py") {
+			return []string{"python"}
+		}
 	}
 	return nil
 }
