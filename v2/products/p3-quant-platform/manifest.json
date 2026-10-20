@@ -1,0 +1,23 @@
+{
+  "tags": ["quant", "quantitative", "trading", "backtest", "backtesting", "portfolio", "alpha", "strategy", "sharpe", "risk", "timeseries", "returns", "signals", "volatility", "drawdown"],
+  "roles": {
+    "quant": {
+      "subsystems": ["quant/series.py", "quant/metrics.py", "quant/features.py", "quant/backtest.py", "quant/portfolio.py"],
+      "competencies": ["return and risk computation", "backtesting with lookahead safety", "portfolio construction", "transaction-cost awareness", "statistical conventions (Sharpe, drawdown)"],
+      "modes": ["implementation", "debugging", "research", "testing"],
+      "cannot_assess": ["live market data or execution", "derivatives pricing (not in this build)"]
+    },
+    "ml_researcher": {
+      "subsystems": ["quant/backtest.py", "quant/features.py"],
+      "competencies": ["time-aware validation", "leakage prevention", "feature construction", "reproducible experiments"],
+      "modes": ["research", "debugging", "testing"],
+      "cannot_assess": ["deep-learning training workloads"]
+    },
+    "data_analyst": {
+      "subsystems": ["quant/data.py", "quant/metrics.py"],
+      "competencies": ["missing-data handling", "data-quality metrics", "return and period analytics"],
+      "modes": ["implementation", "research", "testing"],
+      "cannot_assess": ["warehouse-scale SQL (in-memory lists here)"]
+    }
+  }
+}
