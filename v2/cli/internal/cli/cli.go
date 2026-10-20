@@ -37,6 +37,8 @@ type App struct {
 	// selfPath is this program, for git's credential helper; "" means
 	// os.Executable. Tests set it to a built mindfries.
 	selfPath string
+	// monitoring is the running session's, for the watcher.
+	monitoring *api.Monitoring
 }
 
 // Default is the real process environment.
@@ -72,7 +74,8 @@ type command struct {
 }
 
 var commands = map[string]command{
-	"start":  {"Set up the workspace and run the session watcher", (*App).start},
+	"setup":  {"Set the assessment up: task, codebase, GitHub (the clock doesn't start)", (*App).setupCmd},
+	"start":  {"Begin: pick your editor, check this computer, turn on monitoring, start the clock", (*App).start},
 	"agent":  {"Open mindfries agent, the coding and research assistant", (*App).agent},
 	"status": {"Show the session, sync and Git state", (*App).status},
 	"submit": {"Review the diff and hand in", (*App).submit},
@@ -83,7 +86,7 @@ var commands = map[string]command{
 }
 
 // order is how help lists the commands.
-var order = []string{"start", "agent", "status", "submit", "stop", "doctor"}
+var order = []string{"setup", "start", "agent", "status", "submit", "stop", "doctor"}
 
 // ExitError carries a specific exit code.
 type ExitError struct {

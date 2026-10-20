@@ -16,6 +16,10 @@ func connect(t *testing.T, s *Server, c *api.Client, o SessionOptions) string {
 		t.Fatal(err)
 	}
 	c.Token = res.SessionToken
+	// Sessions start ready; the assistant works once the clock runs.
+	if _, err := c.Begin(context.Background(), api.BeginRequest{IDE: "manual"}); err != nil {
+		t.Fatal(err)
+	}
 	return res.Session.ID
 }
 

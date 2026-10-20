@@ -67,8 +67,9 @@ func TestIDEFlagAndManual(t *testing.T) {
 
 func TestNoEditorFound(t *testing.T) {
 	h := newHarness(t)
+	delete(h.machine.Programs, "zed")
 	exit, out := h.run("", "start", h.srv.MintSetupCode(fakeapi.SessionOptions{}), "--dir", wsDir(t), "--yes")
-	if exit != 0 || !strings.Contains(out, "No supported editor") || !strings.Contains(out, "Open this folder") {
+	if exit == 0 || !strings.Contains(out, "no supported editor is installed") || !strings.Contains(out, "code.visualstudio.com") {
 		t.Fatalf("no editor: %d\n%s", exit, out)
 	}
 }

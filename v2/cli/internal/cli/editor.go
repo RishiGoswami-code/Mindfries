@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 
@@ -8,10 +9,14 @@ import (
 	"github.com/mindfries/v2/cli/internal/state"
 )
 
-// openEditor opens the workspace in the candidate's editor. Not finding or
-// not launching one is never fatal: the folder can be opened by hand.
-// It returns the editor id used, or "manual".
-func (a *App) openEditor(l *state.Local, flagIDE string, yes bool) string {
+// errNoEditor stops start: the assessment is worked in a local editor.
+var errNoEditor = errors.New("no supported editor is installed (VS Code, a JetBrains IDE or Zed).\n" +
+	"Install one (VS Code: https://code.visualstudio.com), then run 'mindfries start' again. Your time hasn't started, and none of this counts against you")
+
+// chooseEditor asks which installed editor the assessment opens in (or
+// takes --ide). nil with no error means the candidate opens the folder
+// themselves (--ide manual).
+func (a *App) chooseEditor(l *state.Local, flagIDE string, yes bool) (*ide.Editor, error) {
 	s := a.sys()
 	all := ide.Detect(s)
 	supported := ide.Supported(all)
@@ -20,69 +25,72 @@ func (a *App) openEditor(l *state.Local, flagIDE string, yes bool) string {
 			fmt.Fprintf(a.Stdout, "%s is installed. It isn't offered for this assessment; please use one of the editors below.\n", e.Name)
 		}
 	}
-
 	want := flagIDE
 	if want == "" {
 		want = l.IDE
 	}
-	var chosen *ide.Editor
 	switch {
 	case want == string(ide.Manual):
+		return nil, nil
 	case want != "":
 		if e, ok := ide.ByID(supported, want); ok {
-			chosen = &e
-		} else if e, ok := ide.ByID(all, want); ok && e.AgentFirst {
+			return &e, nil
+		}
+		if e, ok := ide.ByID(all, want); ok && e.AgentFirst {
 			fmt.Fprintf(a.Stdout, "%s isn't offered for this assessment.\n", e.Name)
 		} else {
 			fmt.Fprintf(a.Stdout, "Couldn't find the editor %q on this computer.\n", want)
 		}
-		if chosen == nil && len(supported) > 0 {
-			chosen = a.pickEditor(supported, yes)
-		}
-	case len(supported) > 0:
-		chosen = a.pickEditor(supported, yes)
 	}
-
-	if chosen == nil {
-		manualOpen(a, l.Workspace, len(supported) == 0)
-		return string(ide.Manual)
+	if len(supported) == 0 {
+		return nil, errNoEditor
 	}
-	if err := ide.Launch(s, *chosen, l.Workspace); err != nil {
-		fmt.Fprintf(a.Stdout, "Couldn't start %s (%v).\n", chosen.Name, err)
-		manualOpen(a, l.Workspace, false)
-		return string(ide.Manual)
-	}
-	fmt.Fprintf(a.Stdout, "Opened the workspace in %s.\n", chosen.Name)
-	if chosen.Family == ide.VSCode {
-		fmt.Fprintln(a.Stdout, "It's a new VS Code window with TASK.md open; if you don't see it, it may be behind this terminal.")
-	}
-	return chosen.ID
+	return a.pickEditor(supported, yes), nil
 }
 
+// pickEditor lists the installed editors and asks for one.
 func (a *App) pickEditor(eds []ide.Editor, yes bool) *ide.Editor {
-	u := a.ui(yes)
-	if len(eds) == 1 {
-		if u.Confirm(fmt.Sprintf("Open the workspace in %s?", eds[0].Name), true) {
-			return &eds[0]
-		}
-		return nil
-	}
-	names := make([]string, 0, len(eds)+1)
+	names := make([]string, 0, len(eds))
 	for _, e := range eds {
 		names = append(names, e.Name)
 	}
-	names = append(names, "I'll open the folder myself")
-	i := u.Choose("Which editor should the workspace open in?", names, 0)
-	if i == len(eds) {
-		return nil
-	}
+	i := a.ui(yes).Choose("Which editor do you want to work in? (these are installed)", names, 0)
 	return &eds[i]
 }
 
-func manualOpen(a *App, dir string, noneFound bool) {
-	if noneFound {
-		fmt.Fprintln(a.Stdout, "No supported editor (VS Code, a JetBrains IDE or Zed) was found.")
+// launchEditor opens the workspace in e and returns the editor id used, or
+// "manual". A launch that fails isn't fatal: the folder can be opened by
+// hand.
+func (a *App) launchEditor(l *state.Local, e *ide.Editor) string {
+	if e == nil {
+		manualOpen(a, l.Workspace)
+		return string(ide.Manual)
 	}
+	if err := ide.Launch(a.sys(), *e, l.Workspace); err != nil {
+		fmt.Fprintf(a.Stdout, "Couldn't start %s (%v).\n", e.Name, err)
+		manualOpen(a, l.Workspace)
+		return string(ide.Manual)
+	}
+	fmt.Fprintf(a.Stdout, "Opened the workspace in %s.\n", e.Name)
+	if e.Family == ide.VSCode {
+		fmt.Fprintln(a.Stdout, "It's a new VS Code window with TASK.md open; if you don't see it, it may be behind this terminal.")
+	}
+	return e.ID
+}
+
+// openEditor reopens the editor when carrying on with a running session:
+// the one chosen before, without asking again.
+func (a *App) openEditor(l *state.Local, flagIDE string, yes bool) string {
+	e, err := a.chooseEditor(l, flagIDE, yes)
+	if err != nil {
+		fmt.Fprintln(a.Stdout, "No supported editor was found.")
+		manualOpen(a, l.Workspace)
+		return string(ide.Manual)
+	}
+	return a.launchEditor(l, e)
+}
+
+func manualOpen(a *App, dir string) {
 	fmt.Fprintf(a.Stdout, "Open this folder in your editor:\n  %s\n", dir)
 	if strings.ContainsAny(dir, " ") {
 		fmt.Fprintln(a.Stdout, "(The path has spaces; quote it if you open it from a terminal.)")

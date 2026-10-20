@@ -41,7 +41,7 @@ func newHarness(t *testing.T) *harness {
 	t.Cleanup(ts.Close)
 	h.url = ts.URL + fakeapi.Prefix
 	h.machine = &sys.Fake{
-		Programs: map[string]string{"git": "/usr/bin/git", "python3": "/usr/bin/python3"},
+		Programs: map[string]string{"git": "/usr/bin/git", "python3": "/usr/bin/python3", "zed": "/usr/bin/zed"},
 		Outputs:  map[string]string{"git --version": "git version 2.43.0", "python3 --version": "Python 3.12.1"},
 		Env:      map[string]string{"HOME": t.TempDir()},
 		Free:     10 << 30,

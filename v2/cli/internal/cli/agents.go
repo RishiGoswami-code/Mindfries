@@ -24,7 +24,9 @@ const policyNotice = `Before you start
     - AI extensions installed in your editor;
     - agent instruction files (like CLAUDE.md) in the workspace, and agent
       trailers in your commit messages.
-  It doesn't record keystrokes, your screen, or any file outside the workspace.
+  It doesn't record keystrokes or any file outside the workspace. If this
+  assessment needs your camera, screen or microphone, that happens only in a
+  Mindfries tab in your browser, and you're told exactly what before it starts.
   What it finds is shown to a person as something to look at, never as a verdict.
 `
 

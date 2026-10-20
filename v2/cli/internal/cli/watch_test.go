@@ -83,7 +83,9 @@ func TestAgentOpenAtStart(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			h := newHarness(t)
 			h.machine.SetProcs("aider")
-			app := h.app(tc.stdin+wsDir(t)+"\n", &bytes.Buffer{})
+			// The folder (setup) comes first now, then the agents question
+			// (start).
+			app := h.app(wsDir(t)+"\n"+tc.stdin, &bytes.Buffer{})
 			var out bytes.Buffer
 			app.Stdout, app.Stderr = &out, &out
 			if tc.closed {

@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 	"sync"
 	"time"
 
@@ -57,6 +58,9 @@ type Config struct {
 	Sys *sys.Sys
 	// VSCode is the VS Code launcher, for listing its extensions.
 	VSCode string
+	// Monitoring is what the assessment needs on in the browser panel; the
+	// watcher says when the heartbeat shows part of it has stopped.
+	Monitoring *api.Monitoring
 }
 
 // Watcher runs one session's watch.
@@ -73,6 +77,7 @@ type Watcher struct {
 	snapHash     string
 	lastLine     string
 	agents       *agentState
+	monMissing   string
 	claimed      map[string]bool
 
 	stopOnce sync.Once
@@ -465,6 +470,7 @@ func (w *Watcher) heartbeat(ctx context.Context) {
 		w.mu.Lock()
 		w.endsAt = reply.EndsAt
 		w.mu.Unlock()
+		w.checkMonitoring(reply.Monitoring)
 		if reply.Stop || reply.SessionStatus != api.StatusActive {
 			switch reply.SessionStatus {
 			case api.StatusExpired:
@@ -563,4 +569,24 @@ func Flush(c *api.Client, q *Queue, limits api.Limits, timeout time.Duration) in
 	}
 	w.flush()
 	return q.Depth()
+}
+
+// checkMonitoring says once when part of the required monitoring stops,
+// and once when it's all back. The gap itself is recorded by the server.
+func (w *Watcher) checkMonitoring(st *api.MonitoringStatus) {
+	if !w.cfg.Monitoring.Any() || st == nil {
+		return
+	}
+	missing := strings.Join(st.Missing(w.cfg.Monitoring), ", ")
+	w.mu.Lock()
+	prev := w.monMissing
+	w.monMissing = missing
+	w.mu.Unlock()
+	switch {
+	case missing == prev:
+	case missing != "":
+		w.say("Monitoring is off for: %s. Turn it back on in the Mindfries tab (%s); the gap is recorded.", missing, w.cfg.Monitoring.PanelURL)
+	default:
+		w.say("Monitoring is back on.")
+	}
 }

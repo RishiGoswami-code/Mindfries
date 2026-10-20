@@ -25,10 +25,15 @@ func (s *Server) handleHeartbeat(w http.ResponseWriter, r *http.Request, ss *ses
 		return
 	}
 	ss.ext.heartbeats = append(ss.ext.heartbeats, hb)
-	writeJSON(w, http.StatusOK, api.HeartbeatReply{
+	reply := api.HeartbeatReply{
 		ServerTime: s.now(), SessionStatus: ss.Status, EndsAt: ss.EndsAt,
 		Stop: ss.Status != api.StatusActive,
-	})
+	}
+	if ss.Monitoring.Any() {
+		st := s.monitoringLocked(ss)
+		reply.Monitoring = &st
+	}
+	writeJSON(w, http.StatusOK, reply)
 }
 
 func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request, ss *session) {

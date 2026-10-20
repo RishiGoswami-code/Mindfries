@@ -114,17 +114,49 @@ type syncBuf struct {
 func (b *syncBuf) Write(p []byte) (int, error) { b.mu.Lock(); defer b.mu.Unlock(); return b.b.Write(p) }
 func (b *syncBuf) String() string              { b.mu.Lock(); defer b.mu.Unlock(); return b.b.String() }
 
-// start launches `mindfries start` (it runs the watcher until the session
-// ends) and waits until the watcher is up.
-func (s *session) start() (wait func() string) {
+var setupCmdRe = regexp.MustCompile(`mindfries setup ([A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4})`)
+
+// startFromDashboard is the candidate pressing Start assessment: it
+// returns the setup code from the command the page shows.
+func (s *session) startFromDashboard(invitationID string) string {
 	s.t.Helper()
-	inv := s.srv.Invite(fakeapi.SessionOptions{
-		Title:     "E2E task",
-		Task:      task(),
-		Intervals: api.Intervals{HeartbeatSeconds: 1, SnapshotSeconds: 2, AgentScanSeconds: 2},
-	})
-	// No code: start signs in through the browser page.
-	c := s.cmd("start", "--dir", s.ws, "--ide", "manual", "--yes")
+	resp, err := http.PostForm(s.url+"/dashboard/start", url.Values{"invitation": {invitationID}})
+	if err != nil {
+		s.t.Fatal(err)
+	}
+	page, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	m := setupCmdRe.FindStringSubmatch(string(page))
+	if m == nil || !strings.Contains(string(page), "/s/"+m[1]+".ps1 | iex") {
+		s.t.Fatalf("the setup page shows no command:\n%s", page)
+	}
+	return m[1]
+}
+
+var panelRe = regexp.MustCompile(`http://\S+/monitor/[a-f0-9]+`)
+
+// start does the whole flow: Start assessment on the dashboard, the
+// setup command, then `mindfries start` (it runs the watcher until the
+// session ends), turning monitoring on in the panel when asked. It waits
+// until the watcher is up.
+func (s *session) start() (wait func() string) {
+	return s.startWith(fakeapi.SessionOptions{})
+}
+
+func (s *session) startWith(o fakeapi.SessionOptions) (wait func() string) {
+	s.t.Helper()
+	o.Title, o.Task = "E2E task", task()
+	o.Intervals = api.Intervals{HeartbeatSeconds: 1, SnapshotSeconds: 2, AgentScanSeconds: 2}
+	inv := s.srv.Invite(o)
+	code := s.startFromDashboard(inv)
+	setup := s.run("setup", code, "--dir", s.ws, "--yes")
+	if !strings.Contains(setup, "Ready:") || !strings.Contains(setup, "mindfries start") {
+		s.t.Fatalf("setup:\n%s", setup)
+	}
+	if st := s.run("status"); !strings.Contains(st, "set up, not started") {
+		s.t.Fatalf("status after setup:\n%s", st)
+	}
+	c := s.cmd("start", "--ide", "manual", "--yes")
 	var out syncBuf
 	c.Stdout, c.Stderr = &out, &out
 	if err := c.Start(); err != nil {
@@ -132,7 +164,19 @@ func (s *session) start() (wait func() string) {
 	}
 	done := make(chan error, 1)
 	go func() { done <- c.Wait() }()
-	s.confirmInBrowser(&out, inv)
+	if o.Monitoring.Any() {
+		// The browser panel: everything allowed.
+		var panel string
+		s.eventually("the monitoring panel link", &out, func() bool {
+			panel = panelRe.FindString(out.String())
+			return panel != ""
+		})
+		resp, err := http.Post(panel+"/status", "application/json", strings.NewReader(`{"camera":true,"screen":true,"audio":true}`))
+		if err != nil {
+			s.t.Fatal(err)
+		}
+		resp.Body.Close()
+	}
 	s.eventually("watcher running", &out, func() bool {
 		return strings.Contains(s.run("status"), "Watcher      running")
 	})
@@ -238,7 +282,7 @@ func TestStartWorkSubmit(t *testing.T) {
 		t.Fatalf("submit:\n%s", out)
 	}
 	startOut := wait()
-	if !strings.Contains(startOut, "Workspace ready") {
+	if !strings.Contains(startOut, "Started. Your time ends at") {
 		t.Errorf("start output:\n%s", startOut)
 	}
 

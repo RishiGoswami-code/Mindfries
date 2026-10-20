@@ -12,44 +12,47 @@ through [`../contracts/cli-api.yaml`](../contracts/cli-api.yaml), which
 
 ## The candidate's flow
 
-1. They install the CLI once, with a command the dashboard shows:
+1. On the dashboard they press **Start assessment**. It shows one command,
+   with a single-use code that lasts about 10 minutes:
    ```powershell
-   irm https://<v2-domain>/install.ps1 | iex
+   irm https://<v2-domain>/s/<code>.ps1 | iex
    ```
    ```sh
-   curl -fsSL https://<v2-domain>/install.sh | sh
+   curl -fsSL https://<v2-domain>/s/<code>.sh | sh
    ```
-   The installer checks the binary against the release checksum, refuses a
-   tampered one, puts `mindfries` in a per-user folder
-   (`%LOCALAPPDATA%\Mindfries\bin`, or `~/.local/bin`) and adds it to
-   their PATH without admin rights. It says when a new terminal is needed.
-2. In any terminal they type `mindfries start`. It shows the rules and what
-   it records, asks them to close any coding agent, and opens a Mindfries
-   sign-in page in the browser with a short code. They sign in, check the
-   page shows the same code, and pick the assessment they were invited to.
-   The CLI receives that session's token (kept in the OS keychain), downloads
-   and verifies the task, creates the workspace with a locked `TASK.md`,
-   opens their editor, and runs the session watcher until the session ends.
-   When the assessment uses GitHub, Connect takes them on to GitHub's
-   "Authorize Mindfries" page (one click, only the first time) and back,
-   and `start` creates a private repository in their account, invites the
-   hiring team, and pushes. They deploy from it (AWS, Supabase, Render, Actions) as the task
-   asks.
-3. They work in their editor (VS Code opens in a new window on
-   `TASK.md`), commit and `git push` as usual, with `mindfries agent` in
-   another terminal.
-4. `mindfries submit` runs the checks, shows the diff, commits and hands in.
-   `mindfries stop` ends the session without submitting.
+   It installs `mindfries` if needed (checked against the release
+   checksum, into a per-user folder on their PATH, no admin rights) and runs
+   `mindfries setup <code>`.
+2. **Setup** downloads and verifies the task and its codebase, creates the
+   workspace with a locked `TASK.md`, and connects their GitHub: one click
+   on GitHub's "Authorize Mindfries" page (the first time only), then a
+   private repository in their account gets the codebase, with the hiring
+   team invited. Their time hasn't started.
+3. **`mindfries start`**, when they're ready:
+   - it shows the rules and asks them to close any coding agent;
+   - they pick the editor to work in, from the ones installed;
+   - it checks the computer (Git, disk, the task's runtimes, the server);
+     if anything fails, nothing starts and no time is used;
+   - it opens the monitoring panel in the browser and waits until the
+     camera, screen and microphone the assessment needs are on;
+   - then the clock starts, the editor opens in the workspace, and the
+     session watcher runs until the session ends.
+4. They work in their editor, commit and `git push` as usual, with
+   `mindfries agent` in another terminal.
+5. `mindfries submit` runs the checks, shows the diff, commits, pushes and
+   hands in. `mindfries stop` ends the session without submitting.
 
 Nothing to configure: the API address is baked into each build
-(`buildinfo.DefaultAPI`, set by the release workflow). A dashboard command
-with a single-use setup code, `mindfries start <code>`, also still works.
+(`buildinfo.DefaultAPI`, set by the release workflow). Without the
+dashboard's code, `mindfries setup` signs in through the browser instead,
+and `mindfries start <code>` does setup and start in one go.
 
 ## Commands
 
 | Command | What it does |
 |---|---|
-| `mindfries start` | Signs in through the browser, sets up the workspace and runs the session watcher. Run it again to carry on after a restart, or to reopen the editor. `--no-browser` prints the sign-in address instead. |
+| `mindfries setup [code]` | Sets the assessment up: task, codebase, workspace, GitHub. The clock doesn't start. Without a code it signs in through the browser. |
+| `mindfries start` | Picks the editor, checks the computer, turns on monitoring, then starts the clock, opens the editor and runs the session watcher. Run it again to carry on after a restart, or to reopen the editor. `--no-browser` prints addresses instead of opening them. |
 | `mindfries agent` | The coding and research assistant, in a rich terminal interface (plain line mode when piped, or with `MINDFRIES_PLAIN=1`) |
 | `mindfries status` | The session, watcher, sync and Git state, or the last submission |
 | `mindfries submit` | Runs the task's checks, shows the diff, commits, pushes to the candidate's GitHub if the session uses it, takes the deployed URL (`--url`) when the task asks, and hands in |

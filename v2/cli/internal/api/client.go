@@ -176,6 +176,18 @@ func (c *Client) PollSignIn(ctx context.Context, deviceCode string) (*ExchangeRe
 	return &out, c.doJSON(ctx, http.MethodPost, "/sessions/device/token", DeviceTokenRequest{DeviceCode: deviceCode}, &out)
 }
 
+// Begin starts the clock (POST /session/begin) and returns the session.
+func (c *Client) Begin(ctx context.Context, in BeginRequest) (*Session, error) {
+	var out Session
+	return &out, c.doJSON(ctx, http.MethodPost, "/session/begin", in, &out)
+}
+
+// MonitoringStatus is what the browser panel reports as live.
+func (c *Client) MonitoringStatus(ctx context.Context) (*MonitoringStatus, error) {
+	var out MonitoringStatus
+	return &out, c.doJSON(ctx, http.MethodGet, "/session/monitoring", nil, &out)
+}
+
 // GitHubToken collects the candidate's GitHub token, once it's authorised.
 func (c *Client) GitHubToken(ctx context.Context) (*GitHubToken, error) {
 	var out GitHubToken

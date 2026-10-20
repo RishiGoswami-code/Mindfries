@@ -86,6 +86,15 @@ deleted when the session ends.
 
 ## Try it as a candidate would
 
+The quickest way: open `https://mindfries-cli.onrender.com/dashboard`,
+press **Start assessment** on a demo, and run the command it shows. Setup
+downloads the task, connects GitHub (if configured) and pushes; then run
+`mindfries start`: pick your editor, let it check the computer, allow the
+camera, microphone and screen share in the panel it opens, and the
+assessment begins in your editor. The dashboard page follows along.
+
+Or, step by step:
+
 Install once. Windows PowerShell:
 
 ```powershell

@@ -159,7 +159,7 @@ func slug(s string) string {
 
 func (s *Server) handleGitHubRepo(w http.ResponseWriter, r *http.Request, ss *session) {
 	var in api.GitHubRepo
-	if !decode(w, r, &in) || !requireActive(w, ss) {
+	if !decode(w, r, &in) || !requireSetUp(w, ss) {
 		return
 	}
 	if in.FullName == "" || in.HTMLURL == "" {

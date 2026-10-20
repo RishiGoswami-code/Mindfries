@@ -131,7 +131,7 @@ func TestInstallsVerifiesAndStarts(t *testing.T) {
 			base := release(t, false)
 			dir := t.TempDir()
 			out, err := run(t, inst, base, dir, "K7QM-2XRP-9WDA", newBox(t))
-			if err != nil || !strings.Contains(out, "Installed") || !strings.Contains(out, "fakebin start K7QM-2XRP-9WDA") {
+			if err != nil || !strings.Contains(out, "Installed") || !strings.Contains(out, "fakebin setup K7QM-2XRP-9WDA") {
 				t.Fatalf("install: %v\n%s", err, out)
 			}
 			out, err = run(t, inst, base, dir, "K7QM-2XRP-9WDA", newBox(t))

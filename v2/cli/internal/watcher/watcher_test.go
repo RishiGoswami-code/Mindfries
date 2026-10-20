@@ -54,6 +54,10 @@ func newEnv(t *testing.T, o fakeapi.SessionOptions) *env {
 		t.Fatal(err)
 	}
 	e.client.Token = res.SessionToken
+	// Sessions start ready; the watcher runs once the clock has started.
+	if _, err := e.client.Begin(ctx, api.BeginRequest{IDE: "manual"}); err != nil {
+		t.Fatal(err)
+	}
 
 	r := &gitx.Repo{Dir: e.ws}
 	os.WriteFile(filepath.Join(e.ws, "TASK.md"), []byte(taskMD), 0o644)
