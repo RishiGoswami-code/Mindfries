@@ -388,3 +388,32 @@ func manifestVerifies(raw []byte) bool {
 	}
 	return ed25519.Verify(bundle.DevKey().Public().(ed25519.PublicKey), msg, sig)
 }
+
+// Resolve-at-invite: minting a code must prove a product covers the role/JD,
+// so a coverage gap fails at assign time (422), not at the candidate's setup.
+func TestMintBlocksUncoveredRole(t *testing.T) {
+	t.Setenv("V2_ADMIN_TOKEN", "tok")
+	root := productsRoot(t)
+	// p3 covers quant/data_analyst/ml_researcher — not frontend.
+	reg := loadReg(t, root, "p3-quant-platform")
+	srv := httptest.NewServer(New(reg, root, taskgen.NewMemCache(), nil, 3, session.NewMem(), "", nil))
+	defer srv.Close()
+
+	mint := func(role string) int {
+		hr, _ := http.NewRequest("POST", srv.URL+"/v2/admin/setup-codes", bytes.NewBufferString(`{"role":"`+role+`","jd":"any jd"}`))
+		hr.Header.Set("X-Admin-Token", "tok")
+		res, err := http.DefaultClient.Do(hr)
+		if err != nil {
+			t.Fatal(err)
+		}
+		res.Body.Close()
+		return res.StatusCode
+	}
+
+	if got := mint("frontend"); got != http.StatusUnprocessableEntity {
+		t.Fatalf("uncovered role: mint = %d, want 422", got)
+	}
+	if got := mint("quant"); got != http.StatusCreated {
+		t.Fatalf("covered role: mint = %d, want 201", got)
+	}
+}

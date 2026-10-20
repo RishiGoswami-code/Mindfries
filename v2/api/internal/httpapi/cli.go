@@ -77,6 +77,17 @@ func (s *Server) adminMintCode(w http.ResponseWriter, r *http.Request) {
 	if req.DurationMinutes == 0 {
 		req.DurationMinutes = 90
 	}
+
+	// Resolve-at-invite: prove we can serve this role/JD before minting a code.
+	// If no product covers it, the admin learns here, at assign time — a code is
+	// never issued for an assessment the candidate couldn't start. (This also
+	// warms the task cache so the candidate's setup is a cache hit.)
+	rt, err := s.resolveFor(r, req.Role, req.JD)
+	if err != nil {
+		problem(w, http.StatusUnprocessableEntity, "no_coverage", err.Error())
+		return
+	}
+
 	c := session.SetupCode{
 		Code: req.Code, AssessmentTitle: req.AssessmentTitle, Role: req.Role, JD: req.JD,
 		DurationMinutes: req.DurationMinutes, ExpiresAt: time.Now().Add(time.Hour).UTC(),
@@ -85,7 +96,10 @@ func (s *Server) adminMintCode(w http.ResponseWriter, r *http.Request) {
 		problem(w, http.StatusInternalServerError, "internal", err.Error())
 		return
 	}
-	writeJSON(w, http.StatusCreated, map[string]any{"setup_code": c.Code, "expires_at": c.ExpiresAt})
+	writeJSON(w, http.StatusCreated, map[string]any{
+		"setup_code": c.Code, "expires_at": c.ExpiresAt,
+		"product_slug": rt.ProductSlug, "task_title": rt.Title, "task_kind": rt.Kind,
+	})
 }
 
 func (s *Server) cliVersion(w http.ResponseWriter, r *http.Request) {
