@@ -334,7 +334,8 @@ async function report() {
     const r = await fetch("/monitor/" + key + "/status", {method: "POST", headers: {"content-type": "application/json"}, body: JSON.stringify(st)});
     const j = await r.json();
     started = j.started;
-    const missing = Object.keys(need).filter(k => need[k] && !st[k]);
+    const label = {camera: "camera", audio: "microphone", screen: "screen"};
+    const missing = Object.keys(need).filter(k => need[k] && !st[k]).map(k => label[k]);
     document.getElementById("state").textContent = j.status === "active"
       ? (missing.length ? "The assessment is running. Turn back on: " + missing.join(", ") + "." : "The assessment is running. Keep this tab open until you submit.")
       : (j.status === "ready" ? (missing.length ? "Still needed: " + missing.join(", ") + "." : "All set. Go back to your terminal: mindfries starts the assessment.") : "This assessment is " + j.status + ". You can close this tab.");
