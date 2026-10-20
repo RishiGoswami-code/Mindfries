@@ -221,6 +221,7 @@ func (w *Watcher) Run(ctx context.Context) (string, error) {
 
 	// Last look at the workspace, then flush.
 	w.tick(context.Background())
+	w.drainInbox()
 	w.checkCommits(context.Background())
 	if reason != ReasonInterrupted {
 		w.emit("watcher.stopped", map[string]string{"reason": reason})
@@ -266,6 +267,7 @@ func (w *Watcher) tick(ctx context.Context) {
 		w.stop(r)
 	}
 	w.checkLocked()
+	w.drainInbox()
 	changes, err := w.scan.scan(ctx, now, true)
 	if err != nil {
 		return
