@@ -47,7 +47,7 @@ type taskFile struct {
 // LoadBank reads every tasks/<id>/task.json under a product directory and
 // returns the reference task bank. productSlug labels the tasks' product.
 func LoadBank(productDir, productSlug string) ([]BankTask, error) {
-	tasksDir := filepath.Join(productDir, "tasks")
+	tasksDir := filepath.Join(productDir, "_tasks")
 	entries, err := os.ReadDir(tasksDir)
 	if err != nil {
 		return nil, fmt.Errorf("taskgen: read tasks dir: %w", err)

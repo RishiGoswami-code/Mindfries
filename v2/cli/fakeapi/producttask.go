@@ -19,11 +19,11 @@ import (
 // (the real /session/bundle). This is a thin, owned mirror so the fakeapi
 // module stays self-contained — the V2 "copy a thin piece and own it" rule.
 func ProductTask(productDir, taskID, version, brief string) (*Task, error) {
-	files, err := readTree(productDir, map[string]bool{".git": true, "tasks": true})
+	files, err := readTree(productDir, map[string]bool{".git": true, "_tasks": true})
 	if err != nil {
 		return nil, fmt.Errorf("fakeapi: read product: %w", err)
 	}
-	overlayDir := filepath.Join(productDir, "tasks", taskID, "overlay")
+	overlayDir := filepath.Join(productDir, "_tasks", taskID, "overlay")
 	if _, err := os.Stat(overlayDir); err == nil {
 		overlay, err := readTree(overlayDir, nil)
 		if err != nil {
@@ -38,7 +38,7 @@ func ProductTask(productDir, taskID, version, brief string) (*Task, error) {
 	var tf struct {
 		Check []string `json:"check"`
 	}
-	if b, err := os.ReadFile(filepath.Join(productDir, "tasks", taskID, "task.json")); err == nil {
+	if b, err := os.ReadFile(filepath.Join(productDir, "_tasks", taskID, "task.json")); err == nil {
 		_ = json.Unmarshal(b, &tf)
 	}
 

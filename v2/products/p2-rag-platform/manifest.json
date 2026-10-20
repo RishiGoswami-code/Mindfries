@@ -1,0 +1,23 @@
+{
+  "tags": ["rag", "retrieval", "agent", "llm", "ai", "embeddings", "embedding", "vector", "chatbot", "knowledge", "eval", "evaluation", "chunking", "semantic"],
+  "roles": {
+    "ai_engineer": {
+      "subsystems": ["internal/rag/chunk.go", "internal/rag/embed.go", "internal/rag/store.go", "internal/rag/engine.go", "internal/rag/agent.go"],
+      "competencies": ["document chunking and embedding", "vector retrieval and ranking", "tool-calling agent orchestration", "relevance tuning"],
+      "modes": ["implementation", "debugging", "testing"],
+      "cannot_assess": ["training or hosting a real model (the embedder here is a deterministic stand-in)"]
+    },
+    "ml_researcher": {
+      "subsystems": ["internal/rag/eval.go"],
+      "competencies": ["evaluation design", "retrieval and answer metrics", "reproducible measurement", "leakage awareness"],
+      "modes": ["implementation", "research", "testing"],
+      "cannot_assess": ["large-scale training experiments or GPU workloads"]
+    },
+    "backend": {
+      "subsystems": ["internal/rag/engine.go", "internal/httpapi/"],
+      "competencies": ["ingestion pipeline", "service and API design", "JSON contract design"],
+      "modes": ["implementation", "testing", "delivery"],
+      "cannot_assess": ["real vector-database operations (the store is in-memory)"]
+    }
+  }
+}

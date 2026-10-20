@@ -1,0 +1,13 @@
+{
+  "id": "feature-recall-at-k",
+  "kind": "feature",
+  "role": "ml_researcher",
+  "title": "Add Recall@K to the evaluation harness",
+  "tags": ["eval", "evaluation", "metrics", "recall", "retrieval", "quality", "experiment"],
+  "check": ["go", "test", "./internal/rag/"],
+  "layers": {
+    "overlay": "a RecallAtK stub + TASK.md",
+    "acceptance": "hidden acceptance tests (never shipped to the candidate)",
+    "solution": "the reference implementation"
+  }
+}

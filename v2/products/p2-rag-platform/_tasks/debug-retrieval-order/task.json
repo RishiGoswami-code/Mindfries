@@ -1,0 +1,12 @@
+{
+  "id": "debug-retrieval-order",
+  "kind": "debug",
+  "role": "ai_engineer",
+  "title": "Retrieval returns the least relevant results first",
+  "tags": ["retrieval", "ranking", "search", "similarity", "vector", "relevance"],
+  "check": ["go", "test", "./internal/rag/"],
+  "layers": {
+    "overlay": "the product with the ranking bug applied",
+    "solution": "the reference fix"
+  }
+}

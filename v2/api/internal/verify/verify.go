@@ -44,7 +44,7 @@ func Run(spec Spec) (Result, error) {
 
 	// The product, minus its task scaffolding (candidates get the product plus
 	// one task's overlay, never the whole tasks/ tree).
-	if err := copyTree(spec.ProductDir, work, map[string]bool{".git": true, "tasks": true}); err != nil {
+	if err := copyTree(spec.ProductDir, work, map[string]bool{".git": true, "_tasks": true}); err != nil {
 		return Result{}, fmt.Errorf("verify: copy product: %w", err)
 	}
 	for _, ov := range spec.Overlays {

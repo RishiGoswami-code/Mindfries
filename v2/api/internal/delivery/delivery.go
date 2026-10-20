@@ -36,14 +36,14 @@ const assessmentBranch = "mindfries/assessment"
 // Assemble builds the workspace for one task of a product. taskID is the bank
 // task directory name; brief becomes TASK.md; taskVersion pins the session.
 func Assemble(productDir, taskID, brief, taskVersion string) (Workspace, error) {
-	files, err := readTree(productDir, map[string]bool{".git": true, "tasks": true})
+	files, err := readTree(productDir, map[string]bool{".git": true, "_tasks": true})
 	if err != nil {
 		return Workspace{}, fmt.Errorf("delivery: read product: %w", err)
 	}
 
 	// Apply the task's overlay (a feature stub, or a planted bug for a debug
 	// task) over the product. Never the acceptance/ or solution/ dirs.
-	overlayDir := filepath.Join(productDir, "tasks", taskID, "overlay")
+	overlayDir := filepath.Join(productDir, "_tasks", taskID, "overlay")
 	if _, err := os.Stat(overlayDir); err == nil {
 		overlay, err := readTree(overlayDir, nil)
 		if err != nil {
@@ -56,7 +56,7 @@ func Assemble(productDir, taskID, brief, taskVersion string) (Workspace, error) 
 
 	files["TASK.md"] = brief
 
-	check, err := readCheck(filepath.Join(productDir, "tasks", taskID, "task.json"))
+	check, err := readCheck(filepath.Join(productDir, "_tasks", taskID, "task.json"))
 	if err != nil {
 		return Workspace{}, err
 	}

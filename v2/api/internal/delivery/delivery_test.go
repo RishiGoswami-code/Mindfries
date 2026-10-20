@@ -82,8 +82,8 @@ func TestDeliveredWorkspaceIsSolvableAndChecked(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	acceptance := filepath.Join(product, "tasks", taskID, "acceptance")
-	solution := filepath.Join(product, "tasks", taskID, "solution")
+	acceptance := filepath.Join(product, "_tasks", taskID, "acceptance")
+	solution := filepath.Join(product, "_tasks", taskID, "solution")
 	check := ws.Check
 
 	// As delivered (stub) + hidden acceptance tests: must fail.
