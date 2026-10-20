@@ -25,6 +25,7 @@ check("architect opens on System Design", firstTab(tabsFor(["design", "review"])
 // Unknown modes add nothing; the three fixed tabs are always there.
 check("unknown modes", ids(["communication", "delivery"]) === "notes,resources,activity");
 check("case and spaces", ids([" Testing ", "ARCHITECTURE"]) === "design,notes,resources,test,activity");
+check("the manifests' system_design mode", ids(["system_design", "research"]) === "design,notes,resources,activity");
 check("no modes opens on Notes", firstTab(tabsFor([])) === "notes");
 
 if (failures) {

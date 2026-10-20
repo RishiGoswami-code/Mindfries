@@ -64,6 +64,7 @@ export function mockPanel(sessionId: string, now = new Date()): PanelConfig {
       { id: "r4", title: "Redis caching patterns", kind: "link", detail: "redis.io", href: "https://redis.io/docs/latest/develop/use/patterns/" },
     ],
     review: {
+      comments: [],
       title: "Review: the cache change (3f2a91c)",
       files: [
         {
@@ -85,6 +86,7 @@ export function mockPanel(sessionId: string, now = new Date()): PanelConfig {
       ],
     },
     debug: {
+      hypotheses: [],
       title: "Logs: tickets pile onto one agent",
       log: [
         "12:01:03 INFO  routing: assign ticket=T-1042 agent=ana load=3",

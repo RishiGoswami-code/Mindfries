@@ -24,6 +24,7 @@ const MODE_TAB: Record<string, PanelTabId> = {
   design: "design",
   architecture: "design",
   "system design": "design",
+  system_design: "design", // the manifests' own spelling
   review: "review",
   comprehension: "review",
   debugging: "debug",

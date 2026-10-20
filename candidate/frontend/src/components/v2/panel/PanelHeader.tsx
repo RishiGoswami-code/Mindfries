@@ -18,6 +18,9 @@ export function PanelHeader({
   unread,
   onFlags,
   onMinimise,
+  saveNote,
+  onPopOut,
+  poppedOut,
 }: {
   activeId: PanelTabId;
   activeLabel: string;
@@ -25,6 +28,11 @@ export function PanelHeader({
   unread: number;
   onFlags: () => void;
   onMinimise: () => void;
+  /** "Saving...", "All saved" and the like, when the panel is live. */
+  saveNote?: string;
+  /** Pops the panel out above other windows; absent where the browser can't. */
+  onPopOut?: () => void;
+  poppedOut?: boolean;
 }) {
   const ActiveIcon = TAB_ICONS[activeId];
   return (
@@ -38,6 +46,7 @@ export function PanelHeader({
         {activeLabel}
       </div>
       <div className="ml-auto flex items-center gap-2.5">
+        {saveNote && <span className="text-xs text-[#6B7393]" role="status">{saveNote}</span>}
         <Countdown endsAt={endsAt} />
         <button
           type="button"
@@ -52,7 +61,11 @@ export function PanelHeader({
         <IconButton label="Settings" disabled>
           <Settings className="h-5 w-5" aria-hidden />
         </IconButton>
-        <IconButton label="Pop out above other windows (coming next)" disabled>
+        <IconButton
+          label={poppedOut ? "Bring the panel back to this page" : onPopOut ? "Pop out above other windows" : "Your browser can't pop the panel out"}
+          onClick={onPopOut}
+          disabled={!onPopOut}
+        >
           <Maximize2 className="h-5 w-5" aria-hidden />
         </IconButton>
         <IconButton label="Minimise to the AI avatar" onClick={onMinimise}>

@@ -3,7 +3,7 @@
 import clsx from "clsx";
 import { AudioLines, Ellipsis, Mic, MicOff, Sparkles } from "lucide-react";
 import { Avatar2D } from "./Avatar2D";
-import { useMockAvatar } from "./useMockAvatar";
+import type { AvatarController } from "./avatar";
 
 const STATUS: Record<string, string> = {
   idle: "Muted",
@@ -16,8 +16,7 @@ const STATUS: Record<string, string> = {
  * The AI avatar card: the face, what it's doing, and the controls (mute,
  * talk, more). The same card is the whole panel when it's minimised.
  */
-export function AvatarCard({ name, className, compact }: { name: string; className?: string; compact?: boolean }) {
-  const av = useMockAvatar();
+export function AvatarCard({ name, controller: av, className, compact }: { name: string; controller: AvatarController; className?: string; compact?: boolean }) {
   return (
     <section className={clsx("flex flex-col rounded-2xl border border-[#E8EDF7] bg-white p-3", className)} aria-label="AI avatar">
       <div className="mb-2 flex items-center gap-2 px-1 text-sm font-medium text-[#2A3355]">
@@ -31,6 +30,11 @@ export function AvatarCard({ name, className, compact }: { name: string; classNa
           <AudioLines className={clsx("h-4 w-4", av.state !== "idle" && "animate-pulse")} aria-hidden />
           {STATUS[av.state]}
         </div>
+        {av.note && (
+          <p className="absolute inset-x-3 top-2 rounded-lg bg-white/90 px-2 py-1 text-center text-xs text-[#6B7393]" role="status">
+            {av.note}
+          </p>
+        )}
       </div>
       <div className={clsx("flex items-center justify-between px-3", compact ? "pt-2" : "pt-3")}>
         <button
@@ -45,7 +49,7 @@ export function AvatarCard({ name, className, compact }: { name: string; classNa
         <button
           type="button"
           onClick={av.talk}
-          disabled={av.muted}
+          disabled={av.muted || av.available === false}
           aria-label="Talk to the avatar"
           title="Talk to the avatar"
           className={clsx(

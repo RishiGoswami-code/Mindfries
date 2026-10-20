@@ -25,6 +25,8 @@ export interface ActivityItem {
   /** The spec's categories for flags (§16): observed, verified, review signal. */
   category?: "observed" | "verified" | "signal";
   text: string;
+  /** What the candidate said about it, in their own words (flags and notices). */
+  response?: string;
 }
 
 export interface Resource {
@@ -71,9 +73,24 @@ export interface ReviewFile {
   lines: { kind: " " | "+" | "-"; text: string; n: number }[];
 }
 
+/** A comment on a line of the code under review. */
+export interface ReviewComment {
+  file: string;
+  line: number;
+  text: string;
+}
+
+/** A debugging hypothesis the candidate is testing. */
+export interface Hypothesis {
+  text: string;
+  status: "open" | "confirmed" | "ruled_out";
+}
+
 export interface PanelConfig {
   sessionId: string;
   assessmentTitle: string;
+  /** ready (clock not started), active, or over. */
+  status?: string;
   role: string;
   product: string;
   endsAt: string; // ISO
@@ -83,8 +100,8 @@ export interface PanelConfig {
   diagram: Diagram;
   notes: string;
   resources: Resource[];
-  review: { title: string; files: ReviewFile[] };
-  debug: { title: string; log: string[] };
-  test: { title: string; failing: string[]; passing: string[] };
+  review: { title: string; files: ReviewFile[]; comments: ReviewComment[] };
+  debug: { title: string; log: string[]; hypotheses: Hypothesis[] };
+  test: { title: string; failing: string[]; passing: string[]; passed?: boolean };
   activity: ActivityItem[];
 }

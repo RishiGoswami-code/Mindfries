@@ -143,3 +143,17 @@ export type PanelToken = { token: string; expires_at: string; session_id: string
 
 export const panelToken = (sessionId: string, candidateId: string) =>
   call<PanelToken>("POST", `/v2/portal/sessions/${encodeURIComponent(sessionId)}/panel-token`, { candidate_id: candidateId });
+
+/** The panel's configuration, read on the server so the page arrives drawn. */
+export async function panelConfigFor(token: string): Promise<import("./panel/adapt").ApiConfig> {
+  const base = engineUrl();
+  if (!base) throw new V2Error("The workspace service isn't set up here yet.", 503, "not_configured");
+  let res: Response;
+  try {
+    res = await fetch(`${base}/v2/panel/config`, { headers: { Authorization: `Bearer ${token}` }, cache: "no-store" });
+  } catch {
+    throw new V2Error("Couldn't reach the workspace service. Try again in a moment.", 502, "unreachable");
+  }
+  if (!res.ok) throw new V2Error(`The workspace service answered ${res.status}.`, res.status);
+  return (await res.json()) as import("./panel/adapt").ApiConfig;
+}

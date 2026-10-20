@@ -3,16 +3,26 @@
 import { Fragment, useState } from "react";
 import clsx from "clsx";
 import { GitPullRequest, MessageSquarePlus } from "lucide-react";
-import type { PanelConfig } from "@/lib/v2/panel/types";
+import type { PanelConfig, ReviewComment } from "@/lib/v2/panel/types";
 import { TabHeader } from "./NotesTab";
 
 /**
  * Code Review: a diff to read, with comments on any line (SPEC §10 E). The
  * comments are the evidence; step 6 saves them.
  */
-export function ReviewTab({ review }: { review: PanelConfig["review"] }) {
-  const [comments, setComments] = useState<Record<string, string>>({});
+export function ReviewTab({ review, onComments }: { review: PanelConfig["review"]; onComments?: (c: ReviewComment[]) => void }) {
+  // A comment is kept by its file and its place in the diff as shown (1, 2, 3...),
+  // which is unambiguous where the file's own line numbers repeat across - and + lines.
+  const [local, setLocal] = useState<ReviewComment[]>(review.comments);
+  const comments = onComments ? review.comments : local;
+  const byKey = new Map(comments.map((c) => [`${c.file}:${c.line}`, c.text]));
   const [open, setOpen] = useState<string | null>(null);
+  const setComment = (file: string, line: number, text: string) => {
+    const rest = comments.filter((c) => !(c.file === file && c.line === line));
+    const next = text.trim() ? [...rest, { file, line, text }] : rest;
+    if (onComments) onComments(next);
+    else setLocal(next);
+  };
   return (
     <div className="flex h-full flex-col">
       <TabHeader icon={<GitPullRequest className="h-4 w-4" />} title={review.title} hint="Click a line to comment." />
@@ -23,7 +33,7 @@ export function ReviewTab({ review }: { review: PanelConfig["review"] }) {
             <table className="w-full border-collapse font-mono text-[13px]">
               <tbody>
                 {f.lines.map((l, i) => {
-                  const key = `${f.path}:${i}`;
+                  const key = `${f.path}:${i + 1}`;
                   return (
                     <Fragment key={key}>
                       <tr
@@ -41,13 +51,13 @@ export function ReviewTab({ review }: { review: PanelConfig["review"] }) {
                           <MessageSquarePlus className="h-4 w-4" aria-hidden />
                         </td>
                       </tr>
-                      {(open === key || comments[key]) && (
+                      {(open === key || byKey.get(key)) && (
                         <tr>
                           <td colSpan={4} className="bg-[#F7F9FD] px-4 py-2">
                             <textarea
                               autoFocus={open === key}
-                              value={comments[key] ?? ""}
-                              onChange={(e) => setComments({ ...comments, [key]: e.target.value })}
+                              value={byKey.get(key) ?? ""}
+                              onChange={(e) => setComment(f.path, i + 1, e.target.value)}
                               rows={2}
                               placeholder="What would you change here, and why?"
                               className="w-full resize-none rounded-lg border border-[#DCE3F1] bg-white px-3 py-2 font-sans text-sm outline-none focus:border-[#2F5BD3]"
@@ -63,7 +73,7 @@ export function ReviewTab({ review }: { review: PanelConfig["review"] }) {
             </table>
           </div>
         ))}
-        <p className="mt-3 text-xs text-[#8A91AB]">{Object.values(comments).filter((c) => c.trim()).length} comments</p>
+        <p className="mt-3 text-xs text-[#8A91AB]">{comments.filter((c) => c.text.trim()).length} comments</p>
       </div>
     </div>
   );

@@ -3,6 +3,7 @@
 import { Flag, Maximize2 } from "lucide-react";
 import type { PanelConfig } from "@/lib/v2/panel/types";
 import { AvatarCard } from "./AvatarCard";
+import type { AvatarController } from "./avatar";
 import { Countdown } from "./Countdown";
 import { MindfriesMark } from "./MindfriesMark";
 
@@ -13,11 +14,13 @@ import { MindfriesMark } from "./MindfriesMark";
  */
 export function MinimisedCard({
   config,
+  avatar,
   unread,
   onExpand,
   onOpenActivity,
 }: {
   config: PanelConfig;
+  avatar: AvatarController;
   unread: number;
   onExpand: () => void;
   onOpenActivity: () => void;
@@ -58,7 +61,7 @@ export function MinimisedCard({
           <Maximize2 className="h-4 w-4" />
         </button>
       </div>
-      <AvatarCard name={config.avatar.name} compact className="m-2 mt-1 flex-1 border-0 p-1" />
+      <AvatarCard name={config.avatar.name} controller={avatar} compact className="m-2 mt-1 flex-1 border-0 p-1" />
     </div>
   );
 }
