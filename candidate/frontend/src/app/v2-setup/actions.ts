@@ -1,46 +1,69 @@
 "use server";
 
-import { currentCandidate } from "@/lib/auth/users";
-import { db } from "@/lib/supabase";
-import { mintV2SetupCode, v2EngineUrl } from "@/lib/v2";
+import {
+  getConsent,
+  getNotice,
+  mintSetupCode,
+  saveConsent,
+  V2Error,
+  type Notice,
+  type SetupCommand,
+} from "@/lib/v2/api";
+
+import { ownedAssessment, type Failure } from "@/lib/v2/owned";
+
+const message = (e: unknown) => (e instanceof V2Error ? e.message : "Something went wrong. Please try again.");
+
+/** What this assessment collects, and whether the candidate has already accepted it. */
+export async function loadNotice(assessmentId: string): Promise<{ ok: true; notice: Notice; accepted: boolean } | Failure> {
+  try {
+    const owned = await ownedAssessment(assessmentId);
+    if (!owned.ok) return owned;
+    const [notice, consent] = await Promise.all([getNotice(assessmentId), getConsent(owned.a.candidateId, assessmentId)]);
+    return { ok: true, notice, accepted: consent.accepted };
+  } catch (e) {
+    return { ok: false, error: message(e) };
+  }
+}
+
+/** The candidate read what is collected and accepted all of it. */
+export async function acceptNotice(assessmentId: string, version: string): Promise<{ ok: true } | Failure> {
+  try {
+    const owned = await ownedAssessment(assessmentId);
+    if (!owned.ok) return owned;
+    // What they accept is exactly what the notice lists as collected, taken
+    // from the service again here, so a page can't claim less.
+    const notice = await getNotice(assessmentId);
+    if (notice.version !== version) return { ok: false, error: "The notice changed while you were reading it. Please read it again." };
+    await saveConsent(owned.a.candidateId, assessmentId, notice.version, notice.items.filter((i) => i.collected).map((i) => i.id));
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: message(e) };
+  }
+}
 
 /**
- * Called when a candidate clicks "Generate setup code" for a V2 assessment.
- * It mints a one-time code from the engine for THIS candidate's assessment —
- * the ownership check (candidate_email must match the signed-in candidate) is
- * what keeps a code from being minted for someone else's assessment. The code
- * is single-use and short-lived; the candidate then runs `mindfries setup
- * <code>` and `mindfries start`.
+ * The Start assessment button. It makes a one-time command for THIS
+ * candidate's assessment, tied to them and to the assessment so the session
+ * the CLI gets is theirs, and running it again resumes the same session.
  */
-export async function startV2Session(
-  assessmentId: string,
-): Promise<{ ok: true; setupCode: string; engineUrl: string } | { ok: false; error: string }> {
+export async function startV2Session(assessmentId: string): Promise<{ ok: true; command: SetupCommand } | Failure> {
   try {
-    const candidate = await currentCandidate();
-    if (!candidate) return { ok: false, error: "Please sign in again." };
-
-    const engineUrl = v2EngineUrl();
-    if (!engineUrl) return { ok: false, error: "The workspace service isn't available right now. Please try again shortly." };
-
-    const c = db();
-    if (!c) return { ok: false, error: "Can't reach your assessment right now." };
-
-    const { data, error } = await c
-      .from("assessments")
-      .select("role, jd, engine, candidate_email")
-      .eq("id", assessmentId)
-      .maybeSingle();
-    if (error || !data) return { ok: false, error: "This assessment couldn't be found." };
-    if ((data.candidate_email as string)?.trim().toLowerCase() !== candidate.email.trim().toLowerCase()) {
-      return { ok: false, error: "This assessment isn't yours." };
-    }
-    if (data.engine !== "v2") return { ok: false, error: "This assessment doesn't use the local workspace." };
-
-    const minted = await mintV2SetupCode({ role: data.role as string, jd: (data.jd as string) || "", assessmentId });
-    if (!minted) return { ok: false, error: "Couldn't create a setup code. Please try again." };
-
-    return { ok: true, setupCode: minted.code, engineUrl };
+    const owned = await ownedAssessment(assessmentId);
+    if (!owned.ok) return owned;
+    const consent = await getConsent(owned.a.candidateId, assessmentId);
+    if (!consent.accepted) return { ok: false, error: "Please read and accept what is collected first." };
+    const a = owned.a;
+    const command = await mintSetupCode({
+      candidateId: a.candidateId,
+      companyId: a.companyId,
+      assessmentId,
+      role: a.role,
+      jd: a.jd,
+      title: a.title,
+    });
+    return { ok: true, command };
   } catch (e) {
-    return { ok: false, error: e instanceof Error ? e.message : "Something went wrong. Please try again." };
+    return { ok: false, error: message(e) };
   }
 }
