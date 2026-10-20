@@ -20,6 +20,7 @@ const (
 func (s *Server) registerPanelData(mux *http.ServeMux) {
 	mux.HandleFunc("GET /v2/panel/feed", s.panelAuth(s.panelFeed))
 	mux.HandleFunc("GET /v2/panel/activity", s.panelAuth(s.panelActivity))
+	s.registerPanelConfig(mux)
 }
 
 // lastID reads where a feed should resume: Last-Event-ID (what a browser's

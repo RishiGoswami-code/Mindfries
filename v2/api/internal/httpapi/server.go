@@ -49,6 +49,7 @@ type Options struct {
 	GitHub   GitHubStore
 	Monitor  MonitorStore
 	Activity ActivityStore
+	Panel    PanelStore
 	Blobs    blob.Store
 	Hub      *activity.Hub
 	Log      *slog.Logger
@@ -70,6 +71,7 @@ type Server struct {
 	github       GitHubStore
 	monitor      MonitorStore
 	acts         ActivityStore
+	panelStore   PanelStore
 	blobs        blob.Store
 	hub          *activity.Hub
 	signKeyID    string
@@ -97,7 +99,7 @@ func New(reg Registry, productsRoot string, cache taskgen.Cache, provider taskge
 // middleware (request IDs, panic recovery, access log).
 func NewServer(o Options) http.Handler {
 	s := &Server{cfg: o.Config, reg: o.Registry, productsRoot: o.Config.ProductsRoot, cache: o.Cache, provider: o.Provider,
-		poolSize: o.Config.PoolSize, sessions: o.Sessions, devices: o.Devices, configs: o.Configs, github: o.GitHub, monitor: o.Monitor, acts: o.Activity, blobs: o.Blobs, hub: o.Hub,
+		poolSize: o.Config.PoolSize, sessions: o.Sessions, devices: o.Devices, configs: o.Configs, github: o.GitHub, monitor: o.Monitor, acts: o.Activity, panelStore: o.Panel, blobs: o.Blobs, hub: o.Hub,
 		signKeyID: o.Config.SigningKeyID, signKey: o.Config.SigningKey, log: o.Log, now: o.Now,
 		banks: map[string][]taskgen.BankTask{}}
 	if s.log == nil {

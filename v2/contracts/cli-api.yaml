@@ -1481,6 +1481,7 @@ components:
         - $ref: "#/components/schemas/EvAgentLeftover"
         - $ref: "#/components/schemas/EvWatcherGap"
         - $ref: "#/components/schemas/EvWatcherStopped"
+        - $ref: "#/components/schemas/EvCheckRun"
       discriminator:
         propertyName: type
         mapping:
@@ -1497,6 +1498,7 @@ components:
           agent_signal.leftover: "#/components/schemas/EvAgentLeftover"
           watcher.gap: "#/components/schemas/EvWatcherGap"
           watcher.stopped: "#/components/schemas/EvWatcherStopped"
+          check.run: "#/components/schemas/EvCheckRun"
 
     EvPreflight:
       type: object
@@ -1778,6 +1780,42 @@ components:
             reason:
               type: string
               enum: [stop, submitted, expired, revoked]
+
+    EvCheckRun:
+      type: object
+      description: |
+        The candidate ran the task's checks (`mindfries check`, or the checks
+        the watcher saw them run). Shown in the panel's Testing tab and kept
+        as evidence. Test names and a short tail of the output only.
+      required: [type, data]
+      properties:
+        type:
+          const: check.run
+        data:
+          type: object
+          required: [command, passed]
+          properties:
+            command:
+              type: string
+              examples: ["go test ./internal/support/"]
+            passed:
+              type: boolean
+            failing:
+              type: array
+              description: Names of the tests that failed, when the runner reports them.
+              items:
+                type: string
+            passing:
+              type: array
+              items:
+                type: string
+            output_tail:
+              type: string
+              maxLength: 4096
+              description: The last lines of the output.
+            duration_ms:
+              type: integer
+              minimum: 0
 
     Snapshot:
       type: object

@@ -37,6 +37,8 @@ var titles = map[string]string{
 	"forbidden":             "Not allowed",
 	"not_configured":        "That isn't set up on this server",
 	"unauthorized":          "Sign-in required",
+	"conflict":              "That changed somewhere else",
+	"no_coverage":           "No product covers that role and job description",
 }
 
 // problem writes the contract's problem JSON (RFC 9457 plus a stable `code`).

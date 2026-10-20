@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"context"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
@@ -14,6 +15,7 @@ import (
 	"github.com/mindfries/v2/api/internal/bundle"
 	"github.com/mindfries/v2/api/internal/delivery"
 	"github.com/mindfries/v2/api/internal/session"
+	"github.com/mindfries/v2/api/internal/store"
 )
 
 // The CLI contract is mounted under this prefix (matches v2/cli fakeapi.Prefix).
@@ -88,6 +90,9 @@ func (s *Server) cliEvents(w http.ResponseWriter, r *http.Request) {
 	// What the events mean for the panel's tracker. An event sent twice makes
 	// one line (the item's dedupe key is the event's seq).
 	for _, e := range batch.Events {
+		if e.Type == "check.run" {
+			s.keepCheckRun(r.Context(), sess.ID, e)
+		}
 		for _, it := range activity.FromEvent(activity.Event{Seq: e.Seq, At: e.OccurredAt, Type: e.Type, Data: e.Data}) {
 			s.track(r.Context(), sess.ID, it)
 		}
@@ -243,4 +248,29 @@ func randHex(n int) string {
 	b := make([]byte, n)
 	_, _ = rand.Read(b)
 	return hex.EncodeToString(b)
+}
+
+// keepCheckRun stores a check.run event for the panel's Testing tab.
+func (s *Server) keepCheckRun(ctx context.Context, sessionID string, e session.Event) {
+	if s.panelStore == nil {
+		return
+	}
+	var d struct {
+		Command    string   `json:"command"`
+		Passed     bool     `json:"passed"`
+		Failing    []string `json:"failing"`
+		Passing    []string `json:"passing"`
+		OutputTail string   `json:"output_tail"`
+	}
+	if json.Unmarshal(e.Data, &d) != nil || d.Command == "" {
+		return
+	}
+	if len(d.OutputTail) > 4096 {
+		d.OutputTail = d.OutputTail[len(d.OutputTail)-4096:]
+	}
+	seq := e.Seq
+	if _, err := s.panelStore.SaveCheckRun(ctx, store.CheckRun{SessionID: sessionID, EventSeq: &seq, RanAt: e.OccurredAt,
+		Command: d.Command, Passed: d.Passed, Failing: d.Failing, Passing: d.Passing, OutputTail: d.OutputTail}); err != nil {
+		s.log.Error("check run: store failed", "session", sessionID, "err", err)
+	}
 }

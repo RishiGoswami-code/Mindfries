@@ -189,6 +189,25 @@ func FromEvent(e Event) []Item {
 		}
 		return mk(Notice, Signal, "agent.leftover", "Coding-agent instruction files are in the workspace: "+strings.Join(d.Paths, ", ")+".")
 
+	case "check.run":
+		var d struct {
+			Command string   `json:"command"`
+			Passed  bool     `json:"passed"`
+			Failing []string `json:"failing"`
+			Passing []string `json:"passing"`
+		}
+		if json.Unmarshal(e.Data, &d) != nil {
+			return nil
+		}
+		text := "Checks passed: " + d.Command + "."
+		if !d.Passed {
+			text = "Checks ran: " + d.Command + "."
+			if len(d.Failing) > 0 {
+				text = fmt.Sprintf("Checks: %d passed, %d failed (%s).", len(d.Passing), len(d.Failing), d.Command)
+			}
+		}
+		return mk(Info, Verified, "check.run", text)
+
 	case "watcher.gap":
 		var d struct {
 			From   time.Time `json:"from"`

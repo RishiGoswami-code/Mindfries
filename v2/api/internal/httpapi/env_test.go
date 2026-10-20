@@ -65,7 +65,7 @@ func newEnv(t *testing.T, mod func(*config.Config)) *env {
 	reg := loadReg(t, root, "p1-support-saas", "p2-rag-platform", "p3-quant-platform")
 	h := NewServer(Options{
 		Config: e.cfg, Registry: reg, Cache: taskgen.NewMemCache(),
-		Sessions: db, Devices: db, Configs: db, GitHub: db, Monitor: db, Activity: db, Blobs: e.blobs, Hub: e.hub,
+		Sessions: db, Devices: db, Configs: db, GitHub: db, Monitor: db, Activity: db, Panel: db, Blobs: e.blobs, Hub: e.hub,
 		Log: slog.New(slog.NewTextHandler(io.Discard, nil)),
 		Now: e.clock,
 	})
