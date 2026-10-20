@@ -215,3 +215,38 @@ func (d *DB) AvatarTranscript(ctx context.Context, sessionID string) ([]assistan
 	}
 	return out, rows.Err()
 }
+
+// TranscriptRow is one stored line of any assistant conversation in a session.
+type TranscriptRow struct {
+	TurnID         string          `json:"turn_id"`
+	ConversationID string          `json:"conversation_id"`
+	Channel        string          `json:"channel"` // agent | avatar
+	Kind           string          `json:"kind"`
+	Tool           string          `json:"tool,omitempty"`
+	Body           json.RawMessage `json:"body"`
+	At             time.Time       `json:"at"`
+}
+
+// SessionTranscript is everything the terminal assistant and the avatar said
+// and did in a session, oldest first: the evidence a reviewer reads.
+func (d *DB) SessionTranscript(ctx context.Context, sessionID string) ([]TranscriptRow, error) {
+	rows, err := d.pool.Query(ctx,
+		`select t.id, t.conversation_id, t.channel, s.kind, coalesce(s.tool, ''), s.body, s.at
+		   from v2.assistant_steps s join v2.assistant_turns t on t.id = s.turn_id
+		  where t.session_id = $1 order by s.at, t.id, s.step`, sessionID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []TranscriptRow{}
+	for rows.Next() {
+		var r TranscriptRow
+		var body []byte
+		if err := rows.Scan(&r.TurnID, &r.ConversationID, &r.Channel, &r.Kind, &r.Tool, &body, &r.At); err != nil {
+			return nil, err
+		}
+		r.Body = json.RawMessage(body)
+		out = append(out, r)
+	}
+	return out, rows.Err()
+}

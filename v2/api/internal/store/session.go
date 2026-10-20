@@ -244,3 +244,73 @@ func (d *DB) MarkAssessmentSubmitted(ctx context.Context, assessmentID string) e
 	_, err := d.pool.Exec(ctx, `update public.assessments set status = 'submitted' where id = $1`, assessmentID)
 	return err
 }
+
+// SessionsForAssessment lists every session made for a V1 assessment, newest first.
+func (d *DB) SessionsForAssessment(ctx context.Context, assessmentID string) ([]session.Session, error) {
+	rows, err := d.pool.Query(ctx, `select `+sessionCols+` from v2.sessions where assessment_id = $1 order by created_at desc`, assessmentID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []session.Session{}
+	for rows.Next() {
+		s, err := scanSession(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, s)
+	}
+	return out, rows.Err()
+}
+
+// ExtendSession moves an active session's end later (the company gave more time).
+func (d *DB) ExtendSession(ctx context.Context, id string, endsAt time.Time) error {
+	ct, err := d.pool.Exec(ctx, `update v2.sessions set ends_at = $2 where id = $1 and status in ('ready', 'active')`, id, endsAt)
+	if err == nil && ct.RowsAffected() == 0 {
+		return session.ErrNotFound
+	}
+	return err
+}
+
+// FlagReview is what a reviewer did about a tracker item.
+type FlagReview struct {
+	ActivityID int64     `json:"activity_id"`
+	Decision   string    `json:"decision"` // noted | explained | dismissed | escalated
+	Note       string    `json:"note"`
+	Reviewer   string    `json:"reviewer"`
+	ReviewedAt time.Time `json:"reviewed_at"`
+}
+
+// ReviewFlag records (or replaces) a reviewer's decision on one item, which
+// must belong to the session.
+func (d *DB) ReviewFlag(ctx context.Context, sessionID string, r FlagReview) error {
+	ct, err := d.pool.Exec(ctx,
+		`insert into v2.flag_reviews (activity_id, decision, note, reviewer, reviewed_at)
+		 select id, $3, $4, $5, $6 from v2.activity where id = $1 and session_id = $2
+		 on conflict (activity_id) do update set decision = excluded.decision, note = excluded.note,
+		   reviewer = excluded.reviewer, reviewed_at = excluded.reviewed_at`,
+		r.ActivityID, sessionID, r.Decision, r.Note, r.Reviewer, r.ReviewedAt)
+	if err == nil && ct.RowsAffected() == 0 {
+		return session.ErrNotFound
+	}
+	return err
+}
+
+func (d *DB) FlagReviews(ctx context.Context, sessionID string) ([]FlagReview, error) {
+	rows, err := d.pool.Query(ctx,
+		`select f.activity_id, f.decision, f.note, f.reviewer, f.reviewed_at from v2.flag_reviews f
+		   join v2.activity a on a.id = f.activity_id where a.session_id = $1 order by f.activity_id`, sessionID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []FlagReview{}
+	for rows.Next() {
+		var f FlagReview
+		if err := rows.Scan(&f.ActivityID, &f.Decision, &f.Note, &f.Reviewer, &f.ReviewedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, f)
+	}
+	return out, rows.Err()
+}

@@ -68,7 +68,7 @@ func newEnvWith(t *testing.T, mod func(*config.Config), opts func(*Options)) *en
 	reg := loadReg(t, root, "p1-support-saas", "p2-rag-platform", "p3-quant-platform")
 	o := Options{
 		Config: e.cfg, Registry: reg, Cache: taskgen.NewMemCache(),
-		Sessions: db, Devices: db, Configs: db, GitHub: db, Monitor: db, Activity: db, Panel: db, Assistant: db, Avatar: db, Blobs: e.blobs, Hub: e.hub,
+		Sessions: db, Devices: db, Configs: db, GitHub: db, Monitor: db, Activity: db, Panel: db, Assistant: db, Avatar: db, Staff: db, Blobs: e.blobs, Hub: e.hub,
 		Log: slog.New(slog.NewTextHandler(io.Discard, nil)),
 		Now: e.clock,
 	}

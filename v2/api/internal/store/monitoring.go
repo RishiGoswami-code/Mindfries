@@ -175,3 +175,16 @@ func (d *DB) MarkEvidenceDeleted(ctx context.Context, ids []string, at time.Time
 	_, err := d.pool.Exec(ctx, `update v2.evidence_objects set deleted_at = $2 where id = any($1)`, ids, at)
 	return err
 }
+
+// EvidenceByID finds one stored object of a session.
+func (d *DB) EvidenceByID(ctx context.Context, sessionID, id string) (Evidence, bool, error) {
+	var e Evidence
+	err := d.pool.QueryRow(ctx,
+		`select id, session_id, kind, taken_at, storage_path, bytes, sha256, content_type, coalesce(expires_at, 'infinity')
+		   from v2.evidence_objects where session_id = $1 and id = $2 and deleted_at is null`, sessionID, id,
+	).Scan(&e.ID, &e.SessionID, &e.Kind, &e.TakenAt, &e.Path, &e.Bytes, &e.SHA256, &e.ContentType, &e.ExpiresAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return Evidence{}, false, nil
+	}
+	return e, err == nil, err
+}
