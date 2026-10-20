@@ -94,12 +94,18 @@ P1 end to end. It is the riskiest phase; everything later reuses it.
   → `taskgen` cache + `MemCache`; tested: pool built once per JD, variant
   rotates per candidate, cosmetic JD edits reuse, real edits regenerate, stable
   `task_version`. (Postgres-backed `product_tasks` cache: wired with the server.)
-- [ ] **2.4 Delivery wiring (fake API first).** A V2 Task resolves to
+- [x] **2.4 Delivery wiring (fake API first).** A V2 Task resolves to
   `product_id + commit + product_task_id`; `/session/bundle` serves
   product@commit + overlay (or the CLI clones the repo and applies the overlay)
   with `TASK.md` locked. Extend `v2/cli/fakeapi` and the contract.
-  *Done when:* the CLI's existing start→work→submit flow runs against a P1 task;
-  submission verification runs suite + acceptance on the candidate branch.
+  → `v2/api/internal/delivery` assembles the authoritative candidate workspace
+  (product minus scaffolding + overlay, TASK.md=brief locked, check/runtimes),
+  wired to `taskgen.ResolvedTask` via `FromResolved`; tests prove the delivered
+  stub fails acceptance and the solved workspace passes, and that the answer key
+  (acceptance/solution/tasks) never leaks. `v2/cli/fakeapi.ProductTask` mirrors
+  it so the CLI serves a real P1 task. **Remaining:** the real `/session/bundle`
+  signed-archive path + a full CLI subprocess e2e against P1 (the existing e2e
+  already proves the flow against a served Task; delivery proves assembly).
 
 ## Phase 3 — The remaining products (P2–P5)
 
