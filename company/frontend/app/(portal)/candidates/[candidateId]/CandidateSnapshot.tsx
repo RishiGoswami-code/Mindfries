@@ -13,8 +13,9 @@ const RECOMMENDATION_TONE: Record<string, Tone> = { strong_hire: "violet", hire:
  * the assessment came out, and what their linked accounts show.
  *
  * The scores are the assessment's (candidate_applications.section_scores);
- * the recommendation is the reviewer's when one was recorded, else the AI
- * report's, and the card says which. Everything under "Linked accounts" was
+ * the hiring decision is only ever a person's — the reviewer's, once one is
+ * recorded — and until then it says "Not decided"; the AI report's
+ * recommendation is shown beside it as a suggestion, never as the decision. Everything under "Linked accounts" was
  * read from GitHub, GitLab or LinkedIn — through the candidate's own
  * read-only sign-in where the account is marked as theirs. The detail
  * behind each part is further down the page.
@@ -25,7 +26,8 @@ export function CandidateSnapshot({
   profile,
   score,
   sectionScores,
-  recommendation,
+  decision,
+  aiSuggestion,
   sessionStatus,
 }: {
   name: string;
@@ -33,7 +35,10 @@ export function CandidateSnapshot({
   profile: CandidateProfile | null;
   score: number | null;
   sectionScores: Record<string, number>;
-  recommendation: { value: string; by: "reviewer" | "ai" } | null;
+  /** The reviewer's decision, or null while nobody has made one. */
+  decision: string | null;
+  /** The AI report's recommendation, when the report is ready. */
+  aiSuggestion: string | null;
   /** The assessment session's status, or null when it hasn't started. */
   sessionStatus: string | null;
 }) {
@@ -68,12 +73,17 @@ export function CandidateSnapshot({
           <div className="truncate text-sm text-dim">{profile?.headline || linkedin?.headline || email}</div>
           {profile?.location && <div className="text-xs text-faint">{profile.location}</div>}
         </div>
-        {recommendation && (
-          <div className="text-right">
-            <Pill tone={RECOMMENDATION_TONE[recommendation.value] ?? "gray"}>{recommendationLabel[recommendation.value] ?? titleCase(recommendation.value)}</Pill>
-            <div className="mt-1 text-[11px] text-faint">{recommendation.by === "reviewer" ? "Reviewer's decision" : "AI recommendation"}</div>
-          </div>
-        )}
+        <div className="text-right">
+          {decision ? (
+            <Pill tone={RECOMMENDATION_TONE[decision] ?? "gray"}>{recommendationLabel[decision] ?? titleCase(decision)}</Pill>
+          ) : (
+            <Pill tone="gray">Not decided</Pill>
+          )}
+          <div className="mt-1 text-[11px] text-faint">{decision ? "Your team's decision" : "Your team decides"}</div>
+          {aiSuggestion && (
+            <div className="mt-0.5 text-[11px] text-faint">AI suggests: {recommendationLabel[aiSuggestion] ?? titleCase(aiSuggestion)}</div>
+          )}
+        </div>
       </div>
 
       {scores.length > 0 ? (

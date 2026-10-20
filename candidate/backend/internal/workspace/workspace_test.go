@@ -304,3 +304,14 @@ func TestSuspiciousCommand(t *testing.T) {
 		t.Errorf("FilesMentionTheMarker = %v", got)
 	}
 }
+
+func TestMarkerFilterSaysWhereEachMarkerWas(t *testing.T) {
+	var f MarkerFilter
+	out, markers := f.Feed([]byte("hello\r\n\x1b]7770;E;0\x07~ $ "))
+	if string(out) != "hello\r\n~ $ " || len(markers) != 1 {
+		t.Fatalf("got %q and %d markers", out, len(markers))
+	}
+	if markers[0].At != len("hello\r\n") {
+		t.Errorf("the finish marker was at %d, want %d (after the output, before the prompt)", markers[0].At, len("hello\r\n"))
+	}
+}

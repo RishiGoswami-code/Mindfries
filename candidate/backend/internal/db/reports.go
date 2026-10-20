@@ -20,8 +20,12 @@ type Report struct {
 	SharedWithCandidate bool
 	SharedAt            *time.Time
 	SharedBy            *string
-	CreatedAt           time.Time
-	UpdatedAt           time.Time
+	// ReviewerRecommendation is the hiring decision a person at the company
+	// (or Mindfries) recorded, migration 0016. Recommendation is the AI's
+	// suggestion; this is the decision.
+	ReviewerRecommendation *string
+	CreatedAt              time.Time
+	UpdatedAt              time.Time
 }
 
 // EvidenceItem is one evidence_items row — PRD §1.10's EVIDENCE_ITEM, one
@@ -44,14 +48,14 @@ func (d *DB) CreatePendingReport(ctx context.Context, sessionID string) (Report,
 		insert into assessment_reports (session_id, status)
 		values ($1, 'pending')
 		on conflict (session_id) do update set status = 'pending', error = null, updated_at = now()
-		returning id, session_id, status, recommendation, summary, error, coalesce(shared_with_candidate, false), shared_at, shared_by, created_at, updated_at
+		returning id, session_id, status, recommendation, summary, error, coalesce(shared_with_candidate, false), shared_at, shared_by, reviewer_recommendation, created_at, updated_at
 	`, sessionID)
 	return scanReport(row)
 }
 
 func scanReport(row pgx.Row) (Report, error) {
 	var r Report
-	err := row.Scan(&r.ID, &r.SessionID, &r.Status, &r.Recommendation, &r.Summary, &r.Error, &r.SharedWithCandidate, &r.SharedAt, &r.SharedBy, &r.CreatedAt, &r.UpdatedAt)
+	err := row.Scan(&r.ID, &r.SessionID, &r.Status, &r.Recommendation, &r.Summary, &r.Error, &r.SharedWithCandidate, &r.SharedAt, &r.SharedBy, &r.ReviewerRecommendation, &r.CreatedAt, &r.UpdatedAt)
 	return r, err
 }
 
@@ -59,7 +63,7 @@ func scanReport(row pgx.Row) (Report, error) {
 // endpoint polls.
 func (d *DB) GetReportBySession(ctx context.Context, sessionID string) (Report, error) {
 	row := d.pool.QueryRow(ctx, `
-		select id, session_id, status, recommendation, summary, error, coalesce(shared_with_candidate, false), shared_at, shared_by, created_at, updated_at
+		select id, session_id, status, recommendation, summary, error, coalesce(shared_with_candidate, false), shared_at, shared_by, reviewer_recommendation, created_at, updated_at
 		from assessment_reports where session_id = $1
 	`, sessionID)
 	r, err := scanReport(row)

@@ -193,6 +193,7 @@ Requirements:
 - The task must fit the stated duration and match the stated task type and tech stack.
 - For a debugging or bug-fix task, plant a real, non-obvious bug. Do NOT reveal its location or cause anywhere: not in the brief, and not in the code — no comment, name, docstring or TODO may mark or hint at it. The buggy code must read like code someone believed was correct.
 - Test names and comments may describe the expected behaviour, never the defect.
+- In Getting Started, give the exact command that runs the tests verbosely, so each test's result is shown: "python -m unittest -v" for Python, "node --test" for JavaScript or TypeScript.
 - The brief is Markdown with these sections: Context, Objective, Constraints, Getting Started, Evaluation. Never include the solution in the brief or in any starter file.
 - After the starter files, give the reference solution: for each file a correct answer changes, that whole file as it reads once the task is done. It is used to check the task by running it and is never shown to the candidate. With the solution files in place of their starter versions, every test must pass. Do not change the tests in the solution.
 - Before you reply, check your own work as the tests will: run each test in your head against the starter code (a bug-fix or debugging task needs at least one to fail there, for the bug's reason) and against the solution files (every test passes). A task that fails this check is thrown away, so fix it before replying.

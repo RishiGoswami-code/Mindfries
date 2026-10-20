@@ -13,6 +13,7 @@ import (
 	"github.com/gorilla/websocket"
 
 	"github.com/mindfries/candidate-backend/internal/db"
+	"github.com/mindfries/candidate-backend/internal/orchestrator"
 	"github.com/mindfries/candidate-backend/internal/sandbox"
 	"github.com/mindfries/candidate-backend/internal/session"
 	"github.com/mindfries/candidate-backend/internal/workspace"
@@ -283,18 +284,14 @@ func (s *Server) pump(ctx context.Context, t *liveTerminal) {
 			return
 		}
 		out, markers := filter.Feed(chunk)
-		if len(out) > 0 {
-			if running != "" {
-				// The end of a long run is what says how it went, so that
-				// is the part kept.
-				captured = append(captured, out...)
-				if len(captured) > 2*commandOutputCap {
-					captured = append([]byte(nil), captured[len(captured)-commandOutputCap:]...)
-				}
-			}
-			t.output(out)
-		}
+		// Output is handled up to each marker in turn, so a finished test
+		// run's summary line goes right after its output, before the prompt.
+		from := 0
 		for _, m := range markers {
+			if m.At > from {
+				s.relayOutput(t, out[from:m.At], running, &captured)
+				from = m.At
+			}
 			if m.Command != "" {
 				running, startedAt, captured = m.Command, time.Now(), captured[:0]
 				continue
@@ -309,10 +306,30 @@ func (s *Server) pump(ctx context.Context, t *liveTerminal) {
 			output := string(captured)
 			s.orc.RecordTerminalCommand(ctx, t.sessionID, running, *m.Exit, took)
 			s.orc.RecordTestRun(ctx, t.sessionID, running, output, *m.Exit)
+			if orchestrator.IsTestCommand(running) {
+				// "OK" or "ok  pkg" alone left candidates unsure whether
+				// their code worked; say it in words.
+				t.output([]byte("\r\n" + orchestrator.ParseTestRun(running, output, *m.Exit).SummaryLine() + "\r\n"))
+			}
 			t.send(map[string]any{"type": "command", "command": running, "exitCode": *m.Exit, "ms": took.Milliseconds(), "output": output})
 			running = ""
 		}
+		if len(out) > from {
+			s.relayOutput(t, out[from:], running, &captured)
+		}
 	}
+}
+
+// relayOutput sends shell output to the page, keeping the end of it while a
+// command runs — the end of a long run is what says how it went.
+func (s *Server) relayOutput(t *liveTerminal, out []byte, running string, captured *[]byte) {
+	if running != "" {
+		*captured = append(*captured, out...)
+		if len(*captured) > 2*commandOutputCap {
+			*captured = append([]byte(nil), (*captured)[len(*captured)-commandOutputCap:]...)
+		}
+	}
+	t.output(out)
 }
 
 // openTerminal starts a new shell in the session's sandbox.

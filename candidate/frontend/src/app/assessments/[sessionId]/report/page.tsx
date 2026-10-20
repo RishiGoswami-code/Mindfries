@@ -16,6 +16,7 @@ import {
   ListChecks,
   MessageSquare,
   Play,
+  ShieldAlert,
   Sparkles,
   SquareTerminal,
   UserRound,
@@ -25,7 +26,7 @@ import {
 import { CandidateShell } from "@/components/dashboard/CandidateShell";
 import { ReportAutoRefresh } from "@/components/assessments/ReportAutoRefresh";
 import { DownloadButton } from "@/components/report/DownloadButton";
-import { DiffView, Observations, Panel, Pill, TestResults, Timeline } from "@/components/report/Parts";
+import { DiffView, FlagList, Observations, Panel, Pill, TestResults, Timeline } from "@/components/report/Parts";
 import { LocalTime } from "@/components/jobs/LocalTime";
 import { BackendAuthError, BackendError, getSession, getSessionReport, sessionEventsOrUndefined, type EvidenceItemView, type ReportView, type SessionView } from "@/lib/backend/client";
 import { currentCandidate } from "@/lib/auth/users";
@@ -57,7 +58,7 @@ const STATUS_COPY: Record<Exclude<ReportView["status"], "ready">, { title: strin
   failed: { title: "Evaluation didn't complete", body: "" },
 };
 
-type Section = "summary" | "code" | "workflow" | "reasoning" | "interview" | "artifacts";
+type Section = "summary" | "code" | "workflow" | "reasoning" | "interview" | "proctoring" | "artifacts";
 
 const SECTIONS: Array<{ id: Section; label: string; icon: LucideIcon; blurb: string }> = [
   { id: "summary", label: "Summary", icon: FileText, blurb: "" },
@@ -65,13 +66,15 @@ const SECTIONS: Array<{ id: Section; label: string; icon: LucideIcon; blurb: str
   { id: "workflow", label: "Workflow", icon: Workflow, blurb: "Timeline and activity" },
   { id: "reasoning", label: "Reasoning", icon: Lightbulb, blurb: "Understanding and approach" },
   { id: "interview", label: "Interview", icon: MessageSquare, blurb: "Questions and answers" },
+  { id: "proctoring", label: "Proctoring", icon: ShieldAlert, blurb: "Moments flagged during the session" },
   { id: "artifacts", label: "Artifacts", icon: Folder, blurb: "Your files as you left them" },
 ];
 
-/** Which agents' observations each tab shows — integrity/proctoring flags are kept strictly on the company side. */
+/** Which agents' observations each tab shows. A shared report is the whole report: the candidate sees what the hiring team sees, flags included. */
 const CATEGORIES: Record<Exclude<Section, "summary" | "artifacts">, string[]> = {
   code: ["code_evaluation", "provenance", "rubric"],
-  workflow: ["workflow", "integrity"],
+  workflow: ["workflow"],
+  proctoring: ["integrity", "activity_flags"],
   reasoning: ["reasoning", "ai_usage"],
   interview: ["interview", "interview_status"],
 };
@@ -94,8 +97,10 @@ async function loadReportData(sessionId: string) {
  * company side until the hiring team reviews and explicitly releases them.
  * If not yet shared, the candidate sees the Under Review / Submission Received view.
  *
- * Once shared by the company, the candidate can view the evaluation and feedback.
- * Internal proctoring flags and reviewer notes always remain hidden from candidates.
+ * Once shared by the company, the candidate sees the complete report: the
+ * evaluation, the timeline with its flagged moments, and the proctoring flags
+ * themselves — they were told of each one as it happened (flag-alert.ts).
+ * Reviewer notes stay with the hiring team.
  */
 export default async function SessionReportPage({ params, searchParams }: { params: Promise<{ sessionId: string }>; searchParams: Promise<{ section?: string }> }) {
   const [{ sessionId }, { section: wanted }] = await Promise.all([params, searchParams]);
@@ -191,6 +196,7 @@ export default async function SessionReportPage({ params, searchParams }: { para
         {section === "workflow" && <WorkflowSection activity={activity} evidence={evidence} ready={report.status === "ready"} />}
         {section === "reasoning" && <ReasoningSection activity={activity} evidence={evidence} ready={report.status === "ready"} />}
         {section === "interview" && <InterviewSection activity={activity} evidence={evidence} ready={report.status === "ready"} />}
+        {section === "proctoring" && <ProctoringSection activity={activity} evidence={evidence} ready={report.status === "ready"} />}
         {section === "artifacts" && <ArtifactsSection activity={activity} />}
       </div>
     </CandidateShell>
@@ -348,7 +354,7 @@ function Summary({ report, activity, durationMin, href }: { report: ReportView; 
   const top = activity?.diffs[0];
   const lastTests = trail?.lastTests ?? null;
   const incomplete = report.status === "ready" ? (report.evidence ?? []).filter((e) => e.category === "incomplete") : [];
-  const cleanTimeline = (trail?.timeline ?? []).filter((t) => t.tone !== "flag");
+  const cleanTimeline = trail?.timeline ?? [];
 
   const tiles: Array<{ icon: LucideIcon; label: string; value: React.ReactNode; note?: React.ReactNode; tint: string; href?: string }> = [
     { icon: Clock, label: "Time worked", value: `${trail?.workMinutes ?? 0} min`, note: `of ${durationMin} allowed`, tint: "bg-[#EAF1FE] text-[#2F6BDE]" },
@@ -513,7 +519,8 @@ function RecommendationCard({ report }: { report: ReportView }) {
       </div>
     );
   }
-  const rec = report.recommendation ? RECOMMENDATION[report.recommendation] : undefined;
+  // Only a person's decision is shown here, never the AI's suggestion.
+  const rec = report.decision ? RECOMMENDATION[report.decision] : undefined;
   const tone = rec?.tone ?? "none";
   return (
     <div
@@ -535,19 +542,21 @@ function RecommendationCard({ report }: { report: ReportView }) {
           <UserRound size={24} />
         </span>
         <div className="min-w-0">
-          <p className="text-[14.5px] font-semibold text-[#100E2E]">Recommendation</p>
+          <p className="text-[14.5px] font-semibold text-[#100E2E]">Hiring team&apos;s decision</p>
           <p className={clsx("text-[28px] leading-tight font-bold", tone === "bad" ? "text-[#DC2643]" : tone === "warn" ? "text-[#B45309]" : tone === "good" ? "text-[#15803D]" : "text-[#4C4874]")}>
-            {rec?.label ?? "Not given"}
+            {rec?.label ?? "Not decided yet"}
           </p>
         </div>
       </div>
       {report.summary && (
         <div className="mt-4 rounded-2xl bg-white/80 px-4 py-3">
-          <p className="text-[14px] font-semibold text-[#100E2E]">Key reason</p>
+          <p className="text-[14px] font-semibold text-[#100E2E]">Evaluation summary</p>
           <p className={clsx("mt-1 line-clamp-5 text-[14px] leading-relaxed", tone === "bad" ? "text-[#8F1D33]" : "text-[#4C4874]")}>{report.summary.replace(/ ?\[E\d+\]/g, "")}</p>
         </div>
       )}
-      <p className="mt-3 text-[12px] text-[#8A86A8]">Evaluation summary shared by the hiring team.</p>
+      <p className="mt-3 text-[12px] text-[#8A86A8]">
+        The decision is made by the hiring team, not by the AI. The summary is the evaluation they shared with you.
+      </p>
     </div>
   );
 }
@@ -606,7 +615,7 @@ function CodeSection({ activity, evidence, ready }: { activity: ReportActivity |
 
 function WorkflowSection({ activity, evidence, ready }: { activity: ReportActivity | null; evidence: EvidenceItemView[]; ready: boolean }) {
   const trail = activity?.trail;
-  const cleanTimeline = (trail?.timeline ?? []).filter((t) => t.tone !== "flag");
+  const cleanTimeline = trail?.timeline ?? [];
   return (
     <div className="grid gap-5 xl:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)]">
       <div className="min-w-0 space-y-5">
@@ -680,6 +689,28 @@ function InterviewSection({ activity, evidence, ready }: { activity: ReportActiv
         {turns.length === 0 ? <p className="text-[14px] text-[#6E6A8F]">No interview was recorded for this session.</p> : <Conversation turns={turns} you="You" them="Interviewer" />}
       </Panel>
     </>
+  );
+}
+
+function ProctoringSection({ activity, evidence, ready }: { activity: ReportActivity | null; evidence: EvidenceItemView[]; ready: boolean }) {
+  const flags = activity?.trail.flags ?? [];
+  return (
+    <div className="grid gap-5 xl:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)]">
+      <div className="min-w-0 space-y-5">
+        <Panel icon={<ShieldAlert size={20} />} title={`Flagged moments (${flags.length})`}>
+          <p className="mb-3 text-[13.5px] leading-relaxed text-[#6E6A8F]">
+            The workspace flags moments for the hiring team to look at — leaving the workspace, voices on the microphone, a large paste from
+            elsewhere. A flag is a prompt for a person, not a finding: the hiring team decides what, if anything, it means.
+          </p>
+          <FlagList flags={flags} />
+        </Panel>
+      </div>
+      <div className="min-w-0 space-y-5">
+        <Panel icon={<Sparkles size={20} />} title="What the evaluation noted">
+          <Observations items={pick(evidence, "proctoring")} empty={ready ? "The evaluation noted nothing about the session's integrity." : notReady} />
+        </Panel>
+      </div>
+    </div>
   );
 }
 

@@ -2,6 +2,7 @@ package orchestrator
 
 import (
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -83,6 +84,25 @@ func TestParseTestRun(t *testing.T) {
 		}
 		if got.Source != "sandbox" {
 			t.Errorf("%s: source %q", c.name, got.Source)
+		}
+	}
+}
+
+func TestSummaryLine(t *testing.T) {
+	cases := []struct {
+		name, command, output string
+		exit                  int
+		want                  string
+	}{
+		{"unittest without -v, all passing", "python -m unittest", "....\n----------------------------------------------------------------------\nRan 4 tests in 0.001s\n\nOK\n", 0, "All 4 tests passed"},
+		{"unittest with a failure", "python -m unittest -v", "test_a (t.T.test_a) ... ok\ntest_b (t.T.test_b) ... FAIL\n\n======================================================================\nFAIL: test_b (t.T.test_b)\n----------------------------------------------------------------------\nAssertionError: 1 != 2\n\n----------------------------------------------------------------------\nRan 2 tests in 0.001s\n\nFAILED (failures=1)\n", 1, "1 of 2 tests failed: T.test_b"},
+		{"go test without -v: only ok", "go test ./...", "ok  \texample.com/shop\t0.012s\n", 0, "Tests passed (exit code 0)"},
+		{"go test without -v, failing", "go test ./...", "FAIL\texample.com/shop\t0.012s\n", 1, "Tests failed (exit code 1)"},
+	}
+	for _, c := range cases {
+		got := ParseTestRun(c.command, c.output, c.exit).SummaryLine()
+		if !strings.Contains(got, c.want) {
+			t.Errorf("%s: got %q, want it to say %q", c.name, got, c.want)
 		}
 	}
 }

@@ -33,6 +33,7 @@ import { useProctorCamera } from "@/lib/ide/proctor-camera";
 import { startScreenKeyframes, useProctorScreen, type ScreenKeyframes } from "@/lib/ide/screen-capture";
 import { keepStill, stillTaker, type StillSink, type StillTaker } from "@/lib/ide/stills";
 import { FLAG_NOTICE, watchActivity, type Flag } from "@/lib/ide/activity-watch";
+import { alertWhileAway, askForFlagAlerts, whenVisible } from "@/lib/ide/flag-alert";
 import { watchFaces } from "@/lib/ide/face-watch";
 import { watchAudio } from "@/lib/ide/audio-watch";
 import { useDiagnostics } from "@/lib/ide/diagnostics";
@@ -416,7 +417,11 @@ export function IdeShell({ sessionId, candidateName, taskBrief, starterFiles, as
     async (flag: Flag, audioClip?: Promise<Blob | null>) => {
       const at = new Date().toISOString();
       const notice = FLAG_NOTICE[flag.kind];
-      if (notice) setFlagNotice(notice);
+      if (notice) {
+        setFlagNotice(notice);
+        // Seen at once even from another tab — flag-alert.ts.
+        alertWhileAway(notice);
+      }
       const cameraStill = async () => {
         const blob = await cameraStillsRef.current?.take();
         if (!blob || !stillSink) return null;
@@ -447,14 +452,23 @@ export function IdeShell({ sessionId, candidateName, taskBrief, starterFiles, as
   );
   useEffect(() => {
     if (!flagNotice) return;
-    const timer = setTimeout(() => setFlagNotice(null), 8000);
-    return () => clearTimeout(timer);
+    // A notice raised while the candidate was in another tab stays until
+    // they are back and have had time to read it.
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const cancel = whenVisible(() => {
+      timer = setTimeout(() => setFlagNotice(null), 8000);
+    });
+    return () => {
+      cancel();
+      if (timer) clearTimeout(timer);
+    };
   }, [flagNotice]);
   // Watching starts once the workspace is in use — both shares live — so
   // the permission prompts themselves aren't flagged as leaving.
   const watching = proctored && camera.status === "live" && screen.status === "live";
   useEffect(() => {
     if (!watching || !sessionId) return;
+    askForFlagAlerts();
     return watchActivity((flag) => void raiseFlag(flag), sessionId);
   }, [watching, sessionId, raiseFlag]);
   useEffect(() => {

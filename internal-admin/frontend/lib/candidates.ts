@@ -51,9 +51,13 @@ export interface CandidateAssessment {
   /** The latest session's status, or null when it hasn't started. */
   sessionId: string | null;
   sessionStatus: string | null;
-  /** strong_hire|hire|lean_no|no_hire — the reviewer's when recorded, else the AI's. */
-  recommendation: string | null;
-  recommendationBy: "reviewer" | "ai" | null;
+  /**
+   * strong_hire|hire|lean_no|no_hire. The decision is only ever a person's
+   * (the company's reviewer); null while nobody has made one. The AI report's
+   * recommendation is kept apart, as a suggestion.
+   */
+  decision: string | null;
+  aiSuggestion: string | null;
   score: number | null;
   sectionScores: Record<string, number>;
 }
@@ -209,8 +213,8 @@ export async function listCandidateCards(id?: string): Promise<CandidateCard[]> 
         invitedAt: a.created_at,
         sessionId: session?.id ?? null,
         sessionStatus: session?.status ?? null,
-        recommendation: reviewer ?? ai,
-        recommendationBy: reviewer ? "reviewer" : ai ? "ai" : null,
+        decision: reviewer,
+        aiSuggestion: ai,
         score: app?.score ?? null,
         sectionScores: app?.section_scores ?? {},
       };

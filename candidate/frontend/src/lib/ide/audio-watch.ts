@@ -8,11 +8,13 @@
  * starts when the sound starts (not when the flag is raised), so a reviewer
  * hears the beginning of it.
  *
- * How it decides, simply:
- *   - The room's normal level is learned from the first few seconds — a fan
- *     or traffic is not an event.
- *   - "Voices" is sound well above that level with most of its energy in
- *     the band human speech occupies (300–3400 Hz), lasting a few seconds.
+ * How it decides, simply (the rules and their numbers are in
+ * audio-decide.ts):
+ *   - The room's normal level keeps being learned — a fan, traffic or a
+ *     steady background is not an event.
+ *   - "Voices" is sound clearly above that level with most of its energy in
+ *     the band human speech occupies (300–3400 Hz), filling more than a fifth
+ *     of the last 20 seconds. Less than that is background, and allowed.
  *   - "Noise" is a loud sound outside that pattern, lasting a couple of
  *     seconds.
  *
@@ -22,24 +24,12 @@
  * several, never alone.
  */
 
-/** How often the level is measured. */
-const TICK_MS = 250;
-/** Seconds of sound used to learn the room's normal level. */
-const CALIBRATE_TICKS = 24; // 6 s
-/** How far above the room's level counts as a sound worth noticing, in dB. */
-const VOICE_ABOVE_DB = 14;
-const NOISE_ABOVE_DB = 22;
-/** Share of energy in the speech band for a sound to count as voices. */
-const SPEECH_SHARE = 0.55;
-/** How long a sound must last before it is flagged. */
-const VOICE_TICKS = 12; // 3 s within the window
-const NOISE_TICKS = 8; // 2 s
-/** The window those are counted over. */
-const WINDOW_TICKS = 20; // 5 s
+import { AudioDecider, TICK_MS, type AudioKind } from "./audio-decide";
+
 /** Length of the evidence clip. */
 const CLIP_MS = 10_000;
 
-export type AudioEvent = { kind: "voices_detected" | "loud_noise"; clip: Promise<Blob | null> };
+export type AudioEvent = { kind: AudioKind; clip: Promise<Blob | null> };
 
 /**
  * Starts listening to the microphone track(s) of `stream`. `onEvent` is
@@ -60,9 +50,7 @@ export function watchAudio(stream: MediaStream, onEvent: (event: AudioEvent) => 
   const speechLo = Math.floor(300 / hzPerBin);
   const speechHi = Math.ceil(3400 / hzPerBin);
 
-  const calibration: number[] = [];
-  let floorDb = -60;
-  const recent: ("voice" | "noise" | "quiet")[] = [];
+  const decider = new AudioDecider();
   let clip: { recorder: MediaRecorder; done: Promise<Blob | null>; used: boolean } | null = null;
   let stopped = false;
 
@@ -101,15 +89,6 @@ export function watchAudio(stream: MediaStream, onEvent: (event: AudioEvent) => 
     for (const v of wave) sum += v * v;
     const db = 20 * Math.log10(Math.sqrt(sum / wave.length) + 1e-9);
 
-    if (calibration.length < CALIBRATE_TICKS) {
-      calibration.push(db);
-      if (calibration.length === CALIBRATE_TICKS) {
-        const sorted = [...calibration].sort((a, b) => a - b);
-        floorDb = sorted[Math.floor(sorted.length / 2)];
-      }
-      return;
-    }
-
     analyser.getFloatFrequencyData(bins);
     let total = 0;
     let speech = 0;
@@ -119,17 +98,9 @@ export function watchAudio(stream: MediaStream, onEvent: (event: AudioEvent) => 
       if (i >= speechLo && i <= speechHi) speech += power;
     }
     const share = total > 0 ? speech / total : 0;
-    const kind: "voice" | "noise" | "quiet" =
-      db > floorDb + NOISE_ABOVE_DB && share < SPEECH_SHARE ? "noise" : db > floorDb + VOICE_ABOVE_DB && share >= SPEECH_SHARE ? "voice" : "quiet";
-    if (kind !== "quiet") startClip();
-    recent.push(kind);
-    if (recent.length > WINDOW_TICKS) recent.shift();
-
-    const voices = recent.filter((k) => k === "voice").length;
-    const noise = recent.filter((k) => k === "noise").length;
-    const flagged = voices >= VOICE_TICKS ? "voices_detected" : noise >= NOISE_TICKS ? "loud_noise" : null;
+    const { kind, flag: flagged } = decider.tick(db, share);
+    if (kind && kind !== "quiet") startClip();
     if (flagged) {
-      recent.length = 0; // one flag per stretch of sound
       const evidence = clip && !clip.used ? clip : null;
       if (evidence) evidence.used = true;
       onEvent({ kind: flagged, clip: evidence ? evidence.done : Promise.resolve(null) });
