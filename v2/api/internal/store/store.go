@@ -32,6 +32,12 @@ func Open(ctx context.Context, url string) (*DB, error) {
 	// direct/session connection. ponytail: drop this if you always connect
 	// directly and want prepared-statement caching.
 	cfg.ConnConfig.DefaultQueryExecMode = pgx.QueryExecModeSimpleProtocol
+	// The simple protocol needs the connection in UTF-8 (Supabase's already is;
+	// a locally installed Postgres may not be).
+	if cfg.ConnConfig.RuntimeParams == nil {
+		cfg.ConnConfig.RuntimeParams = map[string]string{}
+	}
+	cfg.ConnConfig.RuntimeParams["client_encoding"] = "UTF8"
 
 	pool, err := pgxpool.NewWithConfig(ctx, cfg)
 	if err != nil {

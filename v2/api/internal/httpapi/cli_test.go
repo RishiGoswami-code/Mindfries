@@ -86,7 +86,7 @@ func TestCLIHappyPath(t *testing.T) {
 	tok := ex.SessionToken
 
 	// Reusing a setup code must fail.
-	res = req(t, "POST", base+"/sessions/exchange", "", `{"setup_code":"ABCD-1234-WXYZ"}`)
+	res = req(t, "POST", base+"/sessions/exchange", "", `{"setup_code":"ABCD-1234-WXYZ","device":{"os":"linux","arch":"amd64"}}`)
 	if res.StatusCode != http.StatusGone {
 		t.Fatalf("reused code should be 410, got %d", res.StatusCode)
 	}
@@ -174,7 +174,7 @@ func TestCLIEvidencePersists(t *testing.T) {
 		Code: "EV-CODE", Role: "backend", JD: "support helpdesk tickets sla saas",
 		DurationMinutes: 90, ExpiresAt: time.Now().Add(time.Hour),
 	})
-	res := req(t, "POST", base+"/sessions/exchange", "", `{"setup_code":"EV-CODE"}`)
+	res := req(t, "POST", base+"/sessions/exchange", "", `{"setup_code":"EV-CODE","device":{"os":"linux","arch":"amd64"}}`)
 	var ex struct {
 		SessionToken string `json:"session_token"`
 	}
@@ -244,7 +244,7 @@ func TestCLISubmission(t *testing.T) {
 		Code: "SUB-CODE", Role: "backend", JD: "support helpdesk tickets sla saas",
 		DurationMinutes: 90, ExpiresAt: time.Now().Add(time.Hour),
 	})
-	res := req(t, "POST", base+"/sessions/exchange", "", `{"setup_code":"SUB-CODE"}`)
+	res := req(t, "POST", base+"/sessions/exchange", "", `{"setup_code":"SUB-CODE","device":{"os":"linux","arch":"amd64"}}`)
 	var ex struct {
 		SessionToken string `json:"session_token"`
 	}
@@ -319,7 +319,7 @@ func TestBundleSignedWithConfiguredKey(t *testing.T) {
 		Code: "K", Role: "backend", JD: "support helpdesk tickets sla saas",
 		DurationMinutes: 90, ExpiresAt: time.Now().Add(time.Hour),
 	})
-	res := req(t, "POST", base+"/sessions/exchange", "", `{"setup_code":"K"}`)
+	res := req(t, "POST", base+"/sessions/exchange", "", `{"setup_code":"K","device":{"os":"linux","arch":"amd64"}}`)
 	var ex struct {
 		SessionToken string `json:"session_token"`
 	}

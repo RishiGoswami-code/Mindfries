@@ -100,6 +100,31 @@ jobs:
       - name: Lint the contracts
         run: npx --yes @redocly/cli@1.34.0 lint v2/contracts/*.yaml
 
+  v2-api-postgres:
+    name: V2 api against Postgres
+    if: github.event_name == 'push' || github.event.action != 'labeled' && github.event.action != 'unlabeled'
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 5s
+          --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: v2/api/go.mod
+          cache-dependency-path: v2/api/go.sum
+      - name: Apply the v2 migrations twice, then run the store tests
+        working-directory: v2/api
+        env:
+          V2_TEST_DATABASE_URL: postgres://postgres:postgres@localhost:5432/postgres
+        run: go test -count=1 -v -run 'TestMigrationsApplyTwice|TestPostgres' ./internal/store/
+
   v2-go:
     name: V2 Go (${{ matrix.os }})
     if: github.event_name == 'push' || github.event.action != 'labeled' && github.event.action != 'unlabeled'

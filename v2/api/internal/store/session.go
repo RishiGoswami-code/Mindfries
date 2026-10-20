@@ -14,19 +14,14 @@ import (
 
 func (d *DB) CreateSetupCode(ctx context.Context, c session.SetupCode) error {
 	_, err := d.pool.Exec(ctx,
-		`insert into v2.setup_codes (code, assessment_id, assessment_title, role, jd, duration_minutes, expires_at, used)
-		 values ($1, $2, $3, $4, $5, $6, $7, false)`,
-		c.Code, nullIfEmpty(c.AssessmentID), c.AssessmentTitle, c.Role, c.JD, c.DurationMinutes, c.ExpiresAt)
+		`insert into v2.setup_codes
+		   (code, assessment_title, role, jd, duration_minutes, expires_at, used,
+		    candidate_id, company_id, assessment_id, invitation_id)
+		 values ($1, $2, $3, $4, $5, $6, false,
+		   nullif($7, '')::uuid, nullif($8, '')::uuid, nullif($9, ''), nullif($10, '')::uuid)`,
+		c.Code, c.AssessmentTitle, c.Role, c.JD, c.DurationMinutes, c.ExpiresAt,
+		c.Links.CandidateID, c.Links.CompanyID, c.AssessmentID, c.Links.InvitationID)
 	return err
-}
-
-// nullIfEmpty stores "" as SQL NULL (assessment_id is nullable — not every code
-// is linked to a V1 assessments row).
-func nullIfEmpty(s string) any {
-	if s == "" {
-		return nil
-	}
-	return s
 }
 
 func (d *DB) TakeSetupCode(ctx context.Context, code string, now time.Time) (session.SetupCode, error) {
@@ -35,16 +30,25 @@ func (d *DB) TakeSetupCode(ctx context.Context, code string, now time.Time) (ses
 	err := d.pool.QueryRow(ctx,
 		`update v2.setup_codes set used = true
 		   where code = $1 and used = false and expires_at > $2
-		 returning code, coalesce(assessment_id, ''), assessment_title, role, jd, duration_minutes, expires_at`,
+		 returning code, assessment_title, role, jd, duration_minutes, expires_at,
+		   coalesce(candidate_id::text, ''), coalesce(company_id::text, ''),
+		   coalesce(assessment_id, ''), coalesce(invitation_id::text, '')`,
 		code, now,
-	).Scan(&c.Code, &c.AssessmentID, &c.AssessmentTitle, &c.Role, &c.JD, &c.DurationMinutes, &c.ExpiresAt)
+	).Scan(&c.Code, &c.AssessmentTitle, &c.Role, &c.JD, &c.DurationMinutes, &c.ExpiresAt,
+		&c.Links.CandidateID, &c.Links.CompanyID, &c.AssessmentID, &c.Links.InvitationID)
 	if errors.Is(err, pgx.ErrNoRows) {
-		var exists bool
-		_ = d.pool.QueryRow(ctx, `select exists(select 1 from v2.setup_codes where code = $1)`, code).Scan(&exists)
-		if exists {
+		var used bool
+		var expires time.Time
+		err := d.pool.QueryRow(ctx, `select used, expires_at from v2.setup_codes where code = $1`, code).Scan(&used, &expires)
+		switch {
+		case errors.Is(err, pgx.ErrNoRows):
+			return session.SetupCode{}, session.ErrNotFound
+		case err != nil:
+			return session.SetupCode{}, err
+		case used:
 			return session.SetupCode{}, session.ErrCodeUnusable
 		}
-		return session.SetupCode{}, session.ErrNotFound
+		return session.SetupCode{}, session.ErrCodeExpired
 	}
 	if err != nil {
 		return session.SetupCode{}, err
@@ -56,35 +60,46 @@ func (d *DB) TakeSetupCode(ctx context.Context, code string, now time.Time) (ses
 func (d *DB) CreateSession(ctx context.Context, s session.Session) error {
 	_, err := d.pool.Exec(ctx,
 		`insert into v2.sessions
-		   (id, token, assessment_id, assessment_title, role, jd_hash, product_slug, bank_task_id, task_version, brief, duration_minutes, status, started_at, ends_at)
-		 values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
-		s.ID, s.Token, nullIfEmpty(s.AssessmentID), s.AssessmentTitle, s.Role, s.JDHash, s.ProductSlug, s.BankTaskID,
-		s.TaskVersion, s.Brief, s.DurationMinutes, s.Status, s.StartedAt, s.EndsAt)
+		   (id, token_hash, assessment_title, role, jd_hash, product_slug, bank_task_id, task_version, brief,
+		    duration_minutes, status, started_at, ends_at,
+		    candidate_id, company_id, assessment_id, invitation_id)
+		 values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13,
+		    nullif($14, '')::uuid, nullif($15, '')::uuid, nullif($16, ''), nullif($17, '')::uuid)`,
+		s.ID, session.HashToken(s.Token), s.AssessmentTitle, s.Role, s.JDHash, s.ProductSlug, s.BankTaskID,
+		s.TaskVersion, s.Brief, s.DurationMinutes, s.Status, s.StartedAt, s.EndsAt,
+		s.Links.CandidateID, s.Links.CompanyID, s.AssessmentID, s.Links.InvitationID)
 	return err
 }
 
-// MarkAssessmentSubmitted flips the linked V1 assessments row to 'submitted'.
-// Requires the v2_api role to hold UPDATE on public.assessments (see migration).
-func (d *DB) MarkAssessmentSubmitted(ctx context.Context, assessmentID string) error {
-	if assessmentID == "" {
-		return nil
-	}
-	_, err := d.pool.Exec(ctx, `update public.assessments set status = 'submitted' where id = $1`, assessmentID)
-	return err
-}
+const sessionCols = `id, assessment_title, role, jd_hash, product_slug, bank_task_id,
+	task_version, brief, duration_minutes, status, started_at, ends_at, begun_at,
+	coalesce(candidate_id::text, ''), coalesce(company_id::text, ''),
+	coalesce(assessment_id, ''), coalesce(invitation_id::text, '')`
 
-func (d *DB) SessionByToken(ctx context.Context, token string) (session.Session, error) {
+func scanSession(row pgx.Row) (session.Session, error) {
 	var s session.Session
-	err := d.pool.QueryRow(ctx,
-		`select id, token, coalesce(assessment_id, ''), assessment_title, role, jd_hash, product_slug, bank_task_id,
-		        task_version, brief, duration_minutes, status, started_at, ends_at
-		   from v2.sessions where token = $1`, token,
-	).Scan(&s.ID, &s.Token, &s.AssessmentID, &s.AssessmentTitle, &s.Role, &s.JDHash, &s.ProductSlug, &s.BankTaskID,
-		&s.TaskVersion, &s.Brief, &s.DurationMinutes, &s.Status, &s.StartedAt, &s.EndsAt)
+	err := row.Scan(&s.ID, &s.AssessmentTitle, &s.Role, &s.JDHash, &s.ProductSlug, &s.BankTaskID,
+		&s.TaskVersion, &s.Brief, &s.DurationMinutes, &s.Status, &s.StartedAt, &s.EndsAt, &s.BegunAt,
+		&s.Links.CandidateID, &s.Links.CompanyID, &s.AssessmentID, &s.Links.InvitationID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return session.Session{}, session.ErrNotFound
 	}
+	// Times go out as UTC whatever the server's zone is.
+	s.StartedAt, s.EndsAt = s.StartedAt.UTC(), s.EndsAt.UTC()
+	if s.BegunAt != nil {
+		u := s.BegunAt.UTC()
+		s.BegunAt = &u
+	}
 	return s, err
+}
+
+func (d *DB) SessionByToken(ctx context.Context, token string) (session.Session, error) {
+	return scanSession(d.pool.QueryRow(ctx,
+		`select `+sessionCols+` from v2.sessions where token_hash = $1`, session.HashToken(token)))
+}
+
+func (d *DB) SessionByID(ctx context.Context, id string) (session.Session, error) {
+	return scanSession(d.pool.QueryRow(ctx, `select `+sessionCols+` from v2.sessions where id = $1`, id))
 }
 
 func (d *DB) SetStatus(ctx context.Context, id, status string) error {
@@ -94,7 +109,7 @@ func (d *DB) SetStatus(ctx context.Context, id, status string) error {
 
 func (d *DB) Begin(ctx context.Context, id string, startedAt, endsAt time.Time) error {
 	_, err := d.pool.Exec(ctx,
-		`update v2.sessions set status = 'active', started_at = $2, ends_at = $3 where id = $1`,
+		`update v2.sessions set status = 'active', started_at = $2, ends_at = $3, begun_at = $2 where id = $1`,
 		id, startedAt, endsAt)
 	return err
 }
@@ -186,5 +201,46 @@ func (d *DB) CompleteSubmission(ctx context.Context, id string, bundle []byte, s
 	_, err := d.pool.Exec(ctx,
 		`update v2.submissions set bundle = $2, status = $3, verified_at = $4 where id = $1`,
 		id, bundle, status, verifiedAt)
+	return err
+}
+
+func (d *DB) LiveSessionFor(ctx context.Context, candidateID, assessmentID string) (session.Session, bool, error) {
+	if candidateID == "" || assessmentID == "" {
+		return session.Session{}, false, nil
+	}
+	s, err := scanSession(d.pool.QueryRow(ctx,
+		`select `+sessionCols+` from v2.sessions
+		  where candidate_id = $1::uuid and assessment_id = $2 and status in ('ready', 'active')
+		  order by created_at desc limit 1`, candidateID, assessmentID))
+	if errors.Is(err, session.ErrNotFound) {
+		return session.Session{}, false, nil
+	}
+	return s, err == nil, err
+}
+
+func (d *DB) RotateToken(ctx context.Context, sessionID, newToken string) error {
+	ct, err := d.pool.Exec(ctx, `update v2.sessions set token_hash = $2 where id = $1`, sessionID, session.HashToken(newToken))
+	if err == nil && ct.RowsAffected() == 0 {
+		return session.ErrNotFound
+	}
+	return err
+}
+
+func (d *DB) SetupCodeLive(ctx context.Context, code string, now time.Time) (bool, error) {
+	var live bool
+	err := d.pool.QueryRow(ctx,
+		`select exists(select 1 from v2.setup_codes where code = $1 and used = false and expires_at > $2)`,
+		code, now).Scan(&live)
+	return live, err
+}
+
+// MarkAssessmentSubmitted flips the linked V1 assessments row to 'submitted'.
+// It needs the v2_api role to hold UPDATE on public.assessments: the one V1
+// write V2 makes, granted by the status write-back in the V1 seam.
+func (d *DB) MarkAssessmentSubmitted(ctx context.Context, assessmentID string) error {
+	if assessmentID == "" {
+		return nil
+	}
+	_, err := d.pool.Exec(ctx, `update public.assessments set status = 'submitted' where id = $1`, assessmentID)
 	return err
 }

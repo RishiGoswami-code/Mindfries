@@ -9,6 +9,8 @@ package session
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"sort"
@@ -16,11 +18,22 @@ import (
 	"time"
 )
 
+// HashToken is what is stored in place of a session token: the hex SHA-256.
+// Tokens are 256 random bits, so a fast hash is enough; a database leak
+// doesn't hand out working tokens.
+func HashToken(token string) string {
+	h := sha256.Sum256([]byte(token))
+	return hex.EncodeToString(h[:])
+}
+
 // ErrNotFound is returned when a code or session doesn't exist.
 var ErrNotFound = errors.New("not found")
 
-// ErrCodeUnusable is returned when a setup code is already used or expired.
-var ErrCodeUnusable = errors.New("setup code is used or expired")
+// ErrCodeUnusable is returned when a setup code was already used.
+var ErrCodeUnusable = errors.New("setup code is used")
+
+// ErrCodeExpired is returned when a setup code ran out of time unused.
+var ErrCodeExpired = errors.New("setup code has expired")
 
 // SetupCode is a one-time dashboard code that carries an assessment's role + JD.
 type SetupCode struct {
@@ -32,14 +45,25 @@ type SetupCode struct {
 	DurationMinutes int
 	ExpiresAt       time.Time
 	Used            bool
+	Links           Links // who and what it is for (V1 ids); empty for a bare code
+}
+
+// Links ties a session or setup code to the V1 candidate, company and
+// invitation it belongs to (uuid strings, or empty). The assessment has its
+// own field, AssessmentID, which the grading and review code also uses.
+type Links struct {
+	CandidateID  string
+	CompanyID    string
+	InvitationID string
 }
 
 // Session is an active assessment the CLI is working against. It pins the
 // resolved task so the bundle is stable for the session's lifetime.
 type Session struct {
 	ID              string
-	Token           string
+	Token           string // only set when the session is created; never read back
 	AssessmentID    string // the V1 assessments.id, for status write-back ("" if unlinked)
+	Links           Links
 	AssessmentTitle string
 	Role            string
 	JDHash          string
@@ -48,9 +72,10 @@ type Session struct {
 	TaskVersion     string
 	Brief           string
 	DurationMinutes int
-	Status          string    // ready | active | submitted | expired | revoked
-	StartedAt       time.Time // the clock start — set on begin
-	EndsAt          time.Time // the clock end — set on begin
+	Status          string     // ready | active | submitted | expired | revoked
+	StartedAt       time.Time  // the clock start — set on begin
+	EndsAt          time.Time  // the clock end — set on begin
+	BegunAt         *time.Time // nil until begin
 }
 
 // Event is one watcher evidence event, stored as received (hash-chained).
@@ -108,11 +133,33 @@ type Grade struct {
 type Store interface {
 	CreateSetupCode(ctx context.Context, c SetupCode) error
 	// TakeSetupCode marks the code used and returns it; ErrNotFound if missing,
-	// ErrCodeUnusable if already used or expired.
+	// ErrCodeUnusable if already used, ErrCodeExpired if it ran out of time.
+	// SetupCodeLive reports whether a code exists, is unused and unexpired,
+	// without using it (the install script checks before serving itself).
+	SetupCodeLive(ctx context.Context, code string, now time.Time) (bool, error)
 	TakeSetupCode(ctx context.Context, code string, now time.Time) (SetupCode, error)
 	CreateSession(ctx context.Context, s Session) error
+	// SessionByToken looks a session up by its bearer token (stored hashed).
 	SessionByToken(ctx context.Context, token string) (Session, error)
+	// SessionByID looks a session up by id.
+	SessionByID(ctx context.Context, id string) (Session, error)
+	RecentSessions(ctx context.Context, limit int) ([]Session, error)
+	Events(ctx context.Context, sessionID string) ([]Event, error)
+	// SaveGrade upserts the grade for a submission.
+	SaveGrade(ctx context.Context, g Grade) error
+	// GradeBySubmission returns the submission's grade, or ErrNotFound.
+	GradeBySubmission(ctx context.Context, submissionID string) (Grade, error)
+	// MarkAssessmentSubmitted flips the linked V1 assessments row to 'submitted'
+	// so the candidate dashboard and admin reflect that the work is handed in and
+	// stop offering another setup. No-op when assessmentID is "".
+	MarkAssessmentSubmitted(ctx context.Context, assessmentID string) error
 	SetStatus(ctx context.Context, id, status string) error
+	// LiveSessionFor is the candidate's unfinished (ready or active) session for
+	// an assessment, if any: a new setup code resumes it instead of making a
+	// second one.
+	LiveSessionFor(ctx context.Context, candidateID, assessmentID string) (Session, bool, error)
+	// RotateToken gives a session a new bearer token (the old one stops working).
+	RotateToken(ctx context.Context, sessionID, newToken string) error
 	// Begin starts the clock: status -> active, with the given start/end times.
 	Begin(ctx context.Context, id string, startedAt, endsAt time.Time) error
 
@@ -133,20 +180,6 @@ type Store interface {
 	SubmissionByID(ctx context.Context, id string) (Submission, error)
 	// CompleteSubmission attaches the uploaded bundle and sets the final status.
 	CompleteSubmission(ctx context.Context, id string, bundle []byte, status string, verifiedAt time.Time) error
-
-	// Read + grade methods for the admin review surface (GRADE step).
-	SessionByID(ctx context.Context, id string) (Session, error)
-	RecentSessions(ctx context.Context, limit int) ([]Session, error)
-	Events(ctx context.Context, sessionID string) ([]Event, error)
-	// SaveGrade upserts the grade for a submission.
-	SaveGrade(ctx context.Context, g Grade) error
-	// GradeBySubmission returns the submission's grade, or ErrNotFound.
-	GradeBySubmission(ctx context.Context, submissionID string) (Grade, error)
-
-	// MarkAssessmentSubmitted flips the linked V1 assessments row to 'submitted'
-	// so the candidate dashboard and admin reflect that the work is handed in and
-	// stop offering another setup. No-op when assessmentID is "".
-	MarkAssessmentSubmitted(ctx context.Context, assessmentID string) error
 }
 
 // Mem is an in-memory Store for tests.
@@ -170,59 +203,6 @@ func NewMem() *Mem {
 		subs: map[string]Submission{}, subBySess: map[string]string{}, grades: map[string]Grade{},
 	}
 }
-
-func (m *Mem) SessionByID(_ context.Context, id string) (Session, error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	if tok, ok := m.tokenFor[id]; ok {
-		return m.byToken[tok], nil
-	}
-	return Session{}, ErrNotFound
-}
-
-func (m *Mem) RecentSessions(_ context.Context, limit int) ([]Session, error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	var out []Session
-	for _, tok := range m.tokenFor {
-		out = append(out, m.byToken[tok])
-	}
-	sort.Slice(out, func(i, j int) bool { return out[i].StartedAt.After(out[j].StartedAt) })
-	if limit > 0 && len(out) > limit {
-		out = out[:limit]
-	}
-	return out, nil
-}
-
-func (m *Mem) Events(_ context.Context, sessionID string) ([]Event, error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	var out []Event
-	for _, e := range m.events[sessionID] {
-		out = append(out, e)
-	}
-	sort.Slice(out, func(i, j int) bool { return out[i].Seq < out[j].Seq })
-	return out, nil
-}
-
-func (m *Mem) SaveGrade(_ context.Context, g Grade) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.grades[g.SubmissionID] = g
-	return nil
-}
-
-func (m *Mem) GradeBySubmission(_ context.Context, submissionID string) (Grade, error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	if g, ok := m.grades[submissionID]; ok {
-		return g, nil
-	}
-	return Grade{}, ErrNotFound
-}
-
-// MarkAssessmentSubmitted is a no-op in memory — there is no V1 assessments table.
-func (m *Mem) MarkAssessmentSubmitted(_ context.Context, _ string) error { return nil }
 
 func (m *Mem) CreateSubmission(_ context.Context, sub Submission) error {
 	m.mu.Lock()
@@ -327,8 +307,11 @@ func (m *Mem) TakeSetupCode(_ context.Context, code string, now time.Time) (Setu
 	if !ok {
 		return SetupCode{}, ErrNotFound
 	}
-	if c.Used || now.After(c.ExpiresAt) {
+	if c.Used {
 		return SetupCode{}, ErrCodeUnusable
+	}
+	if now.After(c.ExpiresAt) {
+		return SetupCode{}, ErrCodeExpired
 	}
 	c.Used = true
 	m.codes[code] = c
@@ -338,15 +321,27 @@ func (m *Mem) TakeSetupCode(_ context.Context, code string, now time.Time) (Setu
 func (m *Mem) CreateSession(_ context.Context, s Session) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	m.byToken[s.Token] = s
-	m.tokenFor[s.ID] = s.Token
+	h := HashToken(s.Token)
+	s.Token = ""
+	m.byToken[h] = s
+	m.tokenFor[s.ID] = h
 	return nil
+}
+
+func (m *Mem) SessionByID(_ context.Context, id string) (Session, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	h, ok := m.tokenFor[id]
+	if !ok {
+		return Session{}, ErrNotFound
+	}
+	return m.byToken[h], nil
 }
 
 func (m *Mem) SessionByToken(_ context.Context, token string) (Session, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	s, ok := m.byToken[token]
+	s, ok := m.byToken[HashToken(token)]
 	if !ok {
 		return Session{}, ErrNotFound
 	}
@@ -375,6 +370,107 @@ func (m *Mem) Begin(_ context.Context, id string, startedAt, endsAt time.Time) e
 	}
 	s := m.byToken[tok]
 	s.Status, s.StartedAt, s.EndsAt = "active", startedAt, endsAt
+	s.BegunAt = &startedAt
 	m.byToken[tok] = s
 	return nil
 }
+
+// Grant is what a setup code or an approved device sign-in entitles the CLI
+// to: a session for one candidate on one assessment. The portal's server
+// supplies it; the API never trusts a browser for any of it.
+type Grant struct {
+	Links           Links  `json:"links"`
+	AssessmentID    string `json:"assessment_id"`
+	Role            string `json:"role"`
+	JD              string `json:"jd"`
+	AssessmentTitle string `json:"assessment_title"`
+	DurationMinutes int    `json:"duration_minutes"`
+}
+
+// Grant is the setup code's entitlement.
+func (c SetupCode) Grant() Grant {
+	return Grant{Links: c.Links, AssessmentID: c.AssessmentID, Role: c.Role, JD: c.JD, AssessmentTitle: c.AssessmentTitle, DurationMinutes: c.DurationMinutes}
+}
+
+// Live reports whether a session can still be worked on.
+func (s Session) Live() bool { return s.Status == "ready" || s.Status == "active" }
+
+func (m *Mem) LiveSessionFor(_ context.Context, candidateID, assessmentID string) (Session, bool, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if candidateID == "" || assessmentID == "" {
+		return Session{}, false, nil
+	}
+	for _, s := range m.byToken {
+		if s.Links.CandidateID == candidateID && s.AssessmentID == assessmentID && s.Live() {
+			return s, true, nil
+		}
+	}
+	return Session{}, false, nil
+}
+
+func (m *Mem) RotateToken(_ context.Context, sessionID, newToken string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	old, ok := m.tokenFor[sessionID]
+	if !ok {
+		return ErrNotFound
+	}
+	s := m.byToken[old]
+	delete(m.byToken, old)
+	h := HashToken(newToken)
+	m.byToken[h] = s
+	m.tokenFor[sessionID] = h
+	return nil
+}
+
+func (m *Mem) SetupCodeLive(_ context.Context, code string, now time.Time) (bool, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	c, ok := m.codes[code]
+	return ok && !c.Used && !now.After(c.ExpiresAt), nil
+}
+
+func (m *Mem) RecentSessions(_ context.Context, limit int) ([]Session, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	var out []Session
+	for _, tok := range m.tokenFor {
+		out = append(out, m.byToken[tok])
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].StartedAt.After(out[j].StartedAt) })
+	if limit > 0 && len(out) > limit {
+		out = out[:limit]
+	}
+	return out, nil
+}
+
+func (m *Mem) Events(_ context.Context, sessionID string) ([]Event, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	var out []Event
+	for _, e := range m.events[sessionID] {
+		out = append(out, e)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Seq < out[j].Seq })
+	return out, nil
+}
+
+func (m *Mem) SaveGrade(_ context.Context, g Grade) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.grades[g.SubmissionID] = g
+	return nil
+}
+
+func (m *Mem) GradeBySubmission(_ context.Context, submissionID string) (Grade, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if g, ok := m.grades[submissionID]; ok {
+		return g, nil
+	}
+	return Grade{}, ErrNotFound
+}
+
+// MarkAssessmentSubmitted is a no-op in memory: there is no V1 assessments table.
+func (m *Mem) MarkAssessmentSubmitted(_ context.Context, _ string) error { return nil }

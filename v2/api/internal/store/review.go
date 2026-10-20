@@ -11,23 +11,6 @@ import (
 
 // Read + grade methods backing the admin review surface (GRADE step).
 
-const sessionCols = `id, token, coalesce(assessment_id, ''), assessment_title, role, jd_hash, product_slug, bank_task_id,
-	task_version, brief, duration_minutes, status, started_at, ends_at`
-
-func scanSession(row pgx.Row) (session.Session, error) {
-	var s session.Session
-	err := row.Scan(&s.ID, &s.Token, &s.AssessmentID, &s.AssessmentTitle, &s.Role, &s.JDHash, &s.ProductSlug, &s.BankTaskID,
-		&s.TaskVersion, &s.Brief, &s.DurationMinutes, &s.Status, &s.StartedAt, &s.EndsAt)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return session.Session{}, session.ErrNotFound
-	}
-	return s, err
-}
-
-func (d *DB) SessionByID(ctx context.Context, id string) (session.Session, error) {
-	return scanSession(d.pool.QueryRow(ctx, `select `+sessionCols+` from v2.sessions where id = $1`, id))
-}
-
 func (d *DB) RecentSessions(ctx context.Context, limit int) ([]session.Session, error) {
 	if limit <= 0 || limit > 200 {
 		limit = 50

@@ -11,9 +11,17 @@ import (
 	"crypto/ed25519"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/http"
+	"os"
 	"path/filepath"
 	"sync"
+	"time"
+
+	"github.com/mindfries/v2/api/internal/activity"
+	"github.com/mindfries/v2/api/internal/blob"
+	"github.com/mindfries/v2/api/internal/config"
+	"github.com/mindfries/v2/api/internal/mw"
 
 	"github.com/mindfries/v2/api/internal/core"
 	"github.com/mindfries/v2/api/internal/delivery"
@@ -27,27 +35,80 @@ type Registry interface {
 	Products(ctx context.Context) ([]engine.Product, error)
 }
 
-// Server resolves assessments from the registry + the on-disk product bank, and
-// (when given a session store) serves the CLI session contract.
+// Options is everything the server is built from. Anything left nil turns
+// its routes off (a server with no GitHub client has no /github routes), so a
+// partial deployment says "not configured" plainly instead of failing later.
+type Options struct {
+	Config   config.Config
+	Registry Registry
+	Cache    taskgen.Cache
+	Provider taskgen.Provider // optional: model-tailored briefs
+	Sessions session.Store    // enables the CLI contract
+	Devices  DeviceStore
+	Configs  ConfigStore
+	GitHub   GitHubStore
+	Monitor  MonitorStore
+	Activity ActivityStore
+	Blobs    blob.Store
+	Hub      *activity.Hub
+	Log      *slog.Logger
+	Now      func() time.Time
+}
+
+// Server resolves assessments from the registry + the on-disk product bank,
+// serves the CLI session contract, and the portals' and panel's routes.
 type Server struct {
+	cfg          config.Config
 	reg          Registry
 	productsRoot string // directory holding each product (<root>/<slug>)
 	cache        taskgen.Cache
 	provider     taskgen.Provider // optional
 	poolSize     int
 	sessions     session.Store // optional; enables the /v2/cli contract
+	devices      DeviceStore
+	configs      ConfigStore
+	github       GitHubStore
+	monitor      MonitorStore
+	acts         ActivityStore
+	blobs        blob.Store
+	hub          *activity.Hub
 	signKeyID    string
 	signKey      ed25519.PrivateKey // nil -> fall back to the dev key
+	log          *slog.Logger
+	now          func() time.Time
 
 	mu    sync.Mutex
 	banks map[string][]taskgen.BankTask // slug -> bank, lazily loaded
 }
 
-// New builds the HTTP handler. sessions may be nil (engine-only, no CLI
-// contract). signKey may be nil to sign bundles with the dev key (dev/test);
-// pass a production key so release CLIs trust them.
+// New builds the HTTP handler with the engine and the CLI session contract
+// only. sessions may be nil (engine-only). signKey may be nil to sign bundles
+// with the dev key (dev/test). It is NewServer with a minimal Options.
 func New(reg Registry, productsRoot string, cache taskgen.Cache, provider taskgen.Provider, poolSize int, sessions session.Store, signKeyID string, signKey ed25519.PrivateKey) http.Handler {
-	s := &Server{reg: reg, productsRoot: productsRoot, cache: cache, provider: provider, poolSize: poolSize, sessions: sessions, signKeyID: signKeyID, signKey: signKey, banks: map[string][]taskgen.BankTask{}}
+	// The few settings the engine-only server reads from the environment (the
+	// CLI downloads, the public address, the admin token); the rest comes in
+	// through NewServer's Options.
+	cfg, _ := config.Load(os.Getenv, false)
+	cfg.ProductsRoot, cfg.PoolSize, cfg.SigningKeyID, cfg.SigningKey = productsRoot, poolSize, signKeyID, signKey
+	return NewServer(Options{Config: cfg, Registry: reg, Cache: cache, Provider: provider, Sessions: sessions})
+}
+
+// NewServer builds the handler from Options, wrapped in the request
+// middleware (request IDs, panic recovery, access log).
+func NewServer(o Options) http.Handler {
+	s := &Server{cfg: o.Config, reg: o.Registry, productsRoot: o.Config.ProductsRoot, cache: o.Cache, provider: o.Provider,
+		poolSize: o.Config.PoolSize, sessions: o.Sessions, devices: o.Devices, configs: o.Configs, github: o.GitHub, monitor: o.Monitor, acts: o.Activity, blobs: o.Blobs, hub: o.Hub,
+		signKeyID: o.Config.SigningKeyID, signKey: o.Config.SigningKey, log: o.Log, now: o.Now,
+		banks: map[string][]taskgen.BankTask{}}
+	if s.log == nil {
+		s.log = slog.Default()
+	}
+	if s.hub == nil {
+		s.hub = activity.NewHub()
+	}
+	if s.now == nil {
+		s.now = func() time.Time { return time.Now().UTC() }
+	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", s.health)
 	mux.HandleFunc("GET /v2/products", s.products)
@@ -55,17 +116,20 @@ func New(reg Registry, productsRoot string, cache taskgen.Cache, provider taskge
 	s.registerCLI(mux)
 	s.registerDist(mux)
 	s.registerReview(mux)
-	return mux
+	s.registerEntry(mux)
+	s.registerGitHub(mux)
+	s.registerPanel(mux)
+	return mw.Wrap(mw.CORS(s.cfg.AllowedOrigins, mux), s.log)
 }
 
 // resolveFor selects a product and resolves a task for a role+JD (used by the
 // CLI exchange). Returns the resolved task (with ProductSlug set).
-func (s *Server) resolveFor(r *http.Request, role, jd string) (taskgen.ResolvedTask, error) {
+func (s *Server) resolveFor(ctx context.Context, role, jd string) (taskgen.ResolvedTask, error) {
 	cr := core.Role(role)
 	if !core.ValidRole(cr) {
 		return taskgen.ResolvedTask{}, fmt.Errorf("unknown role %q", role)
 	}
-	products, err := s.reg.Products(r.Context())
+	products, err := s.reg.Products(ctx)
 	if err != nil {
 		return taskgen.ResolvedTask{}, err
 	}
@@ -78,7 +142,7 @@ func (s *Server) resolveFor(r *http.Request, role, jd string) (taskgen.ResolvedT
 		return taskgen.ResolvedTask{}, err
 	}
 	gen := taskgen.New(bank, s.cache, s.provider, s.poolSize)
-	return gen.Resolve(r.Context(), choice.Product.Slug, cr, jd)
+	return gen.Resolve(ctx, choice.Product.Slug, cr, jd)
 }
 
 func (s *Server) health(w http.ResponseWriter, r *http.Request) {
