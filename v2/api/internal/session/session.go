@@ -90,6 +90,17 @@ type Submission struct {
 	VerifiedAt      *time.Time
 }
 
+// Grade is the stored result of running a submission against its task's hidden
+// acceptance tests (package grade). One per submission, produced out-of-process
+// by an isolated runner.
+type Grade struct {
+	SubmissionID string    `json:"submission_id"`
+	Passed       bool      `json:"passed"`
+	Check        []string  `json:"check"`
+	Output       string    `json:"output"`
+	GradedAt     time.Time `json:"graded_at"`
+}
+
 // Store persists setup codes, sessions, evidence, and submissions.
 type Store interface {
 	CreateSetupCode(ctx context.Context, c SetupCode) error
