@@ -32,8 +32,8 @@ type Outcome struct {
 }
 
 type Effort struct {
-	WindowMinutes   int  `json:"window_minutes"`   // the allotted window
-	ActiveMinutes   int  `json:"active_minutes"`   // first edit → last commit
+	WindowMinutes   int  `json:"window_minutes"` // the allotted window
+	ActiveMinutes   int  `json:"active_minutes"` // first edit → last commit
 	FilesChanged    int  `json:"files_changed"`
 	LinesAdded      int  `json:"lines_added"`
 	LinesRemoved    int  `json:"lines_removed"`
@@ -42,9 +42,9 @@ type Effort struct {
 }
 
 type AISummary struct {
-	AgentsDetected           []string `json:"agents_detected"`            // e.g. ["claude-code"]
-	AgentsLeftRunning        bool     `json:"agents_left_running"`        // a match with closed_by_candidate=false
-	AIExtensions             []string `json:"ai_extensions"`              // e.g. ["github.copilot-chat"]
+	AgentsDetected           []string `json:"agents_detected"`     // e.g. ["claude-code"]
+	AgentsLeftRunning        bool     `json:"agents_left_running"` // a match with closed_by_candidate=false
+	AIExtensions             []string `json:"ai_extensions"`       // e.g. ["github.copilot-chat"]
 	CandidateAttributedLines int      `json:"candidate_attributed_lines"`
 	AgentAttributedLines     int      `json:"agent_attributed_lines"`
 }

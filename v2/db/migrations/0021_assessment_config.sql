@@ -13,12 +13,14 @@ create table if not exists v2.assessment_config (
   require_screen    boolean not null default true,
   require_audio     boolean not null default true,
   avatar_enabled    boolean not null default true,
+  research_domains  jsonb not null default '[]'::jsonb,       -- sites the assistant may research; empty: the defaults
   tabs_override     jsonb,                                    -- null: derive from the manifest's modes
   jd                text not null default '',
   updated_at        timestamptz not null default now(),
   updated_by        text not null default ''
 );
 
+alter table v2.assessment_config add column if not exists research_domains jsonb not null default '[]'::jsonb;
 alter table v2.assessment_config disable row level security;
 
 insert into v2.schema_migrations (version) values ('0021_assessment_config')

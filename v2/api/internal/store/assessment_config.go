@@ -20,14 +20,14 @@ func (d *DB) AssessmentConfig(ctx context.Context, assessmentID string) (policy.
 	if assessmentID == "" {
 		return c, false, nil
 	}
-	var reviewers, tabs []byte
+	var reviewers, tabs, research []byte
 	var mode string
 	err := d.pool.QueryRow(ctx,
 		`select duration_minutes, assistant_mode, outside_agents_allowed, reviewers,
-		        require_camera, require_screen, require_audio, avatar_enabled, tabs_override, jd
+		        require_camera, require_screen, require_audio, avatar_enabled, tabs_override, jd, research_domains
 		   from v2.assessment_config where assessment_id = $1::uuid`, assessmentID).Scan(
 		&c.DurationMinutes, &mode, &c.OutsideAgentsAllowed, &reviewers,
-		&c.RequireCamera, &c.RequireScreen, &c.RequireAudio, &c.AvatarEnabled, &tabs, &c.JD)
+		&c.RequireCamera, &c.RequireScreen, &c.RequireAudio, &c.AvatarEnabled, &tabs, &c.JD, &research)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return c, false, nil
 	}
@@ -37,6 +37,8 @@ func (d *DB) AssessmentConfig(ctx context.Context, assessmentID string) (policy.
 	c.AssistantMode = policy.AssistantMode(mode)
 	c.Reviewers = []string{}
 	_ = json.Unmarshal(reviewers, &c.Reviewers)
+	c.ResearchDomains = []string{}
+	_ = json.Unmarshal(research, &c.ResearchDomains)
 	if len(tabs) > 0 {
 		_ = json.Unmarshal(tabs, &c.TabsOverride)
 	}
@@ -48,6 +50,7 @@ func (d *DB) AssessmentConfig(ctx context.Context, assessmentID string) (policy.
 func (d *DB) SaveAssessmentConfig(ctx context.Context, c policy.Config, by string) error {
 	reviewers, _ := policy.NormaliseReviewers(c.Reviewers)
 	rj, _ := json.Marshal(reviewers)
+	rd, _ := json.Marshal(nonNil(c.ResearchDomains))
 	var tabs any
 	if c.TabsOverride != nil {
 		b, _ := json.Marshal(c.TabsOverride)
@@ -56,16 +59,16 @@ func (d *DB) SaveAssessmentConfig(ctx context.Context, c policy.Config, by strin
 	_, err := d.pool.Exec(ctx,
 		`insert into v2.assessment_config
 		   (assessment_id, duration_minutes, assistant_mode, outside_agents_allowed, reviewers,
-		    require_camera, require_screen, require_audio, avatar_enabled, tabs_override, jd, updated_by)
-		 values ($1::uuid, $2, $3, $4, $5::jsonb, $6, $7, $8, $9, $10::jsonb, $11, $12)
+		    require_camera, require_screen, require_audio, avatar_enabled, tabs_override, jd, research_domains, updated_by)
+		 values ($1::uuid, $2, $3, $4, $5::jsonb, $6, $7, $8, $9, $10::jsonb, $11, $12::jsonb, $13)
 		 on conflict (assessment_id) do update set
 		   duration_minutes = excluded.duration_minutes, assistant_mode = excluded.assistant_mode,
 		   outside_agents_allowed = excluded.outside_agents_allowed, reviewers = excluded.reviewers,
 		   require_camera = excluded.require_camera, require_screen = excluded.require_screen,
 		   require_audio = excluded.require_audio, avatar_enabled = excluded.avatar_enabled,
-		   tabs_override = excluded.tabs_override, jd = excluded.jd,
+		   tabs_override = excluded.tabs_override, jd = excluded.jd, research_domains = excluded.research_domains,
 		   updated_at = now(), updated_by = excluded.updated_by`,
 		c.AssessmentID, c.DurationMinutes, string(c.AssistantMode), c.OutsideAgentsAllowed, string(rj),
-		c.RequireCamera, c.RequireScreen, c.RequireAudio, c.AvatarEnabled, tabs, c.JD, by)
+		c.RequireCamera, c.RequireScreen, c.RequireAudio, c.AvatarEnabled, tabs, c.JD, string(rd), by)
 	return err
 }

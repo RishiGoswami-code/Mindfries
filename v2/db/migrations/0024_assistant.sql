@@ -6,6 +6,7 @@
 create table if not exists v2.assistant_turns (
   id           text primary key,                      -- trn_<rand>
   session_id   text not null references v2.sessions(id) on delete cascade,
+  conversation_id text not null default '',
   channel      text not null check (channel in ('agent', 'avatar')),
   prompt       text not null default '',
   status       text not null default 'running'
@@ -16,7 +17,9 @@ create table if not exists v2.assistant_turns (
   output_tokens int not null default 0,
   error_code   text
 );
+alter table v2.assistant_turns add column if not exists conversation_id text not null default '';
 create index if not exists assistant_turns_session_idx on v2.assistant_turns (session_id, started_at);
+create index if not exists assistant_turns_conv_idx on v2.assistant_turns (session_id, conversation_id, started_at);
 
 create table if not exists v2.assistant_steps (
   turn_id    text not null references v2.assistant_turns(id) on delete cascade,

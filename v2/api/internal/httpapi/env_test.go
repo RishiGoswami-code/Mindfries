@@ -41,7 +41,10 @@ const (
 	testAdminToken   = "admin-token-for-tests"
 )
 
-func newEnv(t *testing.T, mod func(*config.Config)) *env {
+func newEnv(t *testing.T, mod func(*config.Config)) *env { return newEnvWith(t, mod, nil) }
+
+// newEnvWith also lets a test change the server's Options (a different model, say).
+func newEnvWith(t *testing.T, mod func(*config.Config), opts func(*Options)) *env {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	t.Cleanup(cancel)
@@ -57,19 +60,22 @@ func newEnv(t *testing.T, mod func(*config.Config)) *env {
 		ProductsRoot: root, PoolSize: 3, MinCLIVersion: "0.0.0", LatestCLIVersion: "0.1.0",
 		PortalSecret: testPortalSecret, AdminToken: testAdminToken,
 		PublicURL: "https://api.test", PortalURL: "https://portal.test",
-		EncryptionKey: bytes.Repeat([]byte{7}, 32),
+		EncryptionKey: bytes.Repeat([]byte{7}, 32), MaxTokensPerSession: 400000, RetentionDays: 90,
 	}
 	if mod != nil {
 		mod(&e.cfg)
 	}
 	reg := loadReg(t, root, "p1-support-saas", "p2-rag-platform", "p3-quant-platform")
-	h := NewServer(Options{
+	o := Options{
 		Config: e.cfg, Registry: reg, Cache: taskgen.NewMemCache(),
-		Sessions: db, Devices: db, Configs: db, GitHub: db, Monitor: db, Activity: db, Panel: db, Blobs: e.blobs, Hub: e.hub,
+		Sessions: db, Devices: db, Configs: db, GitHub: db, Monitor: db, Activity: db, Panel: db, Assistant: db, Blobs: e.blobs, Hub: e.hub,
 		Log: slog.New(slog.NewTextHandler(io.Discard, nil)),
 		Now: e.clock,
-	})
-	e.ts = httptest.NewServer(h)
+	}
+	if opts != nil {
+		opts(&o)
+	}
+	e.ts = httptest.NewServer(NewServer(o))
 	t.Cleanup(e.ts.Close)
 	return e
 }

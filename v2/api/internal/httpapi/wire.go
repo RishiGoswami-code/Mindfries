@@ -5,6 +5,7 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/mindfries/v2/api/internal/assistant"
 	"github.com/mindfries/v2/api/internal/policy"
 	"github.com/mindfries/v2/api/internal/session"
 )
@@ -52,6 +53,7 @@ func (s *Server) wireSession(ctx context.Context, sess session.Session, lastAcke
 		"policy": map[string]any{
 			"assistant_mode":         string(cfg.AssistantMode),
 			"outside_agents_allowed": false, // always false in V2: outside agents are flagged
+			"research_domains":       researchDomains(cfg),
 		},
 		"intervals": map[string]any{
 			"heartbeat_seconds": 30, "snapshot_seconds": 120, "agent_scan_seconds": 180,
@@ -65,6 +67,10 @@ func (s *Server) wireSession(ctx context.Context, sess session.Session, lastAcke
 			"camera": cfg.RequireCamera, "screen": cfg.RequireScreen, "audio": cfg.RequireAudio,
 			"panel_url": s.panelURL(sess),
 		},
+	}
+	if s.assist != nil && cfg.AssistantMode != policy.Off {
+		total, left := s.budget(ctx, sess)
+		out["policy"].(map[string]any)["assistant_budget"] = map[string]any{"tokens_total": total, "tokens_remaining": left}
 	}
 	if s.cfg.HasGitHub() {
 		out["github"] = map[string]any{
@@ -99,4 +105,13 @@ func (s *Server) panelURL(sess session.Session) string {
 		base = s.cfg.PublicURL
 	}
 	return base + "/v2/session/" + sess.ID
+}
+
+// researchDomains is where the assistant may research: the assessment's list,
+// or the official documentation sites when it names none.
+func researchDomains(c policy.Config) []string {
+	if len(c.ResearchDomains) > 0 {
+		return c.ResearchDomains
+	}
+	return assistant.DefaultResearch
 }

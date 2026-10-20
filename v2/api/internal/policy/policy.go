@@ -36,6 +36,7 @@ type Config struct {
 	RequireAudio         bool          `json:"require_audio"`
 	AvatarEnabled        bool          `json:"avatar_enabled"`
 	TabsOverride         []string      `json:"tabs_override,omitempty"`
+	ResearchDomains      []string      `json:"research_domains"` // empty: official documentation sites
 	JD                   string        `json:"jd"`
 }
 
@@ -46,7 +47,7 @@ func Default() Config {
 	return Config{
 		DurationMinutes: 90, AssistantMode: ExplainOnly,
 		RequireCamera: true, RequireScreen: true, RequireAudio: true, AvatarEnabled: true,
-		Reviewers: []string{},
+		Reviewers: []string{}, ResearchDomains: []string{},
 	}
 }
 

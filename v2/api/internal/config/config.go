@@ -41,6 +41,7 @@ type Config struct {
 	GitHubWebURL       string // V2_GITHUB_WEB_URL: https://github.com (a test double in tests)
 	GitHubAPIURL       string // V2_GITHUB_API_URL: https://api.github.com
 
+	GeminiBaseURL   string // V2_GEMINI_BASE_URL: the API root (a test double in tests)
 	GeminiKey       string // V2_GEMINI_API_KEY
 	GeminiModel     string // the text model for the assistant and evaluators
 	GeminiLiveModel string // the Gemini Live model for the avatar
@@ -108,6 +109,7 @@ func Load(get Getenv, requireDB bool) (Config, error) {
 		GitHubWebURL:        str("V2_GITHUB_WEB_URL", ""),
 		GitHubAPIURL:        str("V2_GITHUB_API_URL", ""),
 		GeminiKey:           str("V2_GEMINI_API_KEY", str("GEMINI_API_KEY", "")),
+		GeminiBaseURL:       strings.TrimRight(str("V2_GEMINI_BASE_URL", ""), "/"),
 		GeminiModel:         str("V2_GEMINI_MODEL", str("GEMINI_MODEL", "gemini-3.8-flash")),
 		GeminiLiveModel:     str("V2_GEMINI_LIVE_MODEL", "gemini-3.8-live"),
 		StorageURL:          strings.TrimRight(str("V2_STORAGE_URL", ""), "/"),
