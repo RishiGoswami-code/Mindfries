@@ -53,6 +53,11 @@ export default async function CandidatePage({ params }: { params: Promise<{ id: 
                     {rec ? <Pill tone={rec.tone}>{rec.label} · decided by the company</Pill> : a.aiSuggestion && <Pill tone="gray">Not decided</Pill>}
                     {ai && <span className="text-xs text-dim">AI suggests: {ai.label}</span>}
                     {a.score != null && <span className="mono text-dim">{a.score}%</span>}
+                    {a.sessionId && (
+                      <Link href={`/admin/candidates/${c.id}/report/${a.id}`} className="text-xs font-semibold text-[#5b3be0] hover:underline">
+                        Open report →
+                      </Link>
+                    )}
                     {Object.entries(a.sectionScores).map(([k, v]) => (
                       <span key={k} className="text-xs text-dim">
                         {titleCase(k)} {v}
