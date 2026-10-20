@@ -156,6 +156,76 @@ func TestCLIHappyPath(t *testing.T) {
 	}
 }
 
+func TestCLIEvidencePersists(t *testing.T) {
+	srv, mem := cliServer(t)
+	defer srv.Close()
+	base := srv.URL + cliPrefix
+
+	mem.CreateSetupCode(context.Background(), session.SetupCode{
+		Code: "EV-CODE", Role: "backend", JD: "support helpdesk tickets sla saas",
+		DurationMinutes: 90, ExpiresAt: time.Now().Add(time.Hour),
+	})
+	res := req(t, "POST", base+"/sessions/exchange", "", `{"setup_code":"EV-CODE"}`)
+	var ex struct {
+		SessionToken string `json:"session_token"`
+	}
+	json.NewDecoder(res.Body).Decode(&ex)
+	res.Body.Close()
+	tok := ex.SessionToken
+
+	batch := `{"events":[
+	  {"seq":1,"occurred_at":"2026-01-01T00:00:00Z","type":"workspace.ready","data":{"base_commit":"abc"},"prev_hash":"","hash":"h1"},
+	  {"seq":2,"occurred_at":"2026-01-01T00:01:00Z","type":"file.changed","data":{"path":"x.go"},"prev_hash":"h1","hash":"h2"}]}`
+
+	// First send: both stored.
+	res = req(t, "POST", base+"/session/events", tok, batch)
+	a := decodeAck(t, res)
+	if a["stored"].(float64) != 2 || a["acked_through_seq"].(float64) != 2 {
+		t.Fatalf("first send: %v", a)
+	}
+
+	// Resend: idempotent — both duplicates, ack unchanged.
+	res = req(t, "POST", base+"/session/events", tok, batch)
+	a = decodeAck(t, res)
+	if a["stored"].(float64) != 0 || a["duplicates"].(float64) != 2 {
+		t.Fatalf("resend should be all duplicates: %v", a)
+	}
+
+	// One more event advances the ack.
+	res = req(t, "POST", base+"/session/events", tok, `{"events":[{"seq":3,"occurred_at":"2026-01-01T00:02:00Z","type":"git.commit","data":{},"prev_hash":"h2","hash":"h3"}]}`)
+	a = decodeAck(t, res)
+	if a["acked_through_seq"].(float64) != 3 {
+		t.Fatalf("ack should advance to 3: %v", a)
+	}
+
+	// On resume, GET /session reports where to continue from.
+	res = req(t, "GET", base+"/session", tok, "")
+	var sess map[string]any
+	json.NewDecoder(res.Body).Decode(&sess)
+	res.Body.Close()
+	if sess["last_acked_seq"].(float64) != 3 {
+		t.Fatalf("session last_acked_seq = %v, want 3", sess["last_acked_seq"])
+	}
+
+	// A snapshot is accepted.
+	res = req(t, "POST", base+"/session/snapshots", tok, `{"seq":1,"taken_at":"2026-01-01T00:03:00Z","base_commit":"abc","patch":"","patch_sha256":"z"}`)
+	if res.StatusCode != http.StatusNoContent {
+		t.Fatalf("snapshot = %d", res.StatusCode)
+	}
+	res.Body.Close()
+}
+
+func decodeAck(t *testing.T, res *http.Response) map[string]any {
+	t.Helper()
+	if res.StatusCode != 200 {
+		t.Fatalf("events = %d", res.StatusCode)
+	}
+	var a map[string]any
+	json.NewDecoder(res.Body).Decode(&a)
+	res.Body.Close()
+	return a
+}
+
 func TestCLIAuthAndVersionGuards(t *testing.T) {
 	srv, _ := cliServer(t)
 	defer srv.Close()

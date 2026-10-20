@@ -37,6 +37,7 @@ func (s *Server) registerCLI(mux *http.ServeMux) {
 	mux.HandleFunc("GET "+cliPrefix+"/session/bundle/archive", s.cliArchive)
 	mux.HandleFunc("POST "+cliPrefix+"/session/heartbeat", s.cliHeartbeat)
 	mux.HandleFunc("POST "+cliPrefix+"/session/events", s.cliEvents)
+	mux.HandleFunc("POST "+cliPrefix+"/session/snapshots", s.cliSnapshots)
 	mux.HandleFunc("POST "+cliPrefix+"/session/revoke", s.cliRevoke)
 	// Mint a setup code (stands in for the dashboard/company portal until the
 	// V1 seam is wired). Guarded by V2_ADMIN_TOKEN.
@@ -136,7 +137,7 @@ func (s *Server) cliExchange(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{
 		"session_token": sess.Token,
 		"expires_at":    sess.EndsAt,
-		"session":       toWireSession(sess),
+		"session":       toWireSession(sess, 0),
 	})
 }
 
@@ -145,7 +146,8 @@ func (s *Server) cliSession(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	writeJSON(w, http.StatusOK, toWireSession(sess))
+	acked, _ := s.sessions.LastAckedSeq(r.Context(), sess.ID)
+	writeJSON(w, http.StatusOK, toWireSession(sess, acked))
 }
 
 func (s *Server) cliBundle(w http.ResponseWriter, r *http.Request) {
@@ -197,29 +199,42 @@ func (s *Server) cliHeartbeat(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) cliEvents(w http.ResponseWriter, r *http.Request) {
-	if _, ok := s.authedActive(w, r); !ok {
+	sess, ok := s.authedActive(w, r)
+	if !ok {
 		return
 	}
 	var batch struct {
-		Events []struct {
-			Seq int64 `json:"seq"`
-		} `json:"events"`
+		Events []session.Event `json:"events"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&batch); err != nil {
 		problem(w, http.StatusBadRequest, "malformed", "invalid event batch")
 		return
 	}
-	// Slice A accepts and acks events without persisting them (Slice B stores
-	// the hash-chained evidence). Ack the highest seq so the CLI clears its queue.
-	var maxSeq int64
-	for _, e := range batch.Events {
-		if e.Seq > maxSeq {
-			maxSeq = e.Seq
-		}
+	acked, stored, dup, err := s.sessions.AppendEvents(r.Context(), sess.ID, batch.Events)
+	if err != nil {
+		problem(w, http.StatusInternalServerError, "internal", err.Error())
+		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"acked_through_seq": maxSeq, "stored": len(batch.Events), "duplicates": 0,
+		"acked_through_seq": acked, "stored": stored, "duplicates": dup,
 	})
+}
+
+func (s *Server) cliSnapshots(w http.ResponseWriter, r *http.Request) {
+	sess, ok := s.authedActive(w, r)
+	if !ok {
+		return
+	}
+	var snap session.Snapshot
+	if err := json.NewDecoder(r.Body).Decode(&snap); err != nil {
+		problem(w, http.StatusBadRequest, "malformed", "invalid snapshot")
+		return
+	}
+	if err := s.sessions.SaveSnapshot(r.Context(), sess.ID, snap); err != nil {
+		problem(w, http.StatusInternalServerError, "internal", err.Error())
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (s *Server) cliRevoke(w http.ResponseWriter, r *http.Request) {
@@ -308,7 +323,7 @@ func randHex(n int) string {
 
 // --- wire session (matches the CLI's api.Session json) ---
 
-func toWireSession(s session.Session) map[string]any {
+func toWireSession(s session.Session, lastAcked int64) map[string]any {
 	return map[string]any{
 		"id":               s.ID,
 		"assessment_id":    "asm_" + s.ID, // one assessment per session for now
@@ -327,6 +342,6 @@ func toWireSession(s session.Session) map[string]any {
 			"max_events_per_batch": 500, "max_batch_bytes": 1 << 20,
 			"max_snapshot_bytes": 2 << 20, "max_bundle_bytes": int64(50) << 20,
 		},
-		"last_acked_seq": 0,
+		"last_acked_seq": lastAcked,
 	}
 }

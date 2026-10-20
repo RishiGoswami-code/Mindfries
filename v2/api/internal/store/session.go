@@ -72,3 +72,45 @@ func (d *DB) SetStatus(ctx context.Context, id, status string) error {
 	_, err := d.pool.Exec(ctx, `update v2.sessions set status = $2 where id = $1`, id, status)
 	return err
 }
+
+func (d *DB) AppendEvents(ctx context.Context, sessionID string, events []session.Event) (int64, int, int, error) {
+	stored := 0
+	for _, e := range events {
+		data := string(e.Data)
+		if data == "" {
+			data = "null"
+		}
+		ct, err := d.pool.Exec(ctx,
+			`insert into v2.events (session_id, seq, occurred_at, type, data, prev_hash, hash)
+			 values ($1, $2, $3, $4, $5::jsonb, $6, $7)
+			 on conflict (session_id, seq) do nothing`,
+			sessionID, e.Seq, e.OccurredAt, e.Type, data, e.PrevHash, e.Hash)
+		if err != nil {
+			return 0, 0, 0, err
+		}
+		if ct.RowsAffected() == 1 {
+			stored++
+		}
+	}
+	acked, err := d.LastAckedSeq(ctx, sessionID)
+	if err != nil {
+		return 0, 0, 0, err
+	}
+	return acked, stored, len(events) - stored, nil
+}
+
+func (d *DB) LastAckedSeq(ctx context.Context, sessionID string) (int64, error) {
+	var acked int64
+	err := d.pool.QueryRow(ctx,
+		`select coalesce(max(seq), 0) from v2.events where session_id = $1`, sessionID).Scan(&acked)
+	return acked, err
+}
+
+func (d *DB) SaveSnapshot(ctx context.Context, sessionID string, s session.Snapshot) error {
+	_, err := d.pool.Exec(ctx,
+		`insert into v2.snapshots (session_id, seq, taken_at, base_commit, head_commit, patch, patch_sha256)
+		 values ($1, $2, $3, $4, $5, $6, $7)
+		 on conflict (session_id, seq) do nothing`,
+		sessionID, s.Seq, s.TakenAt, s.BaseCommit, s.HeadCommit, s.Patch, s.PatchSHA256)
+	return err
+}
