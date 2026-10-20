@@ -10,20 +10,27 @@ info:
 
     ## How a session uses it
 
-    1. The candidate installs the CLI once (the installer checks
-       `GET /version`) and runs `mindfries start`, with nothing to paste.
-    2. `start` signs them in through the browser (`POST /sessions/device`,
-       then polling `POST /sessions/device/token`): Mindfries shows a short
-       code in the terminal and on the sign-in page, the candidate checks
-       they match and picks the assessment they were invited to, and the CLI
-       receives that one session's token. A single-use setup code from the
-       dashboard (`POST /sessions/exchange`) still works as a shortcut.
-       Everything after that sends the token as a bearer credential.
-    3. `start` fetches the task manifest and archive, checks every file's
-       hash, and sets up the workspace (`GET /session/bundle`,
-       `GET /session/bundle/archive`).
-    4. The session watcher sends heartbeats, event batches and diff
-       snapshots until the session ends.
+    1. The candidate presses Start assessment on the dashboard and gets one
+       command with a single-use setup code in it. It installs the CLI if
+       needed (the installer checks `GET /version`) and runs
+       `mindfries setup <code>`, which trades the code for a session token
+       (`POST /sessions/exchange`). Without a code, `mindfries setup` signs
+       in through the browser instead (`POST /sessions/device`, then polling
+       `POST /sessions/device/token`). Everything after that sends the token
+       as a bearer credential. The session is `ready`: the clock isn't
+       running.
+    2. `setup` fetches the task manifest and archive, checks every file's
+       hash, sets up the workspace (`GET /session/bundle`,
+       `GET /session/bundle/archive`), and connects the candidate's GitHub
+       (`POST /session/github/token`, `/session/github/repo`).
+    3. `mindfries start` asks which installed editor to use and checks the
+       computer; if anything fails, nothing starts. When `Session.monitoring`
+       asks for camera, screen or microphone, it opens the monitoring panel
+       and waits (`GET /session/monitoring`). Then `POST /session/begin`
+       starts the clock, and the editor opens in the workspace.
+    4. The session watcher sends heartbeats (whose replies include the
+       panel's state), event batches and diff snapshots until the session
+       ends.
     5. `mindfries agent` sends assistant turns. Replies stream back as
        server-sent events, including tool calls the CLI carries out locally.
     6. `submit` sends a manifest, then uploads a Git bundle that the server
@@ -232,6 +239,68 @@ paths:
                 $ref: "#/components/schemas/Problem"
         "426":
           $ref: "#/components/responses/CliTooOld"
+
+  /session/begin:
+    post:
+      tags: [Session]
+      operationId: beginSession
+      summary: Start the clock
+      description: |
+        Sent by `mindfries start` once the editor is chosen, the computer's
+        checks have passed and the required monitoring is live. The session
+        goes from `ready` to `active`: `started_at` is now and `ends_at` is
+        `duration_minutes` later. Beginning an active session again answers
+        it as it is.
+      parameters:
+        - $ref: "#/components/parameters/CliVersion"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BeginRequest"
+      responses:
+        "200":
+          description: The session, now active.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Session"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "409":
+          description: |
+            `monitoring_not_ready` (the panel isn't sharing what the
+            assessment needs; `detail` lists it) or `session_not_active`.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+
+  /session/monitoring:
+    get:
+      tags: [Session]
+      operationId: getMonitoring
+      summary: What the monitoring panel has on right now
+      description: |
+        The panel is a Mindfries page in the candidate's browser (the spec's
+        floating panel). It asks for the camera and microphone and for a
+        screen share, reports what's live every few seconds, and while the
+        session is active sends a camera still and a screenshot every 30
+        seconds and the microphone in 30-second clips (web app endpoints,
+        not part of this contract). A stopped share is a gap in the record,
+        never a verdict.
+      parameters:
+        - $ref: "#/components/parameters/CliVersion"
+      responses:
+        "200":
+          description: The panel's state.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MonitoringStatus"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
 
   /session:
     get:
@@ -838,6 +907,7 @@ components:
             - token_expired
             - token_revoked
             - session_not_active
+            - monitoring_not_ready
             - assistant_off
             - budget_exhausted
             - turn_not_waiting
@@ -971,10 +1041,12 @@ components:
     SessionStatus:
       type: string
       description: |
-        `active` while the candidate can work; `submitted` once a submission
-        is verified; `expired` when the time ran out; `revoked` when the
-        token was revoked or the session ended from the portal.
-      enum: [active, submitted, expired, revoked]
+        `ready` once set up, before the clock starts (`ends_at` is then the
+        deadline to begin); `active` while the candidate can work;
+        `submitted` once a submission is verified; `expired` when the time
+        ran out; `revoked` when the token was revoked or the session ended
+        from the portal.
+      enum: [ready, active, submitted, expired, revoked]
 
     AssistantMode:
       type: string
@@ -1056,6 +1128,67 @@ components:
           $ref: "#/components/schemas/Id"
         github:
           $ref: "#/components/schemas/GitHubSetting"
+        duration_minutes:
+          type: integer
+          minimum: 1
+          description: The time the candidate gets once they begin.
+        monitoring:
+          $ref: "#/components/schemas/Monitoring"
+
+    Monitoring:
+      type: object
+      description: What the assessment records in the monitoring panel; each is required when true.
+      required: [camera, screen, audio, panel_url]
+      properties:
+        camera:
+          type: boolean
+        screen:
+          type: boolean
+        audio:
+          type: boolean
+          description: The microphone.
+        panel_url:
+          type: string
+          format: uri
+          description: The monitoring panel, opened by `mindfries start`.
+
+    MonitoringStatus:
+      type: object
+      required: [panel_open, camera, screen, audio]
+      properties:
+        panel_open:
+          type: boolean
+          description: The panel reported in the last 20 seconds.
+        camera:
+          type: boolean
+        screen:
+          type: boolean
+        audio:
+          type: boolean
+        last_seen:
+          $ref: "#/components/schemas/Timestamp"
+
+    BeginRequest:
+      type: object
+      required: [ide]
+      properties:
+        ide:
+          type: string
+          description: The editor chosen, e.g. `vscode`, `pycharm`, `zed`, or `manual`.
+        checks:
+          type: array
+          description: The computer's checks at the start.
+          items:
+            type: object
+            required: [name, status]
+            properties:
+              name:
+                type: string
+              status:
+                type: string
+                enum: [pass, warn, fail]
+              detail:
+                type: string
 
     GitHubSetting:
       type: object
@@ -1286,6 +1419,8 @@ components:
           type: boolean
           default: false
           description: When true the watcher flushes its queue, stops and cleans up.
+        monitoring:
+          $ref: "#/components/schemas/MonitoringStatus"
 
     EventBatch:
       type: object

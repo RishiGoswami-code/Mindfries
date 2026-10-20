@@ -51,6 +51,7 @@ const (
 	CodeTokenExpired         = "token_expired"
 	CodeTokenRevoked         = "token_revoked"
 	CodeSessionNotActive     = "session_not_active"
+	CodeMonitoringNotReady   = "monitoring_not_ready"
 	CodeAssistantOff         = "assistant_off"
 	CodeBudgetExhausted      = "budget_exhausted"
 	CodeTurnNotWaiting       = "turn_not_waiting"
@@ -113,6 +114,9 @@ type ExchangeResponse struct {
 
 // Session statuses.
 const (
+	// StatusReady: set up (task downloaded, GitHub connected), clock not
+	// started; POST /session/begin starts it.
+	StatusReady     = "ready"
 	StatusActive    = "active"
 	StatusSubmitted = "submitted"
 	StatusExpired   = "expired"
@@ -141,6 +145,65 @@ type Session struct {
 	// GitHub is set when the work goes to a repository in the candidate's
 	// own GitHub account.
 	GitHub *GitHub `json:"github,omitempty"`
+	// DurationMinutes is the time the candidate gets once they begin. While
+	// the session is ready, EndsAt is the deadline to begin by.
+	DurationMinutes int `json:"duration_minutes,omitempty"`
+	// Monitoring is what the assessment records in the browser panel.
+	Monitoring *Monitoring `json:"monitoring,omitempty"`
+}
+
+// Monitoring says which of camera, screen and microphone the assessment
+// needs. The browser panel at PanelURL asks for them and keeps periodic
+// stills and audio clips; `mindfries start` doesn't begin until the
+// required ones are on.
+type Monitoring struct {
+	Camera   bool   `json:"camera"`
+	Screen   bool   `json:"screen"`
+	Audio    bool   `json:"audio"`
+	PanelURL string `json:"panel_url"`
+}
+
+// Any reports whether anything is required.
+func (m *Monitoring) Any() bool { return m != nil && (m.Camera || m.Screen || m.Audio) }
+
+// MonitoringStatus is what the panel reports as live right now.
+type MonitoringStatus struct {
+	PanelOpen bool       `json:"panel_open"`
+	Camera    bool       `json:"camera"`
+	Screen    bool       `json:"screen"`
+	Audio     bool       `json:"audio"`
+	LastSeen  *time.Time `json:"last_seen,omitempty"`
+}
+
+// Missing lists what m requires that isn't live, for people.
+func (s *MonitoringStatus) Missing(m *Monitoring) []string {
+	if m == nil {
+		return nil
+	}
+	var out []string
+	if m.Camera && (s == nil || !s.Camera) {
+		out = append(out, "camera")
+	}
+	if m.Audio && (s == nil || !s.Audio) {
+		out = append(out, "microphone")
+	}
+	if m.Screen && (s == nil || !s.Screen) {
+		out = append(out, "screen")
+	}
+	return out
+}
+
+// BeginRequest starts the clock: the editor chosen and the checks that
+// passed on this computer.
+type BeginRequest struct {
+	IDE    string       `json:"ide"`
+	Checks []BeginCheck `json:"checks,omitempty"`
+}
+
+type BeginCheck struct {
+	Name   string `json:"name"`
+	Status string `json:"status"` // pass, warn, fail
+	Detail string `json:"detail,omitempty"`
 }
 
 // GitHub says how the session uses the candidate's GitHub: on the sign-in
@@ -275,6 +338,8 @@ type HeartbeatReply struct {
 	SessionStatus string    `json:"session_status"`
 	EndsAt        time.Time `json:"ends_at"`
 	Stop          bool      `json:"stop,omitempty"`
+	// Monitoring is the browser panel's state, when the session uses it.
+	Monitoring *MonitoringStatus `json:"monitoring,omitempty"`
 }
 
 // Event is one watcher event. Data is the type-specific payload.
