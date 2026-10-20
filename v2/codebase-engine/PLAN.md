@@ -120,7 +120,15 @@ ANALYSIS coverage matrix.
   Two harness-verified tasks: `debug-retrieval-order`, `feature-recall-at-k`.
   Registered via `db/migrations/0006_seed_p2_product.sql`. (Chat web UI for
   Frontend coverage deferred, as with P1.)
-- [ ] **3.2 P3 — Quant research platform** (Quant, AI/ML-Researcher, Data-Analyst).
+- [x] **3.2 P3 — Quant research platform** (Quant, AI/ML-Researcher, Data-Analyst).
+  → `v2/products/p3-quant-platform` — pure-stdlib **Python** quant library:
+  returns/equity, features (MA, rolling vol, z-score), risk metrics (Sharpe,
+  drawdown, annualized), portfolio construction, missing-data handling, and a
+  lookahead-safe backtester; 19-test unittest suite green + runnable demo.
+  Manifest covers Quant, AI/ML-Researcher, Data-Analyst (validated). Two
+  harness-verified tasks: `debug-drawdown`, `feature-sortino`. Registered via
+  `db/migrations/0007_seed_p3_product.sql`. Proves the engine is
+  language-agnostic (Go + Python products through the same harness/delivery).
 - [ ] **3.3 P4 — Fintech ledger/payments** (Backend, Full-Stack).
 - [ ] **3.4 P5 — Product-analytics / warehouse** (Data-Analyst primary).
 - *Done when (each):* `status=verified`, manifest validates, every covered role
