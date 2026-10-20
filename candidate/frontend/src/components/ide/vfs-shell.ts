@@ -199,7 +199,6 @@ export function attachVfsShell(
       )
       .finally(() => {
         if (trimmed && isTestCommand(trimmed)) {
-          // eslint-disable-next-line no-control-regex
           const plain = captured.replace(/\x1b\[[0-9;?]*[ -/]*[@-~]/g, "").replace(/\r\n/g, "\n");
           term.write(`\r\n${summaryLine(parseTestRun(trimmed, plain, session.lastExit))}`);
         }
