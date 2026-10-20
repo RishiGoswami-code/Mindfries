@@ -101,6 +101,9 @@ function taskReady(a: Assessment): boolean {
 
 /** Said under the due date while the task is being made — before an invitation is answered too, so accepting doesn't lead to a Start that isn't there yet. */
 function TaskNote({ assessment }: { assessment: Assessment }) {
+  // V2 resolves its task at setup time, so there's nothing to "prepare" — the
+  // card just shows "Set up workspace".
+  if (assessment.engine === "v2") return null;
   if (assessment.status !== "invited" || taskReady(assessment)) return null;
   return (
     <span role="status" className={clsx("text-[12.5px] font-medium", assessment.taskStatus === "failed" ? "text-[#a6203c]" : "text-[#4B2BB8]")}>
