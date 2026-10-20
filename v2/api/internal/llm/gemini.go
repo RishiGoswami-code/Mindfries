@@ -18,7 +18,10 @@ import (
 )
 
 const (
-	defaultModel = "gemini-2.0-flash"
+	// Google retires model aliases over time (gemini-2.0-flash now 404s with a
+	// "no longer available" message). Override with GEMINI_MODEL when the
+	// current default is retired, without a code change.
+	defaultModel = "gemini-3.8-flash"
 	endpoint     = "https://generativelanguage.googleapis.com/v1beta/models/%s:generateContent"
 	maxWait      = 20 * time.Second
 )
