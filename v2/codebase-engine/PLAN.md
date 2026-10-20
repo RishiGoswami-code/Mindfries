@@ -112,7 +112,14 @@ P1 end to end. It is the riskiest phase; everything later reuses it.
 Reuse the Phase-1 pipeline. One product per PR set; fill role task banks to the
 ANALYSIS coverage matrix.
 
-- [ ] **3.1 P2 — AI RAG/Agent platform** (AI-Eng, AI/ML-Researcher primary).
+- [x] **3.1 P2 — AI RAG/Agent platform** (AI-Eng, AI/ML-Researcher primary).
+  → `v2/products/p2-rag-platform` — chunking, model-free embedder, vector
+  store + search, ingest/query engine, tool-calling agent, eval harness
+  (HitAtK/AnswerMatch), HTTP API, seeded KB, runnable server; builds/vets/tests
+  green. Manifest covers AI-Engineer, AI/ML-Researcher, Backend (validated).
+  Two harness-verified tasks: `debug-retrieval-order`, `feature-recall-at-k`.
+  Registered via `db/migrations/0006_seed_p2_product.sql`. (Chat web UI for
+  Frontend coverage deferred, as with P1.)
 - [ ] **3.2 P3 — Quant research platform** (Quant, AI/ML-Researcher, Data-Analyst).
 - [ ] **3.3 P4 — Fintech ledger/payments** (Backend, Full-Stack).
 - [ ] **3.4 P5 — Product-analytics / warehouse** (Data-Analyst primary).

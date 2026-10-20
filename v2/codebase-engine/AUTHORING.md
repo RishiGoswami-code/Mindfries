@@ -24,7 +24,9 @@ ground-truth — neither of which an arbitrary OSS repo gives us.
 5. **Write the manifest** (`manifest.json`) and validate it:
    `go run ./cmd/manifestcheck <product>/manifest.json` (from `v2/api`). Only
    claim roles the code can actually assess; list `cannot_assess` honestly.
-6. **Author reference tasks** under `<product>/tasks/<id>/`:
+6. **Author reference tasks** under `<product>/_tasks/<id>/` (the leading
+   underscore makes the Go tool ignore the bank, since overlay/solution files
+   only compile once applied over the product):
    - `task.json` — id, kind, role, title, check command.
    - `TASK.md` — the candidate-facing brief (becomes the locked TASK.md).
    - `overlay/` — files applied over the product for the candidate (a feature
