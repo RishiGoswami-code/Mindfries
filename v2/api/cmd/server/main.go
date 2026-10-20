@@ -50,7 +50,8 @@ func main() {
 		}
 	}
 
-	handler := httpapi.New(db, productsRoot, store.NewTaskCache(db), nil, poolSize)
+	// db implements both the product Registry and the session Store.
+	handler := httpapi.New(db, productsRoot, store.NewTaskCache(db), nil, poolSize, db)
 
 	port := os.Getenv("PORT")
 	if port == "" {

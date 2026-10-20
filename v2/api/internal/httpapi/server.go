@@ -9,6 +9,7 @@ package httpapi
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"path/filepath"
 	"sync"
@@ -16,6 +17,7 @@ import (
 	"github.com/mindfries/v2/api/internal/core"
 	"github.com/mindfries/v2/api/internal/delivery"
 	"github.com/mindfries/v2/api/internal/engine"
+	"github.com/mindfries/v2/api/internal/session"
 	"github.com/mindfries/v2/api/internal/taskgen"
 )
 
@@ -24,26 +26,52 @@ type Registry interface {
 	Products(ctx context.Context) ([]engine.Product, error)
 }
 
-// Server resolves assessments from the registry + the on-disk product bank.
+// Server resolves assessments from the registry + the on-disk product bank, and
+// (when given a session store) serves the CLI session contract.
 type Server struct {
 	reg          Registry
 	productsRoot string // directory holding each product (<root>/<slug>)
 	cache        taskgen.Cache
 	provider     taskgen.Provider // optional
 	poolSize     int
+	sessions     session.Store // optional; enables the /v2/cli contract
 
 	mu    sync.Mutex
 	banks map[string][]taskgen.BankTask // slug -> bank, lazily loaded
 }
 
-// New builds the HTTP handler.
-func New(reg Registry, productsRoot string, cache taskgen.Cache, provider taskgen.Provider, poolSize int) http.Handler {
-	s := &Server{reg: reg, productsRoot: productsRoot, cache: cache, provider: provider, poolSize: poolSize, banks: map[string][]taskgen.BankTask{}}
+// New builds the HTTP handler. sessions may be nil (engine-only, no CLI contract).
+func New(reg Registry, productsRoot string, cache taskgen.Cache, provider taskgen.Provider, poolSize int, sessions session.Store) http.Handler {
+	s := &Server{reg: reg, productsRoot: productsRoot, cache: cache, provider: provider, poolSize: poolSize, sessions: sessions, banks: map[string][]taskgen.BankTask{}}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", s.health)
 	mux.HandleFunc("GET /v2/products", s.products)
 	mux.HandleFunc("POST /v2/assessments/resolve", s.resolve)
+	s.registerCLI(mux)
 	return mux
+}
+
+// resolveFor selects a product and resolves a task for a role+JD (used by the
+// CLI exchange). Returns the resolved task (with ProductSlug set).
+func (s *Server) resolveFor(r *http.Request, role, jd string) (taskgen.ResolvedTask, error) {
+	cr := core.Role(role)
+	if !core.ValidRole(cr) {
+		return taskgen.ResolvedTask{}, fmt.Errorf("unknown role %q", role)
+	}
+	products, err := s.reg.Products(r.Context())
+	if err != nil {
+		return taskgen.ResolvedTask{}, err
+	}
+	choice, err := engine.Select(cr, jd, products)
+	if err != nil {
+		return taskgen.ResolvedTask{}, err
+	}
+	bank, err := s.bankFor(choice.Product.Slug, filepath.Join(s.productsRoot, choice.Product.Slug))
+	if err != nil {
+		return taskgen.ResolvedTask{}, err
+	}
+	gen := taskgen.New(bank, s.cache, s.provider, s.poolSize)
+	return gen.Resolve(r.Context(), choice.Product.Slug, cr, jd)
 }
 
 func (s *Server) health(w http.ResponseWriter, r *http.Request) {
