@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"log"
 	"sort"
 
 	"github.com/mindfries/v2/api/internal/core"
@@ -75,8 +76,17 @@ func (g *Generator) Resolve(ctx context.Context, productSlug string, role core.R
 		bt := ranked[i]
 		brief := bt.Brief
 		if g.provider != nil {
-			if adapted, err := g.provider.Adapt(ctx, bt.Brief, jd); err == nil && adapted != "" {
-				brief = adapted // graceful: keep authored brief on error/empty
+			// Graceful: keep the authored brief on any error/empty, but log why
+			// so a silent fallback (bad key, model error, anchor guard) is
+			// diagnosable instead of looking like adaptation is simply off.
+			adapted, err := g.provider.Adapt(ctx, bt.Brief, jd)
+			switch {
+			case err != nil:
+				log.Printf("taskgen: brief adaptation fell back to authored for %q: %v", bt.ID, err)
+			case adapted == "":
+				log.Printf("taskgen: brief adaptation returned empty for %q, keeping authored", bt.ID)
+			default:
+				brief = adapted
 			}
 		}
 		pool = append(pool, ResolvedTask{
