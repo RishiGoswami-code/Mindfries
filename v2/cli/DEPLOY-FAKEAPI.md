@@ -57,7 +57,7 @@ installers. A tester needs no environment variables, keys or codes.
    install: curl -fsSL https://<service>.onrender.com/install.sh | sh   (macOS, Linux)
    ```
 
-Docker works too: Runtime **Docker**, Dockerfile Path `./Dockerfile.fakeapi`,
+Docker works too: Runtime **Docker**, Root Directory `v2` and Dockerfile Path `cli/Dockerfile.fakeapi` (the build needs `../contracts`),
 the same environment variables (`FAKEAPI_DIST` is set by the image), and
 `CLI_API` if the address isn't `https://mindfries-cli.onrender.com/v2/cli`.
 

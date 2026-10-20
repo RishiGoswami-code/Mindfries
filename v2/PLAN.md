@@ -362,13 +362,13 @@ It only runs while a session started with `mindfries start` is active.
 
 ### Stage 2 — The V2 API, and connecting V2 to V1 ([§6 core services](SPEC.md#core-services))
 
-- [ ] **2.1 V2 schema and database role.**
+- [x] **2.1 V2 schema and database role.**
   - Create the `v2` schema and migrations in `v2/db` for sessions, setup codes, tasks and versions, evidence events and submissions. Rows are keyed to V1 IDs.
   - Create a V2 Postgres role: read-only on the V1 tables listed in 0.3, full access to `v2`, nothing else.
   - *Done when:*
     - applying the migrations twice is a no-op the second time;
     - a test shows the V2 role is refused when it tries to write any V1 table.
-- [ ] **2.2 `v2/api`: the contract from 1.1, for real.**
+- [x] **2.2 `v2/api`: the contract from 1.1, for real.** (Built; the real CLI binary runs setup, start and submit against it in `v2/api/internal/httpapi/cli_e2e_test.go`. See [`BACKEND.md`](BACKEND.md).)
   - Implement sessions, setup codes, token issue and revoke, task bundles, events and submissions, with manifest verification.
   - Implement the assistant gateway from 1.14 with real model calls, policy modes and budgets.
   - *Done when:* the CLI's end-to-end tests from 1.13 pass against the real API as well as the fake.

@@ -12,6 +12,48 @@ work, in order, and says when each piece is done.
 Written 2026-10-20, from a comparison of `v2/api` against the contract, the fake
 API (`v2/cli/fakeapi`) and the panel's needs.
 
+## Status: what is built (updated 2026-10-21)
+
+Branch `feat/v2-backend`. Everything below has tests that run in CI against a
+real Postgres, and the real `mindfries` binary runs setup, start and submit
+against it (`v2/api/internal/httpapi/cli_e2e_test.go`).
+
+| Part | State |
+|---|---|
+| B0 foundations (config, problems, middleware, hashed tokens, Postgres in CI) | Done |
+| B1 migrations 0017-0025 (renumbered after main's 0013-0016) | Done |
+| B2 entry: setup codes, install scripts, browser sign-in, portal routes | Done |
+| B3 GitHub: OAuth, one-time token handoff, repo record | Done |
+| B4 clock and monitoring: begin gate, uploads, gaps | Done |
+| B5 live tracker: rules, SSE feed with resume | Done |
+| B6 panel API: config per candidate, artifacts with history, check runs | Done |
+| B7 assistant gateway: Gemini, policy, tools via the CLI, server-side research, budgets | Done |
+| B8 avatar: locked Gemini Live tokens, kept transcripts | Done; **needs a smoke test with a real Gemini key** |
+| B9 submission verification | Not mine: the out-of-process grader (`cmd/grade`) is the team's |
+| B10 evaluation and report | Not mine: built by a teammate. This API serves the evidence they read (`/v2/portal/sessions/{id}/evidence`) |
+| B11 company and admin routes | Done (config, sessions, evidence, end, extend, flag reviews, registry) |
+| B12 retention, privacy, security | Done; see `api/SECURITY.md` |
+| B13 operations | Done: README, CI, Dockerfile fix, housekeeping. Cost caps are in; an alert on them is a log line, not a pager |
+
+### Left, and where it lives
+
+- **CLI:** a `mindfries check` command that runs the task's checks and sends the
+  `check.run` event the Testing tab reads (the server and the contract already
+  accept it). Today the checks run at `submit`.
+- **Candidate portal (Part I):** the sign-in page that calls
+  `/v2/portal/device/*`, the Connect GitHub step, the floating panel on live
+  data (`/v2/panel/*`), PiP, and the Start assessment button calling
+  `/v2/portal/setup-codes`. The panel's `tabs.ts` should also map the
+  `system_design` mode (the real name) to the design tab.
+- **Company and admin portals (Part I):** call the staff routes. Setting an
+  assessment's reviewers is `PUT /v2/portal/assessments/{id}/config`.
+- **The fake API** still serves the older shapes for the CLI's own tests; keep
+  it in step when the contract changes (the real e2e now catches drift).
+- **Secrets to set on Render:** `V2_PORTAL_SECRET`, `V2_ENCRYPTION_KEY`,
+  `V2_PORTAL_URL`, the GitHub OAuth app (callback
+  `<V2_PUBLIC_URL>/github/callback`), `V2_STORAGE_URL`/`KEY` and a private
+  `v2-evidence` bucket, `V2_GEMINI_API_KEY`, `V2_ALLOWED_ORIGINS`.
+
 ## Where things stand
 
 | Piece | State |

@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
@@ -23,7 +24,27 @@ func TestMigrationsApplyTwice(t *testing.T) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
-	conn, err := pgx.Connect(ctx, url)
+
+	// Its own database, so this test's DDL can't collide with other tests'
+	// queries (and the migrations really start from nothing).
+	admin, err := pgx.Connect(ctx, url)
+	if err != nil {
+		t.Fatal(err)
+	}
+	name := fmt.Sprintf("migtest_%d", time.Now().UnixNano())
+	if _, err := admin.Exec(ctx, "create database "+name); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_, _ = admin.Exec(context.Background(), "drop database if exists "+name+" with (force)")
+		admin.Close(context.Background())
+	})
+	cfg, err := pgx.ParseConfig(url)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg.Database = name
+	conn, err := pgx.ConnectConfig(ctx, cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -68,8 +89,6 @@ func TestMigrationsApplyTwice(t *testing.T) {
 			t.Errorf("v2.%s is missing", tbl)
 		}
 	}
-
-	_, _ = conn.Exec(ctx, `delete from v2.sessions where id in ('ses_t1', 'ses_t2')`)
 
 	// 'ready' is a legal session status; an unknown one is not.
 	if _, err := conn.Exec(ctx, `insert into v2.sessions (id, token_hash, role, product_slug, bank_task_id, task_version, ends_at, status)

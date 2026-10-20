@@ -1,13 +1,18 @@
 # The fake V2 API, for a throwaway deployment (see DEPLOY-FAKEAPI.md).
 # Not the real V2 API: everything is in memory and lost on restart.
 #
+# Build with the v2/ folder as the context, because the CLI depends on
+# ../contracts:  docker build -f cli/Dockerfile.fakeapi v2   (on Render:
+# Root Directory v2, Dockerfile Path cli/Dockerfile.fakeapi).
+#
 # It also hosts dev builds of the CLI with CLI_API baked in, so a tester
 # installs with one command and types `mindfries start`, nothing else.
 FROM golang:1.25-alpine AS build
 RUN apk add --no-cache git
 WORKDIR /src
-COPY go.mod ./
-COPY . .
+COPY contracts ./contracts
+COPY cli ./cli
+WORKDIR /src/cli
 RUN CGO_ENABLED=0 go build -trimpath -o /out/fakeapi ./cmd/fakeapi
 # The address the hosted CLI builds talk to: this service's own.
 ARG CLI_API=https://mindfries-cli.onrender.com/v2/cli
