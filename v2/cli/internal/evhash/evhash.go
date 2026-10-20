@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/mindfries/v2/cli/internal/api"
-	"github.com/mindfries/v2/cli/internal/canonical"
+	"github.com/mindfries/v2/contracts/canonical"
 )
 
 // Genesis is the prev_hash of the first event.

@@ -14,7 +14,7 @@ import (
 	"strings"
 
 	"github.com/mindfries/v2/cli/internal/api"
-	"github.com/mindfries/v2/cli/internal/canonical"
+	"github.com/mindfries/v2/contracts/canonical"
 )
 
 // ManifestKeys is set at link time by the release build, as
