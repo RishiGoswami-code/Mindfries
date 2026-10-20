@@ -80,8 +80,8 @@ func TestCLIHappyPath(t *testing.T) {
 	if ex.SessionToken == "" {
 		t.Fatal("no session token")
 	}
-	if ex.Session["status"] != "active" {
-		t.Fatalf("session not active: %v", ex.Session["status"])
+	if ex.Session["status"] != "ready" {
+		t.Fatalf("session should be ready after setup: %v", ex.Session["status"])
 	}
 	tok := ex.SessionToken
 
@@ -137,7 +137,16 @@ func TestCLIHappyPath(t *testing.T) {
 		t.Fatal("archive bytes don't match the manifest's archive_sha256")
 	}
 
-	// 6. heartbeat
+	// 6. begin — start the clock (ready -> active)
+	res = req(t, "POST", base+"/session/begin", tok, `{"ide":"manual","checks":[]}`)
+	var begun map[string]any
+	json.NewDecoder(res.Body).Decode(&begun)
+	res.Body.Close()
+	if begun["status"] != "active" {
+		t.Fatalf("begin should activate the session, got %v", begun["status"])
+	}
+
+	// 7. heartbeat
 	res = req(t, "POST", base+"/session/heartbeat", tok, `{"sent_at":"2026-01-01T00:00:00Z","watcher":{"queue_depth":0,"last_sent_seq":0}}`)
 	var hb map[string]any
 	json.NewDecoder(res.Body).Decode(&hb)

@@ -44,9 +44,10 @@ type Session struct {
 	BankTaskID      string
 	TaskVersion     string
 	Brief           string
-	Status          string // active | submitted | expired | revoked
-	StartedAt       time.Time
-	EndsAt          time.Time
+	DurationMinutes int
+	Status          string    // ready | active | submitted | expired | revoked
+	StartedAt       time.Time // the clock start — set on begin
+	EndsAt          time.Time // the clock end — set on begin
 }
 
 // Event is one watcher evidence event, stored as received (hash-chained).
@@ -98,6 +99,8 @@ type Store interface {
 	CreateSession(ctx context.Context, s Session) error
 	SessionByToken(ctx context.Context, token string) (Session, error)
 	SetStatus(ctx context.Context, id, status string) error
+	// Begin starts the clock: status -> active, with the given start/end times.
+	Begin(ctx context.Context, id string, startedAt, endsAt time.Time) error
 
 	// AppendEvents stores events idempotently by (session, seq). It returns the
 	// highest seq now stored (the CLI deletes up to it), how many were newly
@@ -277,6 +280,19 @@ func (m *Mem) SetStatus(_ context.Context, id, status string) error {
 	}
 	s := m.byToken[tok]
 	s.Status = status
+	m.byToken[tok] = s
+	return nil
+}
+
+func (m *Mem) Begin(_ context.Context, id string, startedAt, endsAt time.Time) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	tok, ok := m.tokenFor[id]
+	if !ok {
+		return ErrNotFound
+	}
+	s := m.byToken[tok]
+	s.Status, s.StartedAt, s.EndsAt = "active", startedAt, endsAt
 	m.byToken[tok] = s
 	return nil
 }

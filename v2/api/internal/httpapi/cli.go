@@ -35,6 +35,8 @@ func (s *Server) registerCLI(mux *http.ServeMux) {
 	mux.HandleFunc("GET "+cliPrefix+"/version", s.cliVersion)
 	mux.HandleFunc("POST "+cliPrefix+"/sessions/exchange", s.cliExchange)
 	mux.HandleFunc("GET "+cliPrefix+"/session", s.cliSession)
+	mux.HandleFunc("POST "+cliPrefix+"/session/begin", s.cliBegin)
+	mux.HandleFunc("GET "+cliPrefix+"/session/monitoring", s.cliMonitoring)
 	mux.HandleFunc("GET "+cliPrefix+"/session/bundle", s.cliBundle)
 	mux.HandleFunc("GET "+cliPrefix+"/session/bundle/archive", s.cliArchive)
 	mux.HandleFunc("POST "+cliPrefix+"/session/heartbeat", s.cliHeartbeat)
@@ -131,7 +133,8 @@ func (s *Server) cliExchange(w http.ResponseWriter, r *http.Request) {
 		BankTaskID:      rt.BankTaskID,
 		TaskVersion:     rt.TaskVersion,
 		Brief:           rt.Brief,
-		Status:          "active",
+		DurationMinutes: code.DurationMinutes,
+		Status:          "ready", // the clock starts at begin, not at setup
 		StartedAt:       now,
 		EndsAt:          now.Add(time.Duration(code.DurationMinutes) * time.Minute),
 	}
@@ -155,8 +158,45 @@ func (s *Server) cliSession(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, toWireSession(sess, acked))
 }
 
+// cliBegin starts the clock: ready -> active, setting the time budget.
+func (s *Server) cliBegin(w http.ResponseWriter, r *http.Request) {
+	sess, ok := s.authedLive(w, r)
+	if !ok {
+		return
+	}
+	// Idempotent once begun.
+	if sess.Status == "active" {
+		writeJSON(w, http.StatusOK, toWireSession(sess, 0))
+		return
+	}
+	var req struct {
+		IDE    string `json:"ide"`
+		Checks []any  `json:"checks"`
+	}
+	_ = json.NewDecoder(r.Body).Decode(&req) // ide/checks are evidence, not gates here
+	now := time.Now().UTC()
+	ends := now.Add(time.Duration(sess.DurationMinutes) * time.Minute)
+	if err := s.sessions.Begin(r.Context(), sess.ID, now, ends); err != nil {
+		problem(w, http.StatusInternalServerError, "internal", err.Error())
+		return
+	}
+	sess.Status, sess.StartedAt, sess.EndsAt = "active", now, ends
+	writeJSON(w, http.StatusOK, toWireSession(sess, 0))
+}
+
+// cliMonitoring reports live monitoring state. Monitoring is off by default in
+// this build, so the CLI's begin never blocks on it.
+func (s *Server) cliMonitoring(w http.ResponseWriter, r *http.Request) {
+	if _, ok := s.authed(w, r); !ok {
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"panel_open": false, "camera": false, "screen": false, "audio": false,
+	})
+}
+
 func (s *Server) cliBundle(w http.ResponseWriter, r *http.Request) {
-	sess, ok := s.authedActive(w, r)
+	sess, ok := s.authedLive(w, r)
 	if !ok {
 		return
 	}
@@ -169,7 +209,7 @@ func (s *Server) cliBundle(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) cliArchive(w http.ResponseWriter, r *http.Request) {
-	sess, ok := s.authedActive(w, r)
+	sess, ok := s.authedLive(w, r)
 	if !ok {
 		return
 	}
@@ -204,7 +244,7 @@ func (s *Server) cliHeartbeat(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) cliEvents(w http.ResponseWriter, r *http.Request) {
-	sess, ok := s.authedActive(w, r)
+	sess, ok := s.authedLive(w, r)
 	if !ok {
 		return
 	}
@@ -226,7 +266,7 @@ func (s *Server) cliEvents(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) cliSnapshots(w http.ResponseWriter, r *http.Request) {
-	sess, ok := s.authedActive(w, r)
+	sess, ok := s.authedLive(w, r)
 	if !ok {
 		return
 	}
@@ -243,7 +283,7 @@ func (s *Server) cliSnapshots(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) cliSubmit(w http.ResponseWriter, r *http.Request) {
-	sess, ok := s.authedActive(w, r)
+	sess, ok := s.authedLive(w, r)
 	if !ok {
 		return
 	}
@@ -383,12 +423,14 @@ func (s *Server) authed(w http.ResponseWriter, r *http.Request) (session.Session
 	return sess, true
 }
 
-func (s *Server) authedActive(w http.ResponseWriter, r *http.Request) (session.Session, bool) {
+// authedLive allows a session that is set up (ready) or running (active) —
+// bundle download and evidence happen during setup, before the clock starts.
+func (s *Server) authedLive(w http.ResponseWriter, r *http.Request) (session.Session, bool) {
 	sess, ok := s.authed(w, r)
 	if !ok {
 		return session.Session{}, false
 	}
-	if sess.Status != "active" {
+	if sess.Status != "active" && sess.Status != "ready" {
 		w.Header().Set("Content-Type", "application/problem+json")
 		w.WriteHeader(http.StatusConflict)
 		_ = json.NewEncoder(w).Encode(map[string]any{
@@ -437,6 +479,7 @@ func toWireSession(s session.Session, lastAcked int64) map[string]any {
 		"assessment_id":    "asm_" + s.ID, // one assessment per session for now
 		"assessment_title": s.AssessmentTitle,
 		"status":           s.Status,
+		"duration_minutes": s.DurationMinutes,
 		"started_at":       s.StartedAt,
 		"ends_at":          s.EndsAt,
 		"policy": map[string]any{
