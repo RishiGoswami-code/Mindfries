@@ -218,12 +218,35 @@ func toWireSubmission(sub session.Submission) map[string]any {
 	return m
 }
 
+// cliRevoke ends the CLI's use of its token. The reason says why: `stop` (the
+// candidate ended it) revokes the session; `submitted` and `expired` leave the
+// session as it is (it's already submitted or out of time). Either way the
+// token stops working. A session that has finished is never changed.
 func (s *Server) cliRevoke(w http.ResponseWriter, r *http.Request) {
 	sess, ok := s.authed(w, r)
 	if !ok {
 		return
 	}
-	_ = s.sessions.SetStatus(r.Context(), sess.ID, "revoked")
+	var req struct {
+		Reason string `json:"reason"`
+	}
+	_ = json.NewDecoder(io.LimitReader(r.Body, 4<<10)).Decode(&req)
+	ctx := r.Context()
+	if sess.Live() {
+		status := "revoked"
+		if req.Reason == "expired" {
+			status = "expired"
+		}
+		if err := s.sessions.SetStatus(ctx, sess.ID, status); err != nil {
+			problem(w, http.StatusInternalServerError, "internal", err.Error())
+			return
+		}
+	}
+	// Whatever the reason, the token is dead: nothing else can use it.
+	if err := s.sessions.RotateToken(ctx, sess.ID, randHex(32)); err != nil {
+		problem(w, http.StatusInternalServerError, "internal", err.Error())
+		return
+	}
 	w.WriteHeader(http.StatusNoContent)
 }
 

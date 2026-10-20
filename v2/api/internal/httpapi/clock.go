@@ -115,7 +115,7 @@ func (s *Server) cliBegin(w http.ResponseWriter, r *http.Request) {
 	if req.IDE != "" {
 		s.track(ctx, sess.ID, activity.Item{
 			At: now, Severity: activity.Info, Source: activity.Watcher, Category: activity.Observed, Kind: "ide.chosen",
-			Text: "Working in " + ideName(req.IDE) + ".", DedupeKey: "ide",
+			Text: "Working in " + activity.IDEName(req.IDE) + ".", DedupeKey: "ide",
 		})
 	}
 	for _, c := range req.Checks {
@@ -127,20 +127,6 @@ func (s *Server) cliBegin(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	writeJSON(w, http.StatusOK, s.wireSession(ctx, sess, s.acked(ctx, sess.ID)))
-}
-
-func ideName(id string) string {
-	switch id {
-	case "vscode":
-		return "VS Code"
-	case "jetbrains", "pycharm":
-		return "a JetBrains editor"
-	case "zed":
-		return "Zed"
-	case "manual":
-		return "their own editor"
-	}
-	return "an editor"
 }
 
 func (s *Server) acked(ctx context.Context, sessionID string) int64 {

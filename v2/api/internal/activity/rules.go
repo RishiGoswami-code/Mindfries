@@ -161,14 +161,17 @@ func FromEvent(e Event) []Item {
 		for _, m := range d.Matches {
 			names = append(names, m.ProcessName)
 		}
-		list := strings.Join(names, ", ")
+		list, was, is := strings.Join(names, ", "), "was", "is"
+		if len(names) > 1 {
+			was, is = "were", "are"
+		}
 		if d.Phase == "start" {
 			if d.ClosedByCandidate {
-				return mk(Info, Observed, "agent.process.closed", list+" was running before the start and was closed.")
+				return mk(Info, Observed, "agent.process.closed", list+" "+was+" running before the start and "+was+" closed.")
 			}
-			return mk(Notice, Observed, "agent.process.start", list+" was running when the assessment started.")
+			return mk(Notice, Observed, "agent.process.start", list+" "+was+" running when the assessment started.")
 		}
-		return mk(Flag, Observed, "agent.process", list+" is running. Outside coding agents aren't allowed; noted for the reviewer.")
+		return mk(Flag, Observed, "agent.process", list+" "+is+" running. Outside coding agents aren't allowed; noted for the reviewer.")
 
 	case "agent_signal.extension":
 		var d struct {
