@@ -20,8 +20,13 @@ API_URL="${BASE_URL%/}/v2/cli"
 PKG=github.com/mindfries/v2/cli/internal/buildinfo
 COMMIT="$(git rev-parse --short HEAD 2>/dev/null || echo unknown)"
 # TrustDevKey=1: pilot builds accept the engine's dev signing key from its own
-# host. For production, drop it and configure V2_SIGNING_* + ManifestKeys.
-LD="-s -w -X ${PKG}.Version=0.1.0 -X ${PKG}.Commit=${COMMIT} -X ${PKG}.DefaultAPI=${API_URL} -X ${PKG}.TrustDevKey=1"
+# host. That trust is honoured ONLY on a dev build (buildinfo.IsDev — a version
+# containing "-dev"); a release-versioned build ignores TrustDevKey by design,
+# so the pilot version must carry -dev or the CLI rejects the bundle ("the task
+# manifest is signed with the development key…"). For production: use a release
+# version, drop TrustDevKey, and configure V2_SIGNING_* on the engine +
+# ManifestKeys baked here.
+LD="-s -w -X ${PKG}.Version=0.1.0-dev -X ${PKG}.Commit=${COMMIT} -X ${PKG}.DefaultAPI=${API_URL} -X ${PKG}.TrustDevKey=1"
 
 echo "building CLI (API=${API_URL}) into ${DIST}"
 (
