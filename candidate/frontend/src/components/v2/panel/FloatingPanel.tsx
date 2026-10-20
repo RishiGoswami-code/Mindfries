@@ -94,7 +94,7 @@ export function FloatingPanel({ config: given, live, fill }: { config: PanelConf
     <div
       className={clsx(
         "flex flex-col overflow-hidden border border-white/70 bg-white/95",
-        fill ? "h-screen w-screen" : "h-[680px] w-[1180px] max-w-full rounded-[28px] shadow-[0_30px_80px_-20px_rgba(37,73,160,0.35)] ring-1 ring-[#DCE6FA] backdrop-blur",
+        fill ? "h-screen w-screen" : "h-[1360px] w-[2360px] max-h-[calc(100vh-3rem)] max-w-full rounded-[28px] shadow-[0_30px_80px_-20px_rgba(37,73,160,0.35)] ring-1 ring-[#DCE6FA] backdrop-blur",
       )}
       data-testid="v2-panel"
       data-state="expanded"
