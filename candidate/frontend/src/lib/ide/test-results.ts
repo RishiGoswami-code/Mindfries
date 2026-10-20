@@ -136,6 +136,31 @@ export function parseTestRun(command: string, output: string, exitCode: number, 
   return { command, at, exitCode, ...read, parsed: true, tail: tailOf(output) };
 }
 
+/**
+ * How a test run went, in words, for the terminal — green when everything
+ * passed, red when anything failed. A runner's own last word ("OK") left
+ * candidates unsure whether their code worked. Like the rest of this file it
+ * reads only what the runner printed and its exit code. The sandbox's
+ * terminal gets the same line from the backend (testrun.go, SummaryLine).
+ */
+export function summaryLine(run: TestRun): string {
+  const green = "\x1b[32m", red = "\x1b[31m", yellow = "\x1b[33m", reset = "\x1b[0m";
+  const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
+  if (!run.parsed) {
+    return run.exitCode === 0
+      ? `${green}✔ Tests passed (exit code 0). Run them with -v to see each test.${reset}`
+      : `${red}✘ Tests failed (exit code ${run.exitCode}).${reset}`;
+  }
+  if (run.failed > 0) {
+    const names = run.tests.filter((t) => t.status === "fail" || t.status === "error").map((t) => t.name);
+    const shown = names.length > 5 ? [...names.slice(0, 5), "…"] : names;
+    return `${red}✘ ${run.failed} of ${plural(run.passed + run.failed, "test")} failed${shown.length ? `: ${shown.join(", ")}` : ""}${reset}`;
+  }
+  if (run.exitCode !== 0) return `${red}✘ The test run exited with code ${run.exitCode} — look above for the error.${reset}`;
+  if (run.passed === 0) return `${yellow}No tests ran.${reset}`;
+  return `${green}✔ All ${plural(run.passed, "test")} passed${run.skipped ? ` (${run.skipped} skipped)` : ""}${reset}`;
+}
+
 // ── The latest run ───────────────────────────────────────────────────────
 
 type Listener = () => void;

@@ -33,6 +33,10 @@ type Marker struct {
 	Command string
 	// Exit is the finished command's status; nil for a start.
 	Exit *int
+	// At is where in the output Feed returned the sequence was: anything
+	// meant to appear at that point (after the command's output, before the
+	// next prompt) goes there.
+	At int
 }
 
 // MarkerFilter is not safe for concurrent use; one terminal has one.
@@ -73,6 +77,7 @@ func (f *MarkerFilter) Feed(chunk []byte) (out []byte, markers []Marker) {
 			return out, markers
 		}
 		if m, ok := parseMarker(string(rest[:end])); ok {
+			m.At = len(out)
 			markers = append(markers, m)
 		}
 		data = rest[end+1:]

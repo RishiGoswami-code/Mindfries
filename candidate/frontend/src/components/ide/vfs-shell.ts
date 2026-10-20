@@ -8,6 +8,7 @@ import { isMultiLineInput, splitPastedInput } from "@/lib/ide/shell/paste";
 import { commandNames } from "@/lib/ide/shell/registry";
 import { createSession, type PreviewController, type ShellSession } from "@/lib/ide/shell/types";
 import { terminalLog, type RunningCommand } from "@/lib/ide/terminal-log";
+import { isTestCommand, parseTestRun, summaryLine } from "@/lib/ide/test-results";
 
 // True-color (24-bit) escape for the exact brand mid-blue (#4A7FA7) — the
 // standard 16-color ANSI palette has no matching blue close enough to read
@@ -87,6 +88,8 @@ export function attachVfsShell(
 
   /** The command line that is running, for the terminal log — see terminal-log.ts. */
   let tracked: RunningCommand | null = null;
+  /** What the running command printed, for a test run's summary line. */
+  let captured = "";
 
   const io = {
     // Everything a command prints is also kept as text (terminal-log.ts):
@@ -94,6 +97,7 @@ export function attachVfsShell(
     // each finished command — what it was, how it exited, what it printed —
     // is evidence of how the candidate worked.
     write: (text: string) => {
+      if (tracked && captured.length < 200_000) captured += text;
       if (tracked) tracked.output(text);
       else terminalLog.output(text);
       term.write(text);
@@ -181,6 +185,7 @@ export function attachVfsShell(
     if (trimmed) {
       session.history.push(trimmed);
       tracked = terminalLog.begin(trimmed);
+      captured = "";
     }
     historyIndex = session.history.length;
     buffer = "";
@@ -193,6 +198,11 @@ export function attachVfsShell(
         term.writeln(`\x1b[31m${err instanceof Error ? err.message : String(err)}\x1b[0m`)
       )
       .finally(() => {
+        if (trimmed && isTestCommand(trimmed)) {
+          // eslint-disable-next-line no-control-regex
+          const plain = captured.replace(/\x1b\[[0-9;?]*[ -/]*[@-~]/g, "").replace(/\r\n/g, "\n");
+          term.write(`\r\n${summaryLine(parseTestRun(trimmed, plain, session.lastExit))}`);
+        }
         tracked?.finish(session.lastExit);
         tracked = null;
         busy = false;

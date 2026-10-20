@@ -85,6 +85,47 @@ func ParseTestRun(command, output string, exitCode int) TestRun {
 	return run
 }
 
+// SummaryLine says in words how a test run went, for the terminal, coloured
+// like the runner's own: green when everything passed, red when anything
+// failed. A runner's own last word ("OK", "ok  pkg") left candidates unsure
+// whether their code worked. Like the rest of this file it reads only what
+// the runner printed and its exit code.
+func (r TestRun) SummaryLine() string {
+	const green, red, yellow, reset = "\x1b[32m", "\x1b[31m", "\x1b[33m", "\x1b[0m"
+	plural := func(n int, word string) string {
+		if n == 1 {
+			return "1 " + word
+		}
+		return strconv.Itoa(n) + " " + word + "s"
+	}
+	switch {
+	case !r.Parsed && r.ExitCode == 0:
+		return green + "✔ Tests passed (exit code 0). Run them with -v to see each test." + reset
+	case !r.Parsed:
+		return red + "✘ Tests failed (exit code " + strconv.Itoa(r.ExitCode) + ")." + reset
+	case r.Failed > 0:
+		line := red + "✘ " + strconv.Itoa(r.Failed) + " of " + plural(r.Passed+r.Failed, "test") + " failed"
+		if len(r.Failing) > 0 {
+			names := r.Failing
+			if len(names) > 5 {
+				names = append(append([]string{}, names[:5]...), "…")
+			}
+			line += ": " + strings.Join(names, ", ")
+		}
+		return line + reset
+	case r.ExitCode != 0:
+		return red + "✘ The test run exited with code " + strconv.Itoa(r.ExitCode) + " — look above for the error." + reset
+	case r.Passed == 0:
+		return yellow + "No tests ran." + reset
+	default:
+		line := green + "✔ All " + plural(r.Passed, "test") + " passed"
+		if r.Skipped > 0 {
+			line += " (" + strconv.Itoa(r.Skipped) + " skipped)"
+		}
+		return line + reset
+	}
+}
+
 func atoi(s string) int {
 	n, _ := strconv.Atoi(s)
 	return n
