@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   Building2, CircleDollarSign, Crosshair, KeyRound, LayoutDashboard, LibraryBig, LogOut, MonitorPlay, Radar, Rocket,
-  Terminal, UserPlus, UsersRound, type LucideIcon,
+  Terminal, UserPlus, UsersRound, ClipboardCheck, type LucideIcon,
 } from "lucide-react";
 import { signOut } from "@/app/login/actions";
 
@@ -45,6 +45,7 @@ const SECTIONS: { title: string | null; items: Item[] }[] = [
       { href: "/admin/access", label: "Access requests", icon: KeyRound }, // self-signed-up companies waiting for credits
       { href: "/admin/library", label: "Game Library", icon: LibraryBig },
       { href: "/admin/v2", label: "V2 Assign", icon: Terminal }, // assign a V2 engine task to a candidate
+      { href: "/admin/v2/reviews", label: "V2 Reviews", icon: ClipboardCheck }, // evidence reports for submitted sessions
       { href: "/admin/sessions", label: "Sessions", icon: MonitorPlay }, // live candidate sessions
       { href: "/admin/candidates", label: "Candidates", icon: UsersRound }, // accounts, linked profiles, outcomes
     ],

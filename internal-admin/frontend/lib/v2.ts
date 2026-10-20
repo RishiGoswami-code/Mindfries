@@ -77,3 +77,70 @@ export async function mintV2SetupCode(input: {
     return { error: "Couldn't reach the V2 engine." };
   }
 }
+
+// --- GRADE / review surface (reads the engine's admin review endpoints) ---
+
+export type V2ReviewItem = {
+  session_id: string;
+  assessment_title: string;
+  role: string;
+  product_slug: string;
+  bank_task_id: string;
+  status: string;
+  started_at: string;
+  submitted: boolean;
+  graded: boolean;
+  passed?: boolean;
+  submission_status?: string;
+};
+
+export type V2Report = {
+  outcome: { graded: boolean; passed: boolean; check?: string[] };
+  effort: {
+    window_minutes: number; active_minutes: number; files_changed: number;
+    lines_added: number; lines_removed: number; commits: number; task_files_intact: boolean;
+  };
+  ai: {
+    agents_detected: string[]; agents_left_running: boolean; ai_extensions: string[];
+    candidate_attributed_lines: number; agent_attributed_lines: number;
+  };
+  changes: { path: string; lines_added: number; lines_removed: number; origin?: string }[] | null;
+  coverage: { competencies: string[]; cannot_assess: string[] };
+  flags: string[];
+};
+
+export type V2Review = {
+  session: {
+    id: string; assessment_title: string; role: string; product_slug: string;
+    bank_task_id: string; task_version: string; status: string;
+    started_at: string; ends_at: string; duration_minutes: number;
+  };
+  submission?: {
+    id: string; status: string; head_commit: string; base_commit: string;
+    commit_message: string; bundle_bytes: number; task_files_intact: boolean;
+    created_at: string; verified_at?: string | null;
+  } | null;
+  report: V2Report;
+  events: { seq: number; occurred_at: string; type: string; data: unknown }[];
+};
+
+async function v2AdminGet<T>(path: string): Promise<T | null> {
+  const base = v2EngineUrl();
+  const token = process.env.V2_ADMIN_TOKEN;
+  if (!base || !token) return null;
+  try {
+    const res = await fetch(`${base}${path}`, { headers: { "X-Admin-Token": token }, cache: "no-store" });
+    if (!res.ok) return null;
+    return (await res.json()) as T;
+  } catch {
+    return null;
+  }
+}
+
+export async function fetchV2Reviews(): Promise<V2ReviewItem[]> {
+  return (await v2AdminGet<V2ReviewItem[]>("/v2/admin/reviews")) ?? [];
+}
+
+export async function fetchV2Review(id: string): Promise<V2Review | null> {
+  return v2AdminGet<V2Review>(`/v2/admin/reviews/${encodeURIComponent(id)}`);
+}
