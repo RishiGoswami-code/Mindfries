@@ -114,3 +114,51 @@ func (d *DB) SaveSnapshot(ctx context.Context, sessionID string, s session.Snaps
 		sessionID, s.Seq, s.TakenAt, s.BaseCommit, s.HeadCommit, s.Patch, s.PatchSHA256)
 	return err
 }
+
+func (d *DB) CreateSubmission(ctx context.Context, sub session.Submission) error {
+	manifest := string(sub.Manifest)
+	if manifest == "" {
+		manifest = "{}"
+	}
+	_, err := d.pool.Exec(ctx,
+		`insert into v2.submissions
+		   (id, session_id, task_version, branch, base_commit, head_commit, commit_message,
+		    bundle_sha256, bundle_bytes, task_files_intact, manifest, status, created_at)
+		 values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11::jsonb,$12,$13)`,
+		sub.ID, sub.SessionID, sub.TaskVersion, sub.Branch, sub.BaseCommit, sub.HeadCommit, sub.CommitMessage,
+		sub.BundleSHA256, sub.BundleBytes, sub.TaskFilesIntact, manifest, sub.Status, sub.CreatedAt)
+	return err
+}
+
+func scanSubmission(row pgx.Row) (session.Submission, error) {
+	var s session.Submission
+	var manifest []byte
+	err := row.Scan(&s.ID, &s.SessionID, &s.TaskVersion, &s.Branch, &s.BaseCommit, &s.HeadCommit,
+		&s.CommitMessage, &s.BundleSHA256, &s.BundleBytes, &s.TaskFilesIntact, &manifest, &s.Status,
+		&s.CreatedAt, &s.VerifiedAt)
+	s.Manifest = manifest
+	if errors.Is(err, pgx.ErrNoRows) {
+		return session.Submission{}, session.ErrNotFound
+	}
+	return s, err
+}
+
+const submissionCols = `id, session_id, task_version, branch, base_commit, head_commit, commit_message,
+	bundle_sha256, bundle_bytes, task_files_intact, manifest, status, created_at, verified_at`
+
+func (d *DB) SubmissionBySession(ctx context.Context, sessionID string) (session.Submission, error) {
+	return scanSubmission(d.pool.QueryRow(ctx,
+		`select `+submissionCols+` from v2.submissions where session_id = $1`, sessionID))
+}
+
+func (d *DB) SubmissionByID(ctx context.Context, id string) (session.Submission, error) {
+	return scanSubmission(d.pool.QueryRow(ctx,
+		`select `+submissionCols+` from v2.submissions where id = $1`, id))
+}
+
+func (d *DB) CompleteSubmission(ctx context.Context, id string, bundle []byte, status string, verifiedAt time.Time) error {
+	_, err := d.pool.Exec(ctx,
+		`update v2.submissions set bundle = $2, status = $3, verified_at = $4 where id = $1`,
+		id, bundle, status, verifiedAt)
+	return err
+}

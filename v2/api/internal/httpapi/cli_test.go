@@ -226,6 +226,71 @@ func decodeAck(t *testing.T, res *http.Response) map[string]any {
 	return a
 }
 
+func TestCLISubmission(t *testing.T) {
+	srv, mem := cliServer(t)
+	defer srv.Close()
+	base := srv.URL + cliPrefix
+
+	mem.CreateSetupCode(context.Background(), session.SetupCode{
+		Code: "SUB-CODE", Role: "backend", JD: "support helpdesk tickets sla saas",
+		DurationMinutes: 90, ExpiresAt: time.Now().Add(time.Hour),
+	})
+	res := req(t, "POST", base+"/sessions/exchange", "", `{"setup_code":"SUB-CODE"}`)
+	var ex struct {
+		SessionToken string `json:"session_token"`
+	}
+	json.NewDecoder(res.Body).Decode(&ex)
+	res.Body.Close()
+	tok := ex.SessionToken
+
+	bundleBytes := "pretend-this-is-a-git-bundle"
+	sum := sha256.Sum256([]byte(bundleBytes))
+	bundleSHA := hex.EncodeToString(sum[:])
+
+	// Declare the submission.
+	man := `{"task_version":"task_x","branch":"mindfries/assessment","base_commit":"aaaa","head_commit":"bbbb","commit_message":"done","bundle_sha256":"` + bundleSHA + `","bundle_bytes":27,"task_files_intact":true}`
+	res = req(t, "POST", base+"/session/submission", tok, man)
+	if res.StatusCode != http.StatusCreated {
+		b, _ := io.ReadAll(res.Body)
+		t.Fatalf("declare = %d: %s", res.StatusCode, b)
+	}
+	var sub struct {
+		ID, Status string
+	}
+	json.NewDecoder(res.Body).Decode(&sub)
+	res.Body.Close()
+	if sub.ID == "" || sub.Status != "awaiting_bundle" {
+		t.Fatalf("unexpected submission: %+v", sub)
+	}
+
+	// Wrong bundle bytes -> 422 bundle_mismatch.
+	res = req(t, "PUT", base+"/session/submission/"+sub.ID+"/bundle", tok, "corrupted")
+	if res.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("mismatched bundle should be 422, got %d", res.StatusCode)
+	}
+	res.Body.Close()
+
+	// Correct bundle -> verified.
+	res = req(t, "PUT", base+"/session/submission/"+sub.ID+"/bundle", tok, bundleBytes)
+	if res.StatusCode != 200 {
+		b, _ := io.ReadAll(res.Body)
+		t.Fatalf("upload = %d: %s", res.StatusCode, b)
+	}
+	var done struct{ Status string }
+	json.NewDecoder(res.Body).Decode(&done)
+	res.Body.Close()
+	if done.Status != "verified" {
+		t.Fatalf("submission should be verified, got %q", done.Status)
+	}
+
+	// The session is now submitted, so the bundle endpoint is no longer active.
+	res = req(t, "GET", base+"/session/bundle", tok, "")
+	if res.StatusCode != http.StatusConflict {
+		t.Fatalf("bundle after submit should be 409, got %d", res.StatusCode)
+	}
+	res.Body.Close()
+}
+
 func TestCLIAuthAndVersionGuards(t *testing.T) {
 	srv, _ := cliServer(t)
 	defer srv.Close()

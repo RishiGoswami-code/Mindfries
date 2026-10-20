@@ -2,9 +2,11 @@ package httpapi
 
 import (
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -38,6 +40,9 @@ func (s *Server) registerCLI(mux *http.ServeMux) {
 	mux.HandleFunc("POST "+cliPrefix+"/session/heartbeat", s.cliHeartbeat)
 	mux.HandleFunc("POST "+cliPrefix+"/session/events", s.cliEvents)
 	mux.HandleFunc("POST "+cliPrefix+"/session/snapshots", s.cliSnapshots)
+	mux.HandleFunc("POST "+cliPrefix+"/session/submission", s.cliSubmit)
+	mux.HandleFunc("GET "+cliPrefix+"/session/submission", s.cliSubmissionStatus)
+	mux.HandleFunc("PUT "+cliPrefix+"/session/submission/{id}/bundle", s.cliSubmitBundle)
 	mux.HandleFunc("POST "+cliPrefix+"/session/revoke", s.cliRevoke)
 	// Mint a setup code (stands in for the dashboard/company portal until the
 	// V1 seam is wired). Guarded by V2_ADMIN_TOKEN.
@@ -235,6 +240,104 @@ func (s *Server) cliSnapshots(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *Server) cliSubmit(w http.ResponseWriter, r *http.Request) {
+	sess, ok := s.authedActive(w, r)
+	if !ok {
+		return
+	}
+	raw, _ := io.ReadAll(io.LimitReader(r.Body, 2<<20))
+	var man struct {
+		TaskVersion     string `json:"task_version"`
+		Branch          string `json:"branch"`
+		BaseCommit      string `json:"base_commit"`
+		HeadCommit      string `json:"head_commit"`
+		CommitMessage   string `json:"commit_message"`
+		BundleSHA256    string `json:"bundle_sha256"`
+		BundleBytes     int64  `json:"bundle_bytes"`
+		TaskFilesIntact bool   `json:"task_files_intact"`
+	}
+	if err := json.Unmarshal(raw, &man); err != nil {
+		problem(w, http.StatusBadRequest, "malformed", "invalid submission manifest")
+		return
+	}
+	if man.HeadCommit == "" || man.BaseCommit == "" || man.BundleSHA256 == "" || man.TaskVersion == "" {
+		problem(w, http.StatusBadRequest, "malformed", "manifest needs task_version, base_commit, head_commit, bundle_sha256")
+		return
+	}
+	// Idempotent: a session has one submission.
+	if existing, err := s.sessions.SubmissionBySession(r.Context(), sess.ID); err == nil {
+		writeJSON(w, http.StatusCreated, toWireSubmission(existing))
+		return
+	}
+	sub := session.Submission{
+		ID: "sub_" + randHex(10), SessionID: sess.ID, TaskVersion: man.TaskVersion, Branch: man.Branch,
+		BaseCommit: man.BaseCommit, HeadCommit: man.HeadCommit, CommitMessage: man.CommitMessage,
+		BundleSHA256: man.BundleSHA256, BundleBytes: man.BundleBytes, TaskFilesIntact: man.TaskFilesIntact,
+		Manifest: raw, Status: "awaiting_bundle", CreatedAt: time.Now().UTC(),
+	}
+	if err := s.sessions.CreateSubmission(r.Context(), sub); err != nil {
+		problem(w, http.StatusInternalServerError, "internal", err.Error())
+		return
+	}
+	writeJSON(w, http.StatusCreated, toWireSubmission(sub))
+}
+
+func (s *Server) cliSubmissionStatus(w http.ResponseWriter, r *http.Request) {
+	sess, ok := s.authed(w, r)
+	if !ok {
+		return
+	}
+	sub, err := s.sessions.SubmissionBySession(r.Context(), sess.ID)
+	if err != nil {
+		problem(w, http.StatusNotFound, "not_found", "no submission for this session")
+		return
+	}
+	writeJSON(w, http.StatusOK, toWireSubmission(sub))
+}
+
+func (s *Server) cliSubmitBundle(w http.ResponseWriter, r *http.Request) {
+	sess, ok := s.authed(w, r)
+	if !ok {
+		return
+	}
+	sub, err := s.sessions.SubmissionByID(r.Context(), r.PathValue("id"))
+	if err != nil || sub.SessionID != sess.ID {
+		problem(w, http.StatusNotFound, "not_found", "submission not found")
+		return
+	}
+	body, _ := io.ReadAll(io.LimitReader(r.Body, 50<<20))
+	sum := sha256.Sum256(body)
+	got := hex.EncodeToString(sum[:])
+	if got != sub.BundleSHA256 {
+		w.Header().Set("Content-Type", "application/problem+json")
+		w.WriteHeader(http.StatusUnprocessableEntity)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"code": "bundle_mismatch", "detail": "uploaded bundle does not match the manifest",
+			"mismatches": []map[string]string{{"what": "bundle_sha256", "expected": sub.BundleSHA256, "actual": got}},
+		})
+		return
+	}
+	// Integrity verified (bundle bytes match the manifest). Deep verification —
+	// unpacking the git bundle and running the task's harness on head_commit —
+	// is the downstream grading step; the bundle is stored for it.
+	now := time.Now().UTC()
+	if err := s.sessions.CompleteSubmission(r.Context(), sub.ID, body, "verified", now); err != nil {
+		problem(w, http.StatusInternalServerError, "internal", err.Error())
+		return
+	}
+	_ = s.sessions.SetStatus(r.Context(), sess.ID, "submitted")
+	sub.Status, sub.VerifiedAt = "verified", &now
+	writeJSON(w, http.StatusOK, toWireSubmission(sub))
+}
+
+func toWireSubmission(sub session.Submission) map[string]any {
+	m := map[string]any{"id": sub.ID, "status": sub.Status, "created_at": sub.CreatedAt, "head_commit": sub.HeadCommit}
+	if sub.VerifiedAt != nil {
+		m["verified_at"] = *sub.VerifiedAt
+	}
+	return m
 }
 
 func (s *Server) cliRevoke(w http.ResponseWriter, r *http.Request) {

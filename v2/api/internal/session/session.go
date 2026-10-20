@@ -69,7 +69,27 @@ type Snapshot struct {
 	PatchSHA256 string    `json:"patch_sha256"`
 }
 
-// Store persists setup codes, sessions, and session evidence.
+// Submission is what the candidate hands in: the manifest plus (once uploaded)
+// the git bundle. Status: awaiting_bundle -> verified | rejected.
+type Submission struct {
+	ID              string
+	SessionID       string
+	TaskVersion     string
+	Branch          string
+	BaseCommit      string
+	HeadCommit      string
+	CommitMessage   string
+	BundleSHA256    string
+	BundleBytes     int64
+	TaskFilesIntact bool
+	Manifest        json.RawMessage // the full submission manifest as received
+	Status          string
+	Bundle          []byte // the uploaded git bundle (nil until uploaded)
+	CreatedAt       time.Time
+	VerifiedAt      *time.Time
+}
+
+// Store persists setup codes, sessions, evidence, and submissions.
 type Store interface {
 	CreateSetupCode(ctx context.Context, c SetupCode) error
 	// TakeSetupCode marks the code used and returns it; ErrNotFound if missing,
@@ -87,6 +107,15 @@ type Store interface {
 	LastAckedSeq(ctx context.Context, sessionID string) (int64, error)
 	// SaveSnapshot stores a snapshot idempotently by (session, seq).
 	SaveSnapshot(ctx context.Context, sessionID string, s Snapshot) error
+
+	// CreateSubmission stores a new submission (status awaiting_bundle).
+	CreateSubmission(ctx context.Context, sub Submission) error
+	// SubmissionBySession returns the session's submission, or ErrNotFound.
+	SubmissionBySession(ctx context.Context, sessionID string) (Submission, error)
+	// SubmissionByID returns a submission by id, or ErrNotFound.
+	SubmissionByID(ctx context.Context, id string) (Submission, error)
+	// CompleteSubmission attaches the uploaded bundle and sets the final status.
+	CompleteSubmission(ctx context.Context, id string, bundle []byte, status string, verifiedAt time.Time) error
 }
 
 // Mem is an in-memory Store for tests.
@@ -97,6 +126,8 @@ type Mem struct {
 	tokenFor  map[string]string          // session id -> token
 	events    map[string]map[int64]Event // session id -> seq -> event
 	snapshots map[string]map[int64]Snapshot
+	subs      map[string]Submission // id -> submission
+	subBySess map[string]string     // session id -> submission id
 }
 
 // NewMem returns an empty in-memory store.
@@ -104,7 +135,50 @@ func NewMem() *Mem {
 	return &Mem{
 		codes: map[string]SetupCode{}, byToken: map[string]Session{}, tokenFor: map[string]string{},
 		events: map[string]map[int64]Event{}, snapshots: map[string]map[int64]Snapshot{},
+		subs: map[string]Submission{}, subBySess: map[string]string{},
 	}
+}
+
+func (m *Mem) CreateSubmission(_ context.Context, sub Submission) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.subs[sub.ID] = sub
+	m.subBySess[sub.SessionID] = sub.ID
+	return nil
+}
+
+func (m *Mem) SubmissionBySession(_ context.Context, sessionID string) (Submission, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	id, ok := m.subBySess[sessionID]
+	if !ok {
+		return Submission{}, ErrNotFound
+	}
+	return m.subs[id], nil
+}
+
+func (m *Mem) SubmissionByID(_ context.Context, id string) (Submission, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	s, ok := m.subs[id]
+	if !ok {
+		return Submission{}, ErrNotFound
+	}
+	return s, nil
+}
+
+func (m *Mem) CompleteSubmission(_ context.Context, id string, bundle []byte, status string, verifiedAt time.Time) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	s, ok := m.subs[id]
+	if !ok {
+		return ErrNotFound
+	}
+	s.Bundle = bundle
+	s.Status = status
+	s.VerifiedAt = &verifiedAt
+	m.subs[id] = s
+	return nil
 }
 
 func (m *Mem) AppendEvents(_ context.Context, sessionID string, events []Event) (int64, int, int, error) {
