@@ -55,6 +55,7 @@ type Options struct {
 	Avatar     AvatarStore
 	Staff      StaffStore
 	Privacy    PrivacyStore
+	Compliance ComplianceStore
 	Model      assistant.Model       // nil: Gemini if a key is set, else a scripted model
 	Researcher *assistant.Researcher // nil: the assessment's own research list
 	Blobs      blob.Store
@@ -84,6 +85,7 @@ type Server struct {
 	avatarLimit  *mw.Limiter
 	staff        StaffStore
 	privacy      PrivacyStore
+	compliance   ComplianceStore
 	assistModel  assistant.Model
 	researcher   *assistant.Researcher
 	blobs        blob.Store
@@ -113,7 +115,7 @@ func New(reg Registry, productsRoot string, cache taskgen.Cache, provider taskge
 // middleware (request IDs, panic recovery, access log).
 func NewServer(o Options) http.Handler {
 	s := &Server{cfg: o.Config, reg: o.Registry, productsRoot: o.Config.ProductsRoot, cache: o.Cache, provider: o.Provider,
-		poolSize: o.Config.PoolSize, sessions: o.Sessions, devices: o.Devices, configs: o.Configs, github: o.GitHub, monitor: o.Monitor, acts: o.Activity, panelStore: o.Panel, assist: o.Assistant, avatar: o.Avatar, staff: o.Staff, privacy: o.Privacy, assistModel: o.Model, researcher: o.Researcher, blobs: o.Blobs, hub: o.Hub,
+		poolSize: o.Config.PoolSize, sessions: o.Sessions, devices: o.Devices, configs: o.Configs, github: o.GitHub, monitor: o.Monitor, acts: o.Activity, panelStore: o.Panel, assist: o.Assistant, avatar: o.Avatar, staff: o.Staff, privacy: o.Privacy, compliance: o.Compliance, assistModel: o.Model, researcher: o.Researcher, blobs: o.Blobs, hub: o.Hub,
 		signKeyID: o.Config.SigningKeyID, signKey: o.Config.SigningKey, log: o.Log, now: o.Now,
 		banks: map[string][]taskgen.BankTask{}}
 	if s.log == nil {
@@ -139,6 +141,7 @@ func NewServer(o Options) http.Handler {
 	s.registerAvatar(mux)
 	s.registerStaff(mux)
 	s.registerPrivacy(mux)
+	s.registerCompliance(mux)
 	return mw.Wrap(mw.CORS(s.cfg.AllowedOrigins, mux), s.log)
 }
 

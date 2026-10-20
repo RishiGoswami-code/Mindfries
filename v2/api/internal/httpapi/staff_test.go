@@ -11,7 +11,7 @@ import (
 
 func (e *env) staff(method, path string, body any) reply {
 	e.t.Helper()
-	return e.do(method, path, map[string]string{"X-Portal-Secret": testPortalSecret}, body)
+	return e.do(method, path, map[string]string{"X-Portal-Secret": testPortalSecret, "X-Actor": "company:pat@acme.example"}, body)
 }
 
 func TestStaffRoutesNeedTheSecretOrTheAdminToken(t *testing.T) {

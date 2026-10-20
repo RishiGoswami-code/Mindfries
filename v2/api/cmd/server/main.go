@@ -87,7 +87,7 @@ func main() {
 
 	handler := httpapi.NewServer(httpapi.Options{
 		Config: cfg, Registry: db, Cache: store.NewTaskCache(db), Provider: provider,
-		Sessions: db, Devices: db, Configs: db, GitHub: db, Monitor: db, Activity: db, Panel: db, Assistant: db, Avatar: db, Staff: db, Privacy: db, Blobs: blobs,
+		Sessions: db, Devices: db, Configs: db, GitHub: db, Monitor: db, Activity: db, Panel: db, Assistant: db, Avatar: db, Staff: db, Privacy: db, Compliance: db, Blobs: blobs,
 		Log: logger,
 	})
 

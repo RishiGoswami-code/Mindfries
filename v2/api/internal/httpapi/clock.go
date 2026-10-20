@@ -90,6 +90,10 @@ func (s *Server) cliBegin(w http.ResponseWriter, r *http.Request) {
 	}
 	cfg := s.configFor(ctx, sess)
 	now := s.now()
+	if !s.consentOK(ctx, sess) {
+		problem(w, http.StatusConflict, "monitoring_not_ready", "Not ready: "+consentMissing+".")
+		return
+	}
 	if s.monitor != nil {
 		st, _, err := s.monitor.MonitoringState(ctx, sess.ID)
 		if err != nil {

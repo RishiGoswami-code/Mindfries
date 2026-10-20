@@ -132,7 +132,9 @@ func TestTheRealCLIGoesFromSetupToSubmitOnTheRealAPI(t *testing.T) {
 	c := newCLIRun(t, e)
 	g := newGrant()
 
-	// The candidate presses Start assessment: the portal's server mints the command.
+	// The candidate reads and accepts what is collected, then presses Start assessment:
+	// the portal's server mints the command.
+	e.acceptNotice(g)
 	m := e.portal("POST", "/v2/portal/setup-codes", g)
 	if m.Status != 201 || !setupCmd.MatchString(m.str("cli_command")) {
 		t.Fatalf("%d %s", m.Status, m.Raw)

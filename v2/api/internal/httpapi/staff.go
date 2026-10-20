@@ -45,6 +45,7 @@ func (s *Server) registerStaff(mux *http.ServeMux) {
 	mux.HandleFunc("GET /v2/portal/assessments/{id}/sessions", s.staffOnly(s.assessmentSessions))
 	mux.HandleFunc("GET /v2/portal/sessions/{id}/evidence", s.staffOnly(s.sessionEvidence))
 	mux.HandleFunc("GET /v2/portal/sessions/{id}/media/{evidence_id}", s.staffOnly(s.mediaURL))
+	mux.HandleFunc("GET /v2/portal/sessions/{id}/report", s.staffOnly(s.sessionReport))
 	mux.HandleFunc("POST /v2/portal/sessions/{id}/end", s.staffOnly(s.endSession))
 	mux.HandleFunc("POST /v2/portal/sessions/{id}/extend", s.staffOnly(s.extendSession))
 	mux.HandleFunc("POST /v2/portal/sessions/{id}/activity/{activity_id}/review", s.staffOnly(s.reviewActivity))
@@ -234,6 +235,9 @@ func (s *Server) sessionEvidence(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	if !s.audit(w, r, sess.ID, "evidence", "") {
+		return
+	}
 	ctx := r.Context()
 	out := map[string]any{"session": map[string]any{
 		"id": sess.ID, "assessment_id": sess.AssessmentID, "candidate_id": sess.Links.CandidateID, "company_id": sess.Links.CompanyID,
@@ -275,6 +279,14 @@ func (s *Server) sessionEvidence(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			out["flag_reviews"] = reviews
+			if s.compliance != nil {
+				if resp, err := s.compliance.FlagResponses(ctx, sess.ID); err == nil {
+					out["flag_responses"] = resp
+				}
+				if c, ok, _ := s.compliance.ConsentFor(ctx, sess.Links.CandidateID, sess.AssessmentID); ok {
+					out["consent"] = c
+				}
+			}
 		}
 	}
 	if s.panelStore != nil {
@@ -324,6 +336,9 @@ func (s *Server) mediaURL(w http.ResponseWriter, r *http.Request) {
 	}
 	if s.staff == nil || s.blobs == nil {
 		problem(w, http.StatusServiceUnavailable, "not_configured", "evidence storage isn't set up")
+		return
+	}
+	if !s.audit(w, r, sess.ID, "media", r.PathValue("evidence_id")) {
 		return
 	}
 	ev, found, err := s.staff.EvidenceByID(r.Context(), sess.ID, r.PathValue("evidence_id"))
@@ -399,4 +414,17 @@ func (s *Server) productTasks(w http.ResponseWriter, r *http.Request) {
 		out = append(out, map[string]any{"id": t.ID, "kind": t.Kind, "role": t.Role, "title": t.Title, "tags": t.Tags, "check": t.Check})
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"product": slug, "tasks": out})
+}
+
+// sessionReport is the evidence report for a company (or admin) through the
+// portal: the same report the admin review shows, with the read audited.
+func (s *Server) sessionReport(w http.ResponseWriter, r *http.Request) {
+	sess, ok := s.ownSession(w, r)
+	if !ok {
+		return
+	}
+	if !s.audit(w, r, sess.ID, "report", "") {
+		return
+	}
+	s.writeReview(w, r, sess, false)
 }

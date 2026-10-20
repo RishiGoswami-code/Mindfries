@@ -69,6 +69,13 @@ func (s *Server) adminReviewDetail(w http.ResponseWriter, r *http.Request) {
 		problem(w, http.StatusNotFound, "not_found", "session not found")
 		return
 	}
+	s.writeReview(w, r, sess, true)
+}
+
+// writeReview answers with a session's evidence report. The admin gets the raw
+// events as well; a company, whose reads are audited, gets the report without
+// them (its evidence route has what it needs).
+func (s *Server) writeReview(w http.ResponseWriter, r *http.Request, sess session.Session, withEvents bool) {
 	events, _ := s.sessions.Events(r.Context(), sess.ID)
 
 	var sub session.Submission
@@ -88,7 +95,7 @@ func (s *Server) adminReviewDetail(w http.ResponseWriter, r *http.Request) {
 
 	rep := report.Build(sess, sub, events, s.roleCoverage(r, sess.ProductSlug, sess.Role), grade).WithContext(s.reportContext(r.Context(), sess))
 
-	writeJSON(w, http.StatusOK, map[string]any{
+	out := map[string]any{
 		"session": map[string]any{
 			"id": sess.ID, "assessment_title": sess.AssessmentTitle, "role": sess.Role,
 			"product_slug": sess.ProductSlug, "bank_task_id": sess.BankTaskID, "task_version": sess.TaskVersion,
@@ -97,8 +104,11 @@ func (s *Server) adminReviewDetail(w http.ResponseWriter, r *http.Request) {
 		},
 		"submission": subOut,
 		"report":     rep,
-		"events":     events,
-	})
+	}
+	if withEvents {
+		out["events"] = events
+	}
+	writeJSON(w, http.StatusOK, out)
 }
 
 func (s *Server) roleCoverage(r *http.Request, slug, role string) manifest.RoleCoverage {

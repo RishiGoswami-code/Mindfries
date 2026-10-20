@@ -135,7 +135,7 @@ func (s *Server) panelReport(w http.ResponseWriter, r *http.Request, sess sessio
 		"session_status": sess.Status,
 		"ends_at":        sess.EndsAt,
 		"requires":       map[string]bool{"camera": need.Camera, "screen": need.Screen, "audio": need.Audio},
-		"missing":        monitor.Missing(need, next, now),
+		"missing":        s.missingFor(ctx, sess, need, next, now),
 	})
 }
 
@@ -255,4 +255,14 @@ func (s *Server) panelUpload(w http.ResponseWriter, r *http.Request, sess sessio
 		return
 	}
 	writeJSON(w, http.StatusCreated, map[string]any{"id": id, "kind": up.Kind, "bytes": len(body)})
+}
+
+// missingFor is what stops the clock starting: the shares an assessment needs,
+// and the candidate's acceptance of the notice.
+func (s *Server) missingFor(ctx context.Context, sess session.Session, need monitor.Require, st monitor.State, now time.Time) []string {
+	missing := monitor.Missing(need, st, now)
+	if !s.consentOK(ctx, sess) {
+		missing = append([]string{consentMissing}, missing...)
+	}
+	return missing
 }

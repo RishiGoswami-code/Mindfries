@@ -68,7 +68,7 @@ func newEnvWith(t *testing.T, mod func(*config.Config), opts func(*Options)) *en
 	reg := loadReg(t, root, "p1-support-saas", "p2-rag-platform", "p3-quant-platform")
 	o := Options{
 		Config: e.cfg, Registry: reg, Cache: taskgen.NewMemCache(),
-		Sessions: db, Devices: db, Configs: db, GitHub: db, Monitor: db, Activity: db, Panel: db, Assistant: db, Avatar: db, Staff: db, Privacy: db, Blobs: e.blobs, Hub: e.hub,
+		Sessions: db, Devices: db, Configs: db, GitHub: db, Monitor: db, Activity: db, Panel: db, Assistant: db, Avatar: db, Staff: db, Privacy: db, Compliance: db, Blobs: e.blobs, Hub: e.hub,
 		Log: slog.New(slog.NewTextHandler(io.Discard, nil)),
 		Now: e.clock,
 	}
@@ -167,8 +167,37 @@ func newGrant() map[string]any {
 
 var linuxDevice = map[string]any{"os": "linux", "arch": "amd64"}
 
-// startSession mints a code and exchanges it, returning the token and session.
+// acceptNotice is the candidate reading and accepting what the assessment collects.
+func (e *env) acceptNotice(g map[string]any) {
+	e.t.Helper()
+	n := e.portal("GET", "/v2/portal/assessments/"+g["assessment_id"].(string)+"/notice", nil)
+	if n.Status != 200 {
+		e.t.Fatalf("notice: %d %s", n.Status, n.Raw)
+	}
+	var items []string
+	for _, it := range n.JSON()["items"].([]any) {
+		m := it.(map[string]any)
+		if m["collected"] == true {
+			items = append(items, m["id"].(string))
+		}
+	}
+	r := e.portal("POST", "/v2/portal/consents", map[string]any{
+		"candidate_id": g["candidate_id"], "assessment_id": g["assessment_id"], "version": n.str("version"), "items": items})
+	if r.Status != 204 {
+		e.t.Fatalf("consent: %d %s", r.Status, r.Raw)
+	}
+}
+
+// startSession accepts the notice, mints a code and exchanges it, returning
+// the token and session.
 func (e *env) startSession(g map[string]any) (token string, sessionID string) {
+	e.t.Helper()
+	e.acceptNotice(g)
+	return e.startSessionUnaccepted(g)
+}
+
+// startSessionUnaccepted is startSession without the candidate accepting the notice.
+func (e *env) startSessionUnaccepted(g map[string]any) (token string, sessionID string) {
 	e.t.Helper()
 	m := e.portal("POST", "/v2/portal/setup-codes", g)
 	if m.Status != http.StatusCreated {
