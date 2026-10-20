@@ -178,7 +178,7 @@ func Build(sess session.Session, sub session.Submission, events []session.Event,
 // never as what it means (SPEC section 16). Using the coding assistant the
 // assessment provides is not a flag; it is how the candidate worked.
 func flags(r Report) []string {
-	var f []string
+	f := []string{} // never null in the JSON
 	if len(r.AI.AgentsDetected) > 0 {
 		f = append(f, fmt.Sprintf("Coding-agent processes were seen while the assessment ran: %s. Recorded for a reviewer to look at.", strings.Join(r.AI.AgentsDetected, ", ")))
 	}

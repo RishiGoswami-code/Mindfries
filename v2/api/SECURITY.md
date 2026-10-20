@@ -67,6 +67,15 @@ grant, made by the V1 seam, not here.
 
 ## Known gaps
 
+- **The grader is not a sandbox.** `cmd/grade` runs a candidate's tests with a
+  stripped environment (none of the grader's variables), which stops them
+  reading `V2_DATABASE_URL` from their own environment. It does not stop them
+  reading it from the grader process itself (on Linux a child of the same user
+  can read `/proc/<parent>/environ`), reaching the network, or filling the
+  disk, and there is no time limit (by decision). Run it where that is
+  harmless: a throwaway container or CI job as a different user from the one
+  holding the credential, ideally with no network except the database.
+
 - **Gemini Live token format.** `assistant.LiveTokens.Mint` follows Google's
   documented ephemeral-token API, but could only be tested against a stand-in.
   It needs a smoke test with a real key before the avatar is switched on.
