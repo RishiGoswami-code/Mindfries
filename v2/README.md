@@ -28,7 +28,7 @@ Each folder's README says what goes there and the rules it follows.
 
 | Folder | What it is | Built in |
 |---|---|---|
-| [`cli/`](cli) | The `mindfries` CLI (Go): setup, the session watcher, `mindfries agent`, submit, plus a fake API for testing | Stage 1: built |
+| [`cli/`](cli) | The `mindfries` CLI (Go): setup, the session watcher, `mindfries agent`, check, submit, plus a fake API for testing | Stage 1: built |
 | [`contracts/`](contracts) | OpenAPI contracts between the pieces, starting with `cli-api.yaml` | Task 1.1: drafted |
 | [`api/`](api) | The V2 API (Go), its own Railway service | Stage 2 |
 | [`db/`](db) | Migrations for the `v2` schema, with their own runner | Stage 2 |

@@ -38,7 +38,8 @@ through [`../contracts/cli-api.yaml`](../contracts/cli-api.yaml), which
    - then the clock starts, the editor opens in the workspace, and the
      session watcher runs until the session ends.
 4. They work in their editor, commit and `git push` as usual, with
-   `mindfries agent` in another terminal.
+   `mindfries agent` in another terminal, and `mindfries check` whenever
+   they want to run the task's checks.
 5. `mindfries submit` runs the checks, shows the diff, commits, pushes and
    hands in. `mindfries stop` ends the session without submitting.
 
@@ -55,6 +56,7 @@ and `mindfries start <code>` does setup and start in one go.
 | `mindfries start` | Picks the editor, checks the computer, turns on monitoring, then starts the clock, opens the editor and runs the session watcher. Run it again to carry on after a restart, or to reopen the editor. `--no-browser` prints addresses instead of opening them. |
 | `mindfries agent` | The coding and research assistant, in a rich terminal interface (plain line mode when piped, or with `MINDFRIES_PLAIN=1`) |
 | `mindfries status` | The session, watcher, sync and Git state, or the last submission |
+| `mindfries check` | Runs the task's check commands in the workspace, shows their output as it runs and ends with a summary (test counts where the runner is go test, pytest, vitest or jest). Records one `check.run` event per command for the panel's Testing tab, through the running watcher; with no watcher it says the result wasn't recorded. Exits non-zero if a check failed. Nothing is handed in. |
 | `mindfries submit` | Runs the task's checks, shows the diff, commits, pushes to the candidate's GitHub if the session uses it, takes the deployed URL (`--url`) when the task asks, and hands in |
 | `mindfries stop` | Ends the session without submitting and removes this computer's credentials; the code stays |
 | `mindfries doctor` | Preflight checks only; changes nothing |
