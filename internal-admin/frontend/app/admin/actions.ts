@@ -421,3 +421,56 @@ export async function assignV2Task(input: {
     return fail(e);
   }
 }
+
+// assignV2Batch invites several candidates to the same role + JD in one go. It
+// mints (which validates coverage) per candidate so each gets its own one-time
+// code; a coverage/engine failure on the first candidate aborts the whole batch
+// (it would hit every candidate the same way), so nothing is half-created.
+export async function assignV2Batch(input: {
+  emails: string[];
+  companyId?: string;
+  role: string;
+  jd: string;
+  title?: string;
+  dueDate?: string;
+}): Promise<
+  | { ok: true; results: { email: string; setupCode?: string; error?: string }[] }
+  | { ok: false; error: string }
+> {
+  try {
+    await requireAdminRole();
+    if (!input.role.trim()) throw new Error("Role is required");
+    if (!input.jd.trim()) throw new Error("Job description is required");
+    const emails = [...new Set(input.emails.map((e) => e.trim().toLowerCase()).filter(Boolean))];
+    if (emails.length === 0) throw new Error("Add at least one candidate email");
+
+    const results: { email: string; setupCode?: string; error?: string }[] = [];
+    for (let i = 0; i < emails.length; i++) {
+      const email = emails[i];
+      const minted = await mintV2SetupCode({ role: input.role, jd: input.jd, title: input.title });
+      if ("error" in minted) {
+        // The first failure is a role/JD/engine problem that affects everyone —
+        // abort so we don't create a partial, confusing batch.
+        if (i === 0) return { ok: false, error: minted.error };
+        results.push({ email, error: minted.error });
+        continue;
+      }
+      try {
+        await createV2Assessment({
+          candidateEmail: email,
+          companyId: input.companyId,
+          role: input.role,
+          jd: input.jd,
+          dueDate: input.dueDate,
+        });
+        results.push({ email, setupCode: minted.code });
+      } catch (e) {
+        results.push({ email, error: e instanceof Error ? e.message : String(e) });
+      }
+    }
+    revalidatePath("/admin/v2");
+    return { ok: true, results };
+  } catch (e) {
+    return fail(e);
+  }
+}
