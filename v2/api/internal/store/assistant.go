@@ -154,3 +154,64 @@ func (d *DB) TokensSince(ctx context.Context, since time.Time) (int, error) {
 	err := d.pool.QueryRow(ctx, `select coalesce(sum(input_tokens + output_tokens), 0) from v2.model_usage where at >= $1`, since).Scan(&n)
 	return n, err
 }
+
+// The avatar's conversation is one long "turn" per session in the same tables
+// as the terminal assistant's, tagged channel 'avatar', so a reviewer reads one
+// record. Utterances carry the browser's own sequence numbers; ones already
+// stored are skipped, so a retried upload doesn't double the transcript.
+
+// AvatarTurnID is the id of a session's avatar conversation.
+func AvatarTurnID(sessionID string) string { return "avt_" + sessionID }
+
+// AddUtterances stores new utterances and returns how many were new.
+func (d *DB) AddUtterances(ctx context.Context, sessionID string, us []assistant.Utterance, at time.Time) (int, error) {
+	id := AvatarTurnID(sessionID)
+	if _, err := d.pool.Exec(ctx,
+		`insert into v2.assistant_turns (id, session_id, conversation_id, channel, prompt, status, started_at)
+		 values ($1, $2, 'avatar', 'avatar', '', 'running', $3) on conflict (id) do nothing`, id, sessionID, at); err != nil {
+		return 0, err
+	}
+	var last int
+	if err := d.pool.QueryRow(ctx,
+		`select coalesce(max((body->>'seq')::int), 0) from v2.assistant_steps where turn_id = $1`, id).Scan(&last); err != nil {
+		return 0, err
+	}
+	stored := 0
+	for _, u := range us {
+		if u.Seq <= last {
+			continue
+		}
+		kind := assistant.KindOut
+		if u.Role == "candidate" {
+			kind = assistant.KindIn
+		}
+		body, _ := json.Marshal(map[string]any{"text": u.Text, "seq": u.Seq, "role": u.Role, "at": u.At})
+		if err := d.AddStep(ctx, id, kind, "", body, at); err != nil {
+			return stored, err
+		}
+		last = u.Seq
+		stored++
+	}
+	return stored, nil
+}
+
+// AvatarTranscript is what was said, in order.
+func (d *DB) AvatarTranscript(ctx context.Context, sessionID string) ([]assistant.Utterance, error) {
+	rows, err := d.pool.Query(ctx, `select body from v2.assistant_steps where turn_id = $1 order by step`, AvatarTurnID(sessionID))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []assistant.Utterance{}
+	for rows.Next() {
+		var body []byte
+		var u assistant.Utterance
+		if err := rows.Scan(&body); err != nil {
+			return nil, err
+		}
+		if json.Unmarshal(body, &u) == nil {
+			out = append(out, u)
+		}
+	}
+	return out, rows.Err()
+}

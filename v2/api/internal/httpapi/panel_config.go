@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/mindfries/v2/api/internal/activity"
+	"github.com/mindfries/v2/api/internal/assistant"
 	"github.com/mindfries/v2/api/internal/core"
 	"github.com/mindfries/v2/api/internal/panel"
 	"github.com/mindfries/v2/api/internal/session"
@@ -168,7 +169,7 @@ func (s *Server) panelConfig(w http.ResponseWriter, r *http.Request, sess sessio
 		"tabs":            tabs,
 		"firstTab":        panel.FirstTab(tabs, kind),
 		"monitoring":      map[string]bool{"camera": cfg.RequireCamera, "screen": cfg.RequireScreen, "audio": cfg.RequireAudio},
-		"avatar":          map[string]any{"name": "Aria", "enabled": cfg.AvatarEnabled && s.cfg.HasGemini()},
+		"avatar":          map[string]any{"name": assistant.AvatarName, "enabled": s.avatarOn(cfg.AvatarEnabled)},
 		"diagram":         diagram,
 		"notes":           notes.Text,
 		"resources":       panel.ResourcesFor(sess.Brief, productDir),
