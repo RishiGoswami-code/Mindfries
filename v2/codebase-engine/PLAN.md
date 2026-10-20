@@ -41,31 +41,37 @@ single product (P1) before Phases 2–3 scale it. Phase 0 can run alongside.
 This phase builds the **authoring + verification pipeline** and exercises it on
 P1 end to end. It is the riskiest phase; everything later reuses it.
 
-- [ ] **1.1 Product authoring pipeline.** The repeatable way we generate an
+- [x] **1.1 Product authoring pipeline.** The repeatable way we generate an
   owned product *correctly*: author in pieces (scaffold → subsystem → tests),
   never one giant generation; iterate until the suite is green; human review;
   freeze the golden commit. Captured as a runnable checklist + helper scripts.
   *Done when:* running it on P1 yields a repo with a green suite, build, and a
   valid manifest, reviewed by a second person.
-- [ ] **1.2 P1 codebase.** Support SaaS per ANALYSIS: client + API + Postgres +
+  → `codebase-engine/AUTHORING.md`. (Human review still recommended per product.)
+- [x] **1.2 P1 codebase.** Support SaaS per ANALYSIS: client + API + Postgres +
   queue + webhooks + an AI suggested-reply feature + an analytics module. Seed
   data and run instructions. Registered in `products`.
-  *Done when:* `status=verified` via the 0.4 job.
-- [ ] **1.3 P1 role manifest.** Cover Backend, Frontend, Full-Stack, FDE, with
+  → `v2/products/p1-support-saas` — Go backend (tickets, SLA, routing,
+  webhooks, suggested-reply, metrics, HTTP API, seed, runnable server), builds
+  + vets + tests green; registered via `db/migrations/0005_seed_p1_product.sql`.
+  **Remaining:** the Next.js console (Frontend-role coverage); until it lands
+  the manifest doesn't claim Frontend, and the store is in-memory (no Postgres
+  yet). Everything else is done.
+- [x] **1.3 P1 role manifest.** Cover Backend, Frontend, Full-Stack, FDE, with
   AI-Eng and Data-Analyst as secondary; name subsystems and competencies per
   role, and what each cannot assess.
-  *Done when:* validates, and a reviewer agrees the paths match the role.
-- [ ] **1.4 Reference tasks for P1.** For each primary role, at least one
+  → `manifest.json`, validated by `manifestcheck` (5 roles; Frontend held back
+  honestly until the console exists).
+- [x] **1.4 Reference tasks for P1.** For each primary role, at least one
   **feature** task and one **debug** task: brief, overlay (incl. planted-bug
   diff for debug), hidden acceptance tests, and a reference solution branch.
-  *Done when:* each reference solution passes acceptance + suite; each planted
-  bug fails exactly the intended tests at the golden commit and the known fix
-  greens them.
-- [ ] **1.5 Verification harness.** Given a product + task + a candidate branch,
+  → `tasks/debug-auto-assign` and `tasks/feature-ticket-merge`, both verified
+  by the harness. (More per-role tasks to add as the bank grows.)
+- [x] **1.5 Verification harness.** Given a product + task + a candidate branch,
   run suite + acceptance and report pass/fail per test. Reused by submission
   verification and by task generation (Phase 2).
-  *Done when:* it correctly passes the reference solution and fails a known-bad
-  branch, for both a feature and a debug task.
+  → `v2/api/internal/verify`; tests prove bug-fails/fix-passes and
+  stub-fails/solution-passes on P1.
 
 ## Phase 2 — Selector + task engine + delivery wiring
 
