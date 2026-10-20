@@ -7,13 +7,22 @@ already-deployed V1. Ordered, with the decisions called out.
 
 ## Decisions (locked)
 
+- **Reuse the same deployments; replace V1 by a switch.** V2 is built under
+  `v2/` in isolation, tested, then wired into the **existing** three Next apps
+  and the **existing** Go backend deployment — no new Vercel/Railway projects.
+  Cut-over flips `assessments.engine` default `v1 → v2`. The full integrated
+  picture (admin/company/candidate, shared DB, switch) is in
+  [`INTEGRATION.md`](INTEGRATION.md).
 - **Candidate execution: the V2 CLI** — candidates work on their own machine via
-  the `mindfries` CLI (already built). So go-live = deploy `v2/api` (Railway),
-  distribute the signed CLI, and wire the company seam. Tracks C below is the
-  CLI path; the Daytona/browser rows are kept only for context.
-- **Deploy state: all of V1 is live** — candidate + internal-admin frontends and
-  the candidate/company backends are deployed and serving. So V2 only *adds* a
-  service and touches V1 at the one switch-guarded seam (Track D).
+  the `mindfries` CLI (already built), launched from the candidate portal.
+- **Deploy state: all of V1 is live** — the three frontends and the
+  candidate/company backends are deployed and serving. So V2 only *adds*
+  flag-gated surfaces to those apps and the engine to the existing backend, and
+  touches V1 at one switch-guarded seam (Track D).
+
+> Where this and `SETUP.md` say "Railway" / "new Vercel project", read it as
+> **the existing backend deployment** / **the existing Next apps**. V2 does not
+> get its own projects — see `INTEGRATION.md`.
 
 ## 0. Why execution environment mattered
 
