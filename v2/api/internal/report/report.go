@@ -23,7 +23,8 @@ type Report struct {
 	AI        AISummary    `json:"ai"`
 	Changes   []FileChange `json:"changes"`
 	Coverage  Coverage     `json:"coverage"`
-	Flags     []string     `json:"flags"` // things a reviewer should look at
+	Flags     []string     `json:"flags"`             // things a reviewer should look at
+	Context   *Context     `json:"context,omitempty"` // the rest of the evidence (see WithContext)
 }
 
 // Outcome is the objective result: did the submission pass the hidden tests.

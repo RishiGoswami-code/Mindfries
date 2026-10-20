@@ -86,7 +86,7 @@ func (s *Server) adminReviewDetail(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	rep := report.Build(sess, sub, events, s.roleCoverage(r, sess.ProductSlug, sess.Role), grade)
+	rep := report.Build(sess, sub, events, s.roleCoverage(r, sess.ProductSlug, sess.Role), grade).WithContext(s.reportContext(r.Context(), sess))
 
 	writeJSON(w, http.StatusOK, map[string]any{
 		"session": map[string]any{
